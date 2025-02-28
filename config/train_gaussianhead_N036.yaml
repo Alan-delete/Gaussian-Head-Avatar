@@ -1,15 +1,15 @@
 gpu_id: 0
-load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble031/meshhead_latest'
-load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
-load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
-load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
+load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble036/meshhead_latest'
+load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble036/gaussianhead_latest'
+load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble036/supres_latest'
+load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble036/delta_poses_latest'
 lr_net: 1e-4
 lr_pose: 1e-5
 batch_size: 1
 optimize_pose: True
 
 dataset:
-  dataroot: 'datasets/mini_demo_dataset/031'
+  dataroot: 'datasets/mini_demo_dataset/036'
   camera_ids: ['220700191', '221501007', '222200036', '222200037', '222200038', '222200039', '222200040', '222200041',
                '222200042', '222200043', '222200044', '222200045', '222200046', '222200047', '222200048', '222200049']
   original_resolution: 2048
@@ -49,8 +49,8 @@ gaussianheadmodule:
   attributes_scale: 0.2
 
 recorder:
-  name: 'gaussianhead_NeRSemble031'
-  logdir: 'log/gaussianhead_NeRSemble031'
+  name: 'gaussianhead_NeRSemble036'
+  logdir: 'log/gaussianhead_NeRSemble036'
   checkpoint_path: 'checkpoints'
   result_path: 'results'
   save_freq: 1000

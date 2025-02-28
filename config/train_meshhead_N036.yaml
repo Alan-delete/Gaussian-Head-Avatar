@@ -1,11 +1,11 @@
 gpu_id: 0
-load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble031/meshhead_latest'
+load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble036/meshhead_latest'
 lr_net: 1e-3
 lr_lmk: 1e-4
 batch_size: 1
 
 dataset:
-  dataroot: 'datasets/mini_demo_dataset/031'
+  dataroot: 'datasets/mini_demo_dataset/036'
   camera_ids: ['220700191', '221501007', '222200036', '222200037', '222200038', '222200039', '222200040', '222200041',
                '222200042', '222200043', '222200044', '222200045', '222200046', '222200047', '222200048', '222200049']
   original_resolution: 2048
@@ -26,8 +26,8 @@ meshheadmodule:
   subdivide: False
 
 recorder:
-  name: 'meshhead_NeRSemble031'
-  logdir: 'log/meshhead_NeRSemble031'
+  name: 'meshhead_NeRSemble036'
+  logdir: 'log/meshhead_NeRSemble036'
   checkpoint_path: 'checkpoints'
   result_path: 'results'
   save_freq: 1000
