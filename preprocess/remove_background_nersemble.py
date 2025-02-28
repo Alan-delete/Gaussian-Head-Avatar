@@ -85,7 +85,7 @@ if __name__ == "__main__":
     parser.add_argument('--model-refine-kernel-size', type=int, default=3)
     args = parser.parse_args()
 
-    DATA_SOURCE = '../NeRSemble'
+    DATA_SOURCE = '../datasets/NeRSemble'
     CAMERA_IDS = ['220700191', '221501007', '222200036', '222200037', '222200038', '222200039', '222200040', '222200041',
                   '222200042', '222200043', '222200044', '222200045', '222200046', '222200047', '222200048', '222200049']
 

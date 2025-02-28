@@ -107,5 +107,6 @@ if __name__ == "__main__":
     SIZE = [2048, 2048]
     SIZE_LOWRES = [256, 256]
     DATA_SOURCE = 'path/to/raw_NeRSemble/'
-    DATA_OUTPUT = '../NeRSemble'
+    DATA_OUTPUT = '../datasets/NeRSemble'
+    # DATA_OUTPUT = '../NeRSemble'
     extract_frames(['031', '036'])
