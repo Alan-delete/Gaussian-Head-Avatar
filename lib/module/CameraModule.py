@@ -175,7 +175,23 @@ class CameraModule():
                 opacities = opacity[b],
                 scales = scales[b],
                 rotations = rotations[b])
-            render_images.append(render_images_b)
+            
+            # renders, _radii = rasterizer(
+            #     means3D = means3D,
+            #     means2D = means2D_precomp,
+            #     shs = None,
+            #     colors_precomp = colors_precomp,
+            #     opacities = opacity,
+            #     scales = None,
+            #     rotations = None,
+            #     cov3D_precomp = cov3D_precomp,
+            #     conic_precomp = conic_precomp)
+            # rendered_image, rendered_mask, rendered_cov2D, rendered_orient_conf, rendered_depth = renders.split([3, 2, 3, 1, 1], dim=0)
+            # seg + dir2d + depth +  = 3 + 1 + 1
+            rendered_image, rendered_segment_map, rendered_orient_conf, rendered_depth = render_images_b.split([32, 3, 1, 1], dim=0)
+
+            # render_images.append(render_images_b)
+            render_images.append(rendered_image)
             radii.append(radii_b)
 
         render_images = torch.stack(render_images)

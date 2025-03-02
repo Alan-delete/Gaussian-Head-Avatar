@@ -60,19 +60,19 @@ if __name__ == '__main__':
     camera = CameraModule()
     recorder = GaussianHeadTrainRecorder(cfg.recorder)
 
-    optimized_parameters = [{'params' : supres.parameters(), 'lr' : cfg.lr_net},
-                            {'params' : gaussianhead.xyz, 'lr' : cfg.lr_net * 0.1},
-                            {'params' : gaussianhead.feature, 'lr' : cfg.lr_net * 0.1},
-                            {'params' : gaussianhead.exp_color_mlp.parameters(), 'lr' : cfg.lr_net},
-                            {'params' : gaussianhead.pose_color_mlp.parameters(), 'lr' : cfg.lr_net},
-                            {'params' : gaussianhead.exp_deform_mlp.parameters(), 'lr' : cfg.lr_net},
-                            {'params' : gaussianhead.pose_deform_mlp.parameters(), 'lr' : cfg.lr_net},
-                            {'params' : gaussianhead.exp_attributes_mlp.parameters(), 'lr' : cfg.lr_net},
-                            {'params' : gaussianhead.pose_attributes_mlp.parameters(), 'lr' : cfg.lr_net},
-                            {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 0.3},
-                            {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.1},
-                            {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net}]
-    
+    optimized_parameters = [{'params' : supres.parameters(), 'lr' : cfg.lr_net, 'name' : 'supres'},
+                            {'params' : gaussianhead.xyz, 'lr' : cfg.lr_net * 0.1, 'name' : 'xyz'},
+                            {'params' : gaussianhead.feature, 'lr' : cfg.lr_net * 0.1, 'name' : 'feature'},
+                            {'params' : gaussianhead.exp_color_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_color_mlp'},
+                            {'params' : gaussianhead.pose_color_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_color_mlp'},
+                            {'params' : gaussianhead.exp_deform_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_deform_mlp'},
+                            {'params' : gaussianhead.pose_deform_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_deform_mlp'},
+                            {'params' : gaussianhead.exp_attributes_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_attributes_mlp'},
+                            {'params' : gaussianhead.pose_attributes_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_attributes_mlp'},
+                            {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 0.3, 'name' : 'scales'},
+                            {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.1, 'name' : 'rotation'},
+                            {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net, 'name' : 'opacity'},]
+
     if os.path.exists(cfg.load_delta_poses_checkpoint):
         delta_poses = torch.load(cfg.load_delta_poses_checkpoint)
     else:
@@ -85,7 +85,7 @@ if __name__ == '__main__':
         delta_poses = delta_poses.requires_grad_(False)
 
     optimizer = torch.optim.Adam(optimized_parameters)
-
+    gaussianhead.optimizer = optimizer  
     trainer = GaussianHeadTrainer(dataloader, delta_poses, gaussianhead, supres, camera, optimizer, recorder, cfg.gpu_id)
     trainer.train(0, 1000)
 

@@ -45,6 +45,9 @@ class GaussianHeadTrainer():
                 # render coarse images
                 data = self.gaussianhead.generate(data)
                 data = self.camera.render_gaussian(data, resolution_coarse)
+                viewspace_point_tensor = data["viewspace_points"]
+                visibility_filter = data["visibility_filter"]
+                radii = data["radii"]
                 render_images = data['render_images']
 
                 # crop images for augmentation
@@ -68,6 +71,31 @@ class GaussianHeadTrainer():
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
+
+                # Densification
+                with torch.no_grad():
+                    opacity_reset_interval = 3000
+                    densify_from_iter = 500 
+                    densify_until_iter = 15_000
+                    densify_grad_threshold = 0.0002
+                    opacity_reset_interval = 3_000
+                    # TODO: By printing the value of Gaussian Hair cut. Need to get this value in this project
+                    cameras_extent = 4.907987451553345
+                    iteration = idx + epoch * len(self.dataloader)
+                    if iteration <= densify_until_iter:
+                        # Keep track of max radii in image-space for pruning
+                        # TODO: visibility_filter and radii here is batched(with batchsize=1), confict with the original code
+                        visibility_filter = visibility_filter[0]
+                        radii = radii[0]
+                        self.gaussianhead.max_radii2D[visibility_filter] = torch.max(self.gaussianhead.max_radii2D[visibility_filter], radii[visibility_filter])
+                        self.gaussianhead.add_densification_stats(viewspace_point_tensor, visibility_filter)
+
+                        if iteration >= densify_from_iter and iteration % 2000 == 0:
+                            size_threshold = 20 if iteration > opacity_reset_interval else None
+                            self.gaussianhead.densify_and_prune(densify_grad_threshold, 0.005, cameras_extent, size_threshold)
+                        
+                        if iteration % opacity_reset_interval == 0 :
+                            self.gaussianhead.reset_opacity()
 
                 log = {
                     'data': data,

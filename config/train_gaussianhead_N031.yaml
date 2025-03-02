@@ -53,5 +53,5 @@ recorder:
   logdir: 'log/gaussianhead_NeRSemble031'
   checkpoint_path: 'checkpoints'
   result_path: 'results'
-  save_freq: 1000
-  show_freq: 100
+  save_freq: 20000
+  show_freq: 2000

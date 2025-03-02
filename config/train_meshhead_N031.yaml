@@ -30,5 +30,5 @@ recorder:
   logdir: 'log/meshhead_NeRSemble031'
   checkpoint_path: 'checkpoints'
   result_path: 'results'
-  save_freq: 1000
-  show_freq: 100
+  save_freq: 5000
+  show_freq: 500
