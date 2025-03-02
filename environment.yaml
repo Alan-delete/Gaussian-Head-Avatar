@@ -152,6 +152,7 @@ dependencies:
     - wandb
     - open3d
     - pysdf
+    - trimesh
     - clean-fid
     - face-alignment
     - clip==0.2.0
