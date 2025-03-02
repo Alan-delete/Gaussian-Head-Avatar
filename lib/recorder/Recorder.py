@@ -3,7 +3,7 @@ import torch
 import os
 import numpy as np
 import cv2
-
+import wandb
 
 class MeshHeadTrainRecorder():
     def __init__(self, cfg):
@@ -55,8 +55,19 @@ class MeshHeadTrainRecorder():
 
 class GaussianHeadTrainRecorder():
     def __init__(self, cfg):
+        self.debug_tool = cfg.debug_tool
         self.logdir = cfg.logdir
-        self.logger = SummaryWriter(self.logdir)
+
+        # choose the debug tool, either tensorboard or wandb
+        self.logger = SummaryWriter(self.logdir) if self.debug_tool == 'tensorboard' else None
+        wandb_name = "GaussianHead_%s" % cfg.name
+        wandb.init(
+            mode="disabled" if self.debug_tool=='tensorboard' else None,
+            name=wandb_name,
+            project='Semester',
+            config= cfg,
+            settings=wandb.Settings(start_method='fork'),
+        )
 
         self.name = cfg.name
         self.checkpoint_path = cfg.checkpoint_path
@@ -72,9 +83,12 @@ class GaussianHeadTrainRecorder():
 
     
     def log(self, log_data):
-        self.logger.add_scalar('loss_rgb_hr', log_data['loss_rgb_hr'], log_data['iter'])
-        self.logger.add_scalar('loss_rgb_lr', log_data['loss_rgb_lr'], log_data['iter'])
-        self.logger.add_scalar('loss_vgg', log_data['loss_vgg'], log_data['iter'])
+        if self.logger:
+            self.logger.add_scalar('loss_rgb_hr', log_data['loss_rgb_hr'], log_data['iter'])
+            self.logger.add_scalar('loss_rgb_lr', log_data['loss_rgb_lr'], log_data['iter'])
+            self.logger.add_scalar('loss_vgg', log_data['loss_vgg'], log_data['iter'])
+        else:
+            wandb.log({"loss_rgb_hr": log_data['loss_rgb_hr'], "loss_rgb_lr": log_data['loss_rgb_lr'], "loss_vgg": log_data['loss_vgg']})
 
         if log_data['iter'] % self.save_freq == 0:
             print('saving checkpoint.')
@@ -100,7 +114,12 @@ class GaussianHeadTrainRecorder():
 
             render_image = cv2.resize(render_image, (image.shape[0], image.shape[1]))
             result = np.hstack((image, render_image, cropped_image, supres_image))
-            cv2.imwrite('%s/%s/%06d.jpg' % (self.result_path, self.name, log_data['iter']), result)
+            
+            if self.debug_tool == 'wandb':
+                wandb.log({"Images": [wandb.Image(result, caption="Images")]})
+            else:
+                cv2.imwrite('%s/%s/%06d.jpg' % (self.result_path, self.name, log_data['iter']), result)
+
 
 
 

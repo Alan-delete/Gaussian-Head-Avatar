@@ -33,5 +33,6 @@ gaussianheadmodule:
   attributes_scale: 0.2
 
 recorder:
+  debug_tool: 'wandb' # 'tensorboard' or 'wandb'
   name: 'N031_to_N036_freeview'
   result_path: 'results/reenactment'

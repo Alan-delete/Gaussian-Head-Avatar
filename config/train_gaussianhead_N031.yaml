@@ -49,6 +49,7 @@ gaussianheadmodule:
   attributes_scale: 0.2
 
 recorder:
+  debug_tool: 'wandb' # 'tensorboard' or 'wandb'
   name: 'gaussianhead_NeRSemble031'
   logdir: 'log/gaussianhead_NeRSemble031'
   checkpoint_path: 'checkpoints'

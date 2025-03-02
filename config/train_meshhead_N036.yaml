@@ -26,6 +26,7 @@ meshheadmodule:
   subdivide: False
 
 recorder:
+  debug_tool: 'wandb' # 'tensorboard' or 'wandb'
   name: 'meshhead_NeRSemble036'
   logdir: 'log/meshhead_NeRSemble036'
   checkpoint_path: 'checkpoints'
