@@ -15,6 +15,8 @@ from pytorch3d.ops.knn import knn_gather, knn_points
 
 from lib.utils.general_utils import inverse_sigmoid
 from lib.module.GaussianBaseModule import GaussianBaseModule
+from lib.network.MLP import MLP
+from lib.network.PositionalEmbedding import get_embedder
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.append(f'{dir_path}/../../ext/perm/src')
@@ -115,6 +117,12 @@ class GaussianHairModule(GaussianBaseModule):
         self.features_rest_raw = torch.empty(0)
         self.width_raw = torch.empty(0)
         self.opacity_raw = torch.empty(0)
+
+
+        self.pose_color_mlp = MLP(strands_config.pose_color_mlp, last_op=None)
+        self.pose_attributes_mlp = MLP(strands_config.pose_attributes_mlp, last_op=None)
+        self.pose_deform_mlp = MLP(strands_config.pose_deform_mlp, last_op=nn.Tanh())
+        self.pos_embedding, _ = get_embedder(strands_config.pos_freq)
 
         self.transform = torch.eye(4).cuda()
 
@@ -377,11 +385,8 @@ class GaussianHairModule(GaussianBaseModule):
         xyz = self.xyz.unsqueeze(0).repeat(B, 1, 1)
         feature = torch.tanh(self.feature).unsqueeze(0).repeat(B, 1, 1)
         # TODO: remove all expression related code since the hair dose not depend on expression
-        dists, _, _ = knn_points(xyz, self.landmarks_3d_neutral.unsqueeze(0).repeat(B, 1, 1))
-        exp_weights = torch.clamp((self.dist_threshold_far - dists) / (self.dist_threshold_far - self.dist_threshold_near), 0.0, 1.0)
-        pose_weights = 1 - exp_weights
-        exp_controlled = (dists < self.dist_threshold_far).squeeze(-1)
-        pose_controlled = (dists > self.dist_threshold_near).squeeze(-1)
+        pose_weights = 1 
+        pose_controlled = torch.arange(self.xyz.shape[0], device=xyz.device).unsqueeze(0).repeat(B, 1)
 
         color = torch.zeros([B, xyz.shape[1], self.exp_color_mlp.dims[-1]], device=xyz.device)
         # dir2d + depth + seg = 1 + 1 + 3
@@ -389,11 +394,6 @@ class GaussianHairModule(GaussianBaseModule):
         delta_xyz = torch.zeros_like(xyz, device=xyz.device)
         delta_attributes = torch.zeros([B, xyz.shape[1], self.scales.shape[1] + self.rotation.shape[1] + self.opacity.shape[1]], device=xyz.device)
         for b in range(B):
-            feature_exp_controlled = feature[b, exp_controlled[b], :]
-            exp_color_input = torch.cat([feature_exp_controlled.t(), 
-                                         data['exp_coeff'][b].unsqueeze(-1).repeat(1, feature_exp_controlled.shape[0])], 0)[None]
-            exp_color = self.exp_color_mlp(exp_color_input)[0].t()
-            color[b, exp_controlled[b], :] += exp_color * exp_weights[b, exp_controlled[b], :]
 
             feature_pose_controlled = feature[b, pose_controlled[b], :]
             pose_color_input = torch.cat([feature_pose_controlled.t(), 
@@ -401,20 +401,11 @@ class GaussianHairModule(GaussianBaseModule):
             pose_color = self.pose_color_mlp(pose_color_input)[0].t()
             color[b, pose_controlled[b], :] += pose_color * pose_weights[b, pose_controlled[b], :]
 
-            exp_attributes_input = exp_color_input
-            exp_delta_attributes = self.exp_attributes_mlp(exp_attributes_input)[0].t()
-            delta_attributes[b, exp_controlled[b], :] += exp_delta_attributes * exp_weights[b, exp_controlled[b], :]
-
+            
             pose_attributes_input = pose_color_input
             pose_attributes = self.pose_attributes_mlp(pose_attributes_input)[0].t()
             delta_attributes[b, pose_controlled[b], :] += pose_attributes * pose_weights[b, pose_controlled[b], :]
 
-
-            xyz_exp_controlled = xyz[b, exp_controlled[b], :]
-            exp_deform_input = torch.cat([self.pos_embedding(xyz_exp_controlled).t(), 
-                                          data['exp_coeff'][b].unsqueeze(-1).repeat(1, xyz_exp_controlled.shape[0])], 0)[None]
-            exp_deform = self.exp_deform_mlp(exp_deform_input)[0].t()
-            delta_xyz[b, exp_controlled[b], :] += exp_deform * exp_weights[b, exp_controlled[b], :]
 
             xyz_pose_controlled = xyz[b, pose_controlled[b], :]
             pose_deform_input = torch.cat([self.pos_embedding(xyz_pose_controlled).t(), 
@@ -452,7 +443,6 @@ class GaussianHairModule(GaussianBaseModule):
         #     scales = scales * S
             
         color = torch.cat([color, extra_feature], dim=-1)
-        data['exp_deform'] = exp_deform
         data['xyz'] = xyz
         data['color'] = color
         data['scales'] = self.get_scales

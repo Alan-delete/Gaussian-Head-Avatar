@@ -147,7 +147,7 @@ class GaussianHeadModule(GaussianBaseModule):
 
             scales = scales * S
         color = torch.cat([color, extra_feature], dim=-1)
-        data['exp_deform'] = exp_deform
+        # data['exp_deform'] = exp_deform
         data['xyz'] = xyz
         data['color'] = color
         data['scales'] = scales

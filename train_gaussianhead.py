@@ -58,7 +58,7 @@ if __name__ == '__main__':
         supres.load_state_dict(torch.load(cfg.load_supres_checkpoint, map_location=lambda storage, loc: storage))
 
     camera = CameraModule()
-    recorder = GaussianHeadTrainRecorder(cfg.recorder)
+    recorder = GaussianHeadTrainRecorder(cfg)
 
     optimized_parameters = [{'params' : supres.parameters(), 'lr' : cfg.lr_net, 'name' : 'supres'},
                             {'params' : gaussianhead.xyz, 'lr' : cfg.lr_net * 0.1, 'name' : 'xyz'},

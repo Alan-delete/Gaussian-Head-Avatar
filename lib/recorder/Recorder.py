@@ -54,7 +54,13 @@ class MeshHeadTrainRecorder():
 
 
 class GaussianHeadTrainRecorder():
-    def __init__(self, cfg):
+    def __init__(self, full_cfg):
+        
+        if full_cfg.recorder: 
+            cfg = full_cfg.recorder
+        else:
+            cfg = full_cfg
+
         self.debug_tool = cfg.debug_tool
         self.logdir = cfg.logdir
 
@@ -65,7 +71,7 @@ class GaussianHeadTrainRecorder():
             mode="disabled" if self.debug_tool=='tensorboard' else None,
             name=wandb_name,
             project='Semester',
-            config= cfg,
+            config= full_cfg ,
             settings=wandb.Settings(start_method='fork'),
         )
 
