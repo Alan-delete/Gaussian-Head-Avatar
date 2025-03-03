@@ -88,7 +88,10 @@ class GaussianHeadTrainRecorder():
             self.logger.add_scalar('loss_rgb_lr', log_data['loss_rgb_lr'], log_data['iter'])
             self.logger.add_scalar('loss_vgg', log_data['loss_vgg'], log_data['iter'])
         else:
-            wandb.log({"loss_rgb_hr": log_data['loss_rgb_hr'], "loss_rgb_lr": log_data['loss_rgb_lr'], "loss_vgg": log_data['loss_vgg']})
+            wandb.log({"loss_rgb_hr": log_data['loss_rgb_hr'], 
+                       "loss_rgb_lr": log_data['loss_rgb_lr'], 
+                       "loss_vgg": log_data['loss_vgg'],
+                       "points_num": log_data['gaussianhead'].xyz.shape[0] })
 
         if log_data['iter'] % self.save_freq == 0:
             print('saving checkpoint.')
@@ -101,6 +104,7 @@ class GaussianHeadTrainRecorder():
 
         if log_data['iter'] % self.show_freq == 0:
             image = log_data['data']['images'][0].permute(1, 2, 0).detach().cpu().numpy()
+            # [:,:,::-1] to convert RGB to BGR
             image = (image * 255).astype(np.uint8)[:,:,::-1]
 
             render_image = log_data['data']['render_images'][0, 0:3].permute(1, 2, 0).detach().cpu().numpy()
@@ -116,7 +120,8 @@ class GaussianHeadTrainRecorder():
             result = np.hstack((image, render_image, cropped_image, supres_image))
             
             if self.debug_tool == 'wandb':
-                wandb.log({"Images": [wandb.Image(result, caption="Images")]})
+                result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+                wandb.log({"Images": [wandb.Image(result, caption="re1ndered")]})
             else:
                 cv2.imwrite('%s/%s/%06d.jpg' % (self.result_path, self.name, log_data['iter']), result)
 

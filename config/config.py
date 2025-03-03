@@ -73,6 +73,7 @@ class config_train(config_base):
         self.cfg.gaussianheadmodule.attributes_scale = 0.05     # scale factor for attribute offset
 
         self.cfg.recorder = CN()
+        self.cfg.recorder.debug_tool = 'tensorboard'            # debug tool, tensorboard or wandb
         self.cfg.recorder.name = ''                             # name of the avatar
         self.cfg.recorder.logdir = ''                           # directory of the tensorboard log
         self.cfg.recorder.checkpoint_path = ''                  # path to the saved checkpoints
