@@ -7,6 +7,8 @@ from torch import nn
 import tqdm
 from plyfile import PlyData, PlyElement
 from einops import rearrange
+
+from simple_knn._C import distCUDA2
 from pytorch3d.transforms import so3_exponential_map
 from pytorch3d.transforms.rotation_conversions import quaternion_to_matrix, matrix_to_quaternion
 from pytorch3d.ops.knn import knn_gather, knn_points
@@ -19,6 +21,57 @@ sys.path.append(f'{dir_path}/../../ext/perm/src')
 from hair.hair_models import Perm
 
 
+# TODO: move to lib/utils/general_utils.py
+C0 = 0.28209479177387814
+C1 = 0.4886025119029199
+C2 = [
+    1.0925484305920792,
+    -1.0925484305920792,
+    0.31539156525252005,
+    -1.0925484305920792,
+    0.5462742152960396
+]
+C3 = [
+    -0.5900435899266435,
+    2.890611442640554,
+    -0.4570457994644658,
+    0.3731763325901154,
+    -0.4570457994644658,
+    1.445305721320277,
+    -0.5900435899266435
+]
+C4 = [
+    2.5033429417967046,
+    -1.7701307697799304,
+    0.9461746957575601,
+    -0.6690465435572892,
+    0.10578554691520431,
+    -0.6690465435572892,
+    0.47308734787878004,
+    -1.7701307697799304,
+    0.6258357354491761,
+]   
+
+def RGB2SH(rgb):
+    return (rgb - 0.5) / C0
+
+def SH2RGB(sh):
+    return sh * C0 + 0.5
+
+def dot(a, b, dim=-1, keepdim=True):
+    return (a*b).sum(dim=dim, keepdim=keepdim)
+        
+def parallel_transport(a, b):
+    a = torch.nn.functional.normalize(a, dim=-1)
+    b = torch.nn.functional.normalize(b, dim=-1)
+            
+    s = 1 + dot(a, b, dim=-1, keepdim=True)
+    v = torch.cross(a, b, dim=-1)
+    q = torch.cat([s, v], dim=-1)
+            
+    # q = F.normalize(q, dim=-1)
+
+    return q
 
 class GaussianHairModule(GaussianBaseModule):
     def __init__(self, strands_config, optimizer=None ):
@@ -52,13 +105,16 @@ class GaussianHairModule(GaussianBaseModule):
         self.theta = nn.Parameter(init_theta.requires_grad_().cuda())
         self.beta = nn.Parameter(torch.zeros(1, self.strands_generator.G_res.num_ws, self.strands_generator.G_res.w_dim).requires_grad_().cuda())
         if self.train_directions:
-            self._dir_struct_raw = torch.empty(0)
+            self.dir_raw = torch.empty(0)
         else:
-            self._points_struct_raw = torch.empty(0)
-        self._features_dc_struct_raw = torch.empty(0)
-        self._features_rest_struct_raw = torch.empty(0)
-        self._width_struct_raw = torch.empty(0)
-        self._opacity_struct_raw = torch.empty(0)
+            self.points_raw = torch.empty(0)
+        self.origins_raw = torch.empty(0)
+        self.points_raw = torch.empty(0)
+        self.dir_raw = torch.empty(0)
+        self.features_dc_raw = torch.empty(0)
+        self.features_rest_raw = torch.empty(0)
+        self.width_raw = torch.empty(0)
+        self.opacity_raw = torch.empty(0)
 
         self.transform = torch.eye(4).cuda()
 
@@ -102,14 +158,10 @@ class GaussianHairModule(GaussianBaseModule):
 
         T = W @ J
 
-        # Get structured Gaussian directions
-        self._dir =  self._dir_struct
-
-        #dir3D = F.normalize(self._dir, dim=-1)
-        dir2D = (self._dir[:, None, :] @ T)[:, 0]
+        #dir3D = F.normalize(self.dir, dim=-1)
+        dir2D = (self.dir[:, None, :] @ T)[:, 0]
         dir2D = torch.nn.functional.normalize(dir2D, dim=-1)
-        # make only strctured gassiuan has direction
-        # dir2D[:self._dir_unstruct.shape[0]] = torch.zeros_like(dir2D[:self._dir_unstruct.shape[0]])
+
         return dir2D
 
     def sample_strands_from_prior(self, num_strands = -1):
@@ -135,72 +187,73 @@ class GaussianHairModule(GaussianBaseModule):
     def generate_hair_gaussians(self, num_strands = -1, skip_color = False, skip_smpl = False, backprop_into_prior = False):
         # only optimize prior
         if backprop_into_prior:
-            self._points_struct, self._dir_struct, self._origins_struct, strands_idx = self.sample_strands_from_prior(num_strands)
-            self._points_origins_struct = torch.cat([self._origins_struct, self._points_struct], dim=1)
+            self.points, self.dir, self.origins, strands_idx = self.sample_strands_from_prior(num_strands)
+            self.points_origins = torch.cat([self.origins, self.points], dim=1)
             if num_strands == -1:
                 num_strands = self.num_strands
         # directly optimize (structured) hair strand points
         else:
             if num_strands < self.num_strands and num_strands != -1:
                 strands_idx = torch.randperm(self.num_strands)[:num_strands]
-                self._origins_struct = self._origins_struct_raw[strands_idx]
+                self.origins = self.origins_raw[strands_idx]
                 if self.train_directions:
-                    self._dir_struct = self._dir_struct_raw.view(self.num_strands, self.strand_length - 1, 3)[strands_idx].view(-1, 3)
-                    self._points_origins_struct = torch.cumsum(torch.cat([
-                        self._origins_struct, 
-                        self._dir_struct.view(num_strands, self.strand_length -1, 3)
+                    self.dir = self.dir_raw.view(self.num_strands, self.strand_length - 1, 3)[strands_idx].view(-1, 3)
+                    self.points_origins = torch.cumsum(torch.cat([
+                        self.origins, 
+                        self.dir.view(num_strands, self.strand_length -1, 3)
                     ], dim=1), dim=1)
                 else:
-                    self._points_struct = self._points_struct_raw[strands_idx]
-                    self._points_origins_struct = torch.cat([self._origins_struct, self._points_struct], dim=1)
-                    self._dir_struct = (self._points_origins_struct[:, 1:] - self._points_origins_struct[:, :-1]).view(-1, 3)
+                    self.points = self.points_raw[strands_idx]
+                    self.points_origins = torch.cat([self.origins, self.points], dim=1)
+                    self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
             else:
                 num_strands = self.num_strands
-                self._origins_struct = self._origins_struct_raw
+                self.origins = self.origins_raw
                 if self.train_directions:
-                    self._dir_struct = self._dir_struct_raw
-                    self._points_origins_struct = torch.cumsum(torch.cat([
-                        self._origins_struct, 
-                        self._dir_struct.view(num_strands, self.strand_length -1, 3)
+                    self.dir = self.dir_raw
+                    self.points_origins = torch.cumsum(torch.cat([
+                        self.origins, 
+                        self.dir.view(num_strands, self.strand_length -1, 3)
                     ], dim=1), dim=1)
                 else:
-                    self._points_struct = self._points_struct_raw
-                    self._points_origins_struct = torch.cat([self._origins_struct, self._points_struct], dim=1)
-                    self._dir_struct = (self._points_origins_struct[:, 1:] - self._points_origins_struct[:, :-1]).view(-1, 3)
+                    self.points = self.points_raw
+                    self.points_origins = torch.cat([self.origins, self.points], dim=1)
+                    self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
 
         if num_strands < self.num_strands and num_strands != -1:
-            self._width_struct = self._width_struct_raw[strands_idx]
-            self._opacity_struct = self._opacity_struct_raw.view(self.num_strands, self.strand_length - 1, 1)[strands_idx].view(-1, 1)
+            self.width = self.width_raw[strands_idx]
+            self.opacity = self.opacity_raw.view(self.num_strands, self.strand_length - 1, 1)[strands_idx].view(-1, 1)
             if not skip_color:
-                self._features_dc_struct = self._features_dc_struct_raw.view(self.num_strands, self.strand_length - 1, 1, 3)[strands_idx].view(-1, 1, 3)
-                self._features_rest_struct = self._features_rest_struct_raw.view(self.num_strands, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3).view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3)
+                self.features_dc = self.features_dc_raw.view(self.num_strands, self.strand_length - 1, 1, 3)[strands_idx].view(-1, 1, 3)
+                self.features_rest = self.features_rest_raw.view(self.num_strands, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3).view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3)
         else:
-            self._width_struct = self._width_struct_raw
-            self._opacity_struct = self._opacity_struct_raw
+            self.width = self.width_raw
+            self.opacity = self.opacity_raw
             if not skip_color:
-                self._features_dc_struct = self._features_dc_struct_raw
-                self._features_rest_struct = self._features_rest_struct_raw
+                self.features_dc = self.features_dc_raw
+                self.features_rest = self.features_rest_raw
 
-        self._xyz_struct = (self._points_origins_struct[:, 1:] + self._points_origins_struct[:, :-1]).view(-1, 3) * 0.5
+        self.xyz = (self.points_origins[:, 1:] + self.points_origins[:, :-1]).view(-1, 3) * 0.5
 
-        self.scaling_struct = torch.ones_like(self._xyz_struct)
-        self.scaling_struct[:, 0] = self._dir_struct.norm(dim=-1) * 0.66
-        self.scaling_struct[:, 1:] = self._width_struct.repeat(1, self.strand_length - 1).view(-1, 1)
+        self.scales = torch.ones_like(self.xyz)
+        # TODO: why 0.66? Shouldn't it be InverseSigmoid(norm())?
+        self.scales[:, 0] = self.dir.norm(dim=-1) * 0.66
+        self.scales[:, 1:] = self.width.repeat(1, self.strand_length - 1).view(-1, 1)
 
-        self._seg_label_struct = torch.zeros_like(self._xyz_struct)
+        self.seg_label = torch.zeros_like(self.xyz)
 
         if not skip_smpl and self.simplify_strands:
             # Run line simplification
             MAX_ITERATIONS = 4
-            xyz = self._xyz_struct.view(num_strands, self.strand_length - 1, 3)
-            dir = self._dir_struct.view(num_strands, self.strand_length - 1, 3)
+            xyz = self.xyz.view(num_strands, self.strand_length - 1, 3)
+            dir = self.dir.view(num_strands, self.strand_length - 1, 3)
             num_gaussians = xyz.shape[1]
             len = (dir**2).sum(-1)
             if not skip_color:
-                features_dc = self._features_dc_struct.view(num_strands, self.strand_length - 1, 3)
-                features_rest = self._features_rest_struct.view(num_strands, self.strand_length - 1, -1)
-            scaling = self.scaling_struct.view(num_strands, self.strand_length - 1, 3)
-            opacity = self._opacity_struct.view(num_strands, self.strand_length - 1, 1)
+                features_dc = self.features_dc.view(num_strands, self.strand_length - 1, 3)
+                features_rest = self.features_rest.view(num_strands, self.strand_length - 1, -1)
+            scaling = self.scales.view(num_strands, self.strand_length - 1, 3)
+            opacity = self.opacity.view(num_strands, self.strand_length - 1, 1)
             for _ in range(MAX_ITERATIONS):
                 new_num_gaussians = num_gaussians // 2
                 dir_new = (dir[:, :new_num_gaussians*2:2, :] + dir[:, 1::2, :])
@@ -212,7 +265,7 @@ class GaussianHairModule(GaussianBaseModule):
                     features_rest_new = (features_rest[:, :new_num_gaussians*2:2, :] + features_rest[:, 1::2, :]) * 0.5
                 scaling_new = (scaling[:, :new_num_gaussians*2:2, :] + scaling[:, 1::2, :]) * 0.5
                 opacity_new = (opacity[:, :new_num_gaussians*2:2, :] + opacity[:, 1::2, :]) * 0.5
-                if (torch.quantile(err, self.quantile, dim=1) < self._width_struct * self.aspect_ratio).float().mean() > 0.5:
+                if (torch.quantile(err, self.quantile, dim=1) < self.width * self.aspect_ratio).float().mean() > 0.5:
                     if num_gaussians % 2:
                         xyz = torch.cat([xyz_new, xyz[:, -1:]], dim=1)
                         dir = torch.cat([dir_new, dir[:, -1:]], dim=1)
@@ -234,80 +287,96 @@ class GaussianHairModule(GaussianBaseModule):
                     num_gaussians = xyz.shape[1]
                 else:
                     break
-            self._xyz_struct = xyz.view(-1, 3)
-            self._dir_struct = dir.view(-1, 3)
+            self.xyz = xyz.view(-1, 3)
+            self.dir = dir.view(-1, 3)
             if not skip_color:
-                self._features_dc_struct = features_dc.view(-1, 1, 3)
-                self._features_rest_struct = features_rest.view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3)
-            self.scaling_struct = scaling.view(-1, 3)
-            self._opacity_struct= opacity.view(-1, 1)
+                self.features_dc = features_dc.view(-1, 1, 3)
+                self.features_rest = features_rest.view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3)
+            self.scales = scaling.view(-1, 3)
+            self.opacity= opacity.view(-1, 1)
         
             if num_gaussians + 1 != self.prev_strand_length:
                 print(f'Simplified strands from {self.prev_strand_length} to {num_gaussians + 1} points')
                 self.prev_strand_length = num_gaussians + 1
 
-        self._scaling_struct = self.scaling_inverse_activation(self.scaling_struct)
+        self.scales = self.scales_inverse_activation(self.scales)
 
-
-        def dot(a, b, dim=-1, keepdim=True):
-            return (a*b).sum(dim=dim, keepdim=keepdim)
-        
-        def parallel_transport(a, b):
-            a = torch.nn.functional.normalize(a, dim=-1)
-            b = torch.nn.functional.normalize(b, dim=-1)
-            
-            s = 1 + dot(a, b, dim=-1, keepdim=True)
-            v = torch.cross(a, b, dim=-1)
-            q = torch.cat([s, v], dim=-1)
-            
-            # q = F.normalize(q, dim=-1)
-
-            return q
         # Assign geometric features        
-        self._rotation_struct = parallel_transport(
+        self.rotation = parallel_transport(
             a=torch.cat(
                 [
-                    torch.ones_like(self._xyz_struct[:, :1]),
-                    torch.zeros_like(self._xyz_struct[:, :2])
+                    torch.ones_like(self.xyz[:, :1]),
+                    torch.zeros_like(self.xyz[:, :2])
                 ],
                 dim=-1
             ),
-            b=self._dir_struct
+            b=self.dir
         ).view(-1, 4) # rotation parameters that align x-axis with the segment direction
 
+
+    def create_from_pcd(self, pcd, spatial_lr_scale):
+        self.spatial_lr_scale = spatial_lr_scale
+        fused_point_cloud = torch.tensor(np.asarray(pcd.points)).float().cuda()
+        fused_color = RGB2SH(torch.tensor(np.asarray(pcd.colors)).float().cuda())
+        features = torch.zeros((fused_color.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
+        features[:, :3, 0 ] = fused_color
+        features[:, 3:, 1:] = 0.0
+
+        self.init_xyz = fused_point_cloud.clone()
+        self.init_features = fused_color.clone()
+
+        print("Number of points at initialisation : ", fused_point_cloud.shape[0])
+
+        dist2 = torch.clamp_min(distCUDA2(torch.from_numpy(np.asarray(pcd.points)).float().cuda()), 0.0000001)
+        scales = torch.log(torch.sqrt(dist2))[...,None].repeat(1, 3)
+        rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
+        rots[:, 0] = 1
+
+        opacities = inverse_sigmoid(0.1 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda"))
+
+        self.xyz = nn.Parameter(fused_point_cloud.requires_grad_(True))
+        self.features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
+        self.features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
+        self.scales = nn.Parameter(scales.requires_grad_(True))
+        self.rotation = nn.Parameter(rots.requires_grad_(True))
+        self.opacity = nn.Parameter(opacities.requires_grad_(True))
+        self.label_hair = nn.Parameter(inverse_sigmoid(0.5 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda")).requires_grad_(True))
+        self.label_body = nn.Parameter(inverse_sigmoid(0.5 * torch.ones((fused_point_cloud.shape[0], 1), dtype=torch.float, device="cuda")).requires_grad_(True))
+        self.seg_label = nn.Parameter(inverse_sigmoid(0.5 * torch.ones((fused_point_cloud.shape[0], 3), dtype=torch.float, device="cuda")).requires_grad_(True))
+        self.max_radii2D = torch.zeros((self.xyz.shape[0]), device="cuda")
 
     # initialize the hair gaussian representation
     def create_hair_gaussians(self, scaling_factor = 1e-3):
         self.prev_strand_length = self.strand_length
         self.prev_mesh_width = 1.0
         with torch.no_grad():
-            points_struct_raw, dir_struct_raw, self._origins_struct_raw, _ = self.sample_strands_from_prior(self.num_strands)
+            points_struct_raw, dir_struct_raw, self.origins_raw, _ = self.sample_strands_from_prior(self.num_strands)
         if self.train_directions:
-            self._dir_struct_raw = nn.Parameter(dir_struct_raw.contiguous().requires_grad_(True))
+            self.dir_raw = nn.Parameter(dir_struct_raw.contiguous().requires_grad_(True))
         else:
-            self._points_struct_raw = nn.Parameter(points_struct_raw.contiguous().requires_grad_(True))
-        self._width_struct_raw = nn.Parameter(torch.ones(self.num_strands, 1).cuda().contiguous().requires_grad_(True))
-        self._width_struct_raw.data *= scaling_factor
-        self._opacity_struct_raw = nn.Parameter(inverse_sigmoid(1.0 * torch.ones(self.num_strands * (self.strand_length - 1), 1, dtype=torch.float, device="cuda")))
+            self.points_raw = nn.Parameter(points_struct_raw.contiguous().requires_grad_(True))
+        self.width_raw = nn.Parameter(torch.ones(self.num_strands, 1).cuda().contiguous().requires_grad_(True))
+        self.width_raw.data *= scaling_factor
+        self.opacity_raw = nn.Parameter(inverse_sigmoid(1.0 * torch.ones(self.num_strands * (self.strand_length - 1), 1, dtype=torch.float, device="cuda")))
         self.generate_hair_gaussians(skip_color=True, skip_smpl=True)
         closest_idx = []
         with torch.no_grad():
             print('Initializing hair Gaussians color using closest COLMAP points')
-            for i in tqdm(range(self._xyz_struct.shape[0] // 1_000 + (self._xyz_struct.shape[0] % 1000 > 0))):
-                closest_idx.append(((self._xyz_struct[i*1_000 : (i+1)*1_000, None, :] - self.init_xyz[None, :, :])**2).sum(-1).amin(-1))
+            for i in tqdm(range(self.xyz.shape[0] // 1_000 + (self.xyz.shape[0] % 1000 > 0))):
+                closest_idx.append(((self.xyz[i*1_000 : (i+1)*1_000, None, :] - self.init_xyz[None, :, :])**2).sum(-1).amin(-1))
         closest_idx = torch.cat(closest_idx).long()
         features_dc = self.init_features[closest_idx].view(self.num_strands, self.strand_length - 1, 3).mean(1, keepdim=True)
         features_dc = features_dc.repeat(1, self.strand_length - 1, 1).view(self.num_strands * (self.strand_length - 1), 3)
-        self._features_dc_struct_raw = nn.Parameter(features_dc[:, None, :].contiguous().cuda().requires_grad_(True))
-        assert self._features_dc_struct_raw.shape[0] == self.num_strands * (self.strand_length - 1)
-        self._features_rest_struct_raw = nn.Parameter(torch.zeros(self.num_strands * (self.strand_length - 1), (self.max_sh_degree + 1) ** 2 - 1, 3).cuda().requires_grad_(True))
+        self.features_dc_raw = nn.Parameter(features_dc[:, None, :].contiguous().cuda().requires_grad_(True))
+        assert self.features_dc_raw.shape[0] == self.num_strands * (self.strand_length - 1)
+        self.features_rest_raw = nn.Parameter(torch.zeros(self.num_strands * (self.strand_length - 1), (self.max_sh_degree + 1) ** 2 - 1, 3).cuda().requires_grad_(True))
 
     def generate(self,data):
         B = data['exp_coeff'].shape[0]
 
         xyz = self.xyz.unsqueeze(0).repeat(B, 1, 1)
         feature = torch.tanh(self.feature).unsqueeze(0).repeat(B, 1, 1)
-
+        # TODO: remove all expression related code since the hair dose not depend on expression
         dists, _, _ = knn_points(xyz, self.landmarks_3d_neutral.unsqueeze(0).repeat(B, 1, 1))
         exp_weights = torch.clamp((self.dist_threshold_far - dists) / (self.dist_threshold_far - self.dist_threshold_near), 0.0, 1.0)
         pose_weights = 1 - exp_weights
@@ -355,36 +424,38 @@ class GaussianHairModule(GaussianBaseModule):
 
         xyz = xyz + delta_xyz * self.deform_scale
 
-        delta_scales = delta_attributes[:, :, 0:3]
-        scales = self.scales.unsqueeze(0).repeat(B, 1, 1) + delta_scales * self.attributes_scale
-        scales = torch.exp(scales)
+        # for hair, Gaussian scales and rotation remain the same 
+        # delta_scales = delta_attributes[:, :, 0:3]
+        # scales = self.scales.unsqueeze(0).repeat(B, 1, 1) + delta_scales * self.attributes_scale
+        # scales = torch.exp(scales)
 
-        delta_rotation = delta_attributes[:, :, 3:7]
-        rotation = self.rotation.unsqueeze(0).repeat(B, 1, 1) + delta_rotation * self.attributes_scale
-        rotation = torch.nn.functional.normalize(rotation, dim=2)
+        # delta_rotation = delta_attributes[:, :, 3:7]
+        # rotation = self.rotation.unsqueeze(0).repeat(B, 1, 1) + delta_rotation * self.attributes_scale
+        # rotation = torch.nn.functional.normalize(rotation, dim=2)
 
         delta_opacity = delta_attributes[:, :, 7:8]
         opacity = self.opacity.unsqueeze(0).repeat(B, 1, 1) + delta_opacity * self.attributes_scale
         opacity = torch.sigmoid(opacity)
 
-        if 'pose' in data:
-            R = so3_exponential_map(data['pose'][:, :3])
-            T = data['pose'][:, None, 3:]
-            S = data['scale'][:, :, None]
-            xyz = torch.bmm(xyz * S, R.permute(0, 2, 1)) + T
+        # if 'pose' in data:
+        #     R = so3_exponential_map(data['pose'][:, :3])
+        #     T = data['pose'][:, None, 3:]
+        #     S = data['scale'][:, :, None]
+        #     xyz = torch.bmm(xyz * S, R.permute(0, 2, 1)) + T
 
-            rotation_matrix = quaternion_to_matrix(rotation)
-            rotation_matrix = rearrange(rotation_matrix, 'b n x y -> (b n) x y')
-            R = rearrange(R.unsqueeze(1).repeat(1, rotation.shape[1], 1, 1), 'b n x y -> (b n) x y')
-            rotation_matrix = rearrange(torch.bmm(R, rotation_matrix), '(b n) x y -> b n x y', b=B)
-            rotation = matrix_to_quaternion(rotation_matrix)
+        #     rotation_matrix = quaternion_to_matrix(rotation)
+        #     rotation_matrix = rearrange(rotation_matrix, 'b n x y -> (b n) x y')
+        #     R = rearrange(R.unsqueeze(1).repeat(1, rotation.shape[1], 1, 1), 'b n x y -> (b n) x y')
+        #     rotation_matrix = rearrange(torch.bmm(R, rotation_matrix), '(b n) x y -> b n x y', b=B)
+        #     rotation = matrix_to_quaternion(rotation_matrix)
 
-            scales = scales * S
+        #     scales = scales * S
+            
         color = torch.cat([color, extra_feature], dim=-1)
         data['exp_deform'] = exp_deform
         data['xyz'] = xyz
         data['color'] = color
-        data['scales'] = scales
-        data['rotation'] = rotation
-        data['opacity'] = opacity
+        data['scales'] = self.get_scales
+        data['rotation'] = self.get_rotation
+        data['opacity'] = self.get_opacity
         return data
