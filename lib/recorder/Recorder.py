@@ -127,7 +127,7 @@ class GaussianHeadTrainRecorder():
             
             if self.debug_tool == 'wandb':
                 result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
-                wandb.log({"Images": [wandb.Image(result, caption="re1ndered")]})
+                wandb.log({"Images": [wandb.Image(result, caption="rendered")]})
             else:
                 cv2.imwrite('%s/%s/%06d.jpg' % (self.result_path, self.name, log_data['iter']), result)
 

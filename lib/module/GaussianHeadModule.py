@@ -19,7 +19,9 @@ from lib.utils.general_utils import inverse_sigmoid
 
 class GaussianHeadModule(GaussianBaseModule):
     def __init__(self, cfg, xyz, feature, landmarks_3d_neutral, add_mouth_points=False, optimizer=None, GS_parameter_names = ["xyz", "feature", "scales", "rotation", "opacity"]):
-        super(GaussianHeadModule, self).__init__()
+        super(GaussianHeadModule, self).__init__(optimizer)
+
+        self.cfg = cfg
 
         if add_mouth_points and cfg.num_add_mouth_points > 0:
             mouth_keypoints = landmarks_3d_neutral[48:66]
@@ -156,13 +158,17 @@ class GaussianHeadModule(GaussianBaseModule):
         return data
 
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
-        # batched
+        # batched, [B, ...] -> [...]
         if len(viewspace_point_tensor.shape) > 2: 
-            self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[0, update_filter,:2], dim=-1, keepdim=True)
+            grad = viewspace_point_tensor.grad[0]
         else:
-            self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
-        self.denom[update_filter] += 1
+            grad = viewspace_point_tensor.grad
 
+        # filter out out-of-bound points
+        grad = grad[:self.xyz.shape[0]]
+
+        self.xyz_gradient_accum[update_filter] += torch.norm(grad[update_filter], dim=-1, keepdim=True)
+        self.denom[update_filter] += 1
 
 # the Gaussian model that combines Gaussian Head Module(unstruct) and Gaussian Hair Module(struct)
 class GaussianModule(GaussianBaseModule):
@@ -234,8 +240,13 @@ class GaussianModule(GaussianBaseModule):
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         # batched
         if len(viewspace_point_tensor.shape) > 2: 
-            self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[0, update_filter,:2], dim=-1, keepdim=True)
+            grad = viewspace_point_tensor.grad[0]
         else:
-            self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
+            grad = viewspace_point_tensor.grad
+
+        # filter out out-of-bound points
+        grad = grad[:self.xyz.shape[0]]
+
+        self.xyz_gradient_accum[update_filter] += torch.norm(grad[update_filter], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
 

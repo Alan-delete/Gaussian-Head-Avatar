@@ -86,6 +86,6 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adam(optimized_parameters)
     gaussianhead.optimizer = optimizer  
-    trainer = GaussianHeadTrainer(dataloader, delta_poses, gaussianhead, supres, camera, optimizer, recorder, cfg.gpu_id)
+    trainer = GaussianHeadTrainer(dataloader, delta_poses, gaussianhead, supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
     trainer.train(0, 1000)
 

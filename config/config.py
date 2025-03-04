@@ -31,6 +31,7 @@ class config_train(config_base):
         self.cfg.lr_pose = 0.0                                  # learning rate for delta_poses
         self.cfg.batch_size = 1                                 # recommend batch_size = 1
         self.cfg.optimize_pose = False                          # optimize delta_poses or not
+        self.cfg.densify = False                                # densify the GS or not    
         
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset
@@ -71,6 +72,29 @@ class config_train(config_base):
         self.cfg.gaussianheadmodule.dist_threshold_far = 0.2    # thresgold t2
         self.cfg.gaussianheadmodule.deform_scale = 0.3          # scale factor for deformation
         self.cfg.gaussianheadmodule.attributes_scale = 0.05     # scale factor for attribute offset
+
+        self.cfg.gaussianhairmodule = CN()
+        # contain all pose related 
+        self.cfg.gaussianhairmodule.pose_color_mlp = []         # dimensions of pose color MLP
+        self.cfg.gaussianhairmodule.pose_attributes_mlp = []    # dimensions of pose attribute MLP  
+        self.cfg.gaussianhairmodule.pose_deform_mlp = []        # dimensions of pose deformation MLP
+        self.cfg.gaussianhairmodule.pos_freq = 4                # frequency of positional encoding
+        self.cfg.gaussianhairmodule.dist_threshold_near = 0.1   # threshold t1
+        self.cfg.gaussianhairmodule.dist_threshold_far = 0.2    # thresgold t2
+        self.cfg.gaussianhairmodule.deform_scale = 0.3          # scale factor for deformation
+        self.cfg.gaussianhairmodule.attributes_scale = 0.05     # scale factor for attribute offset
+        self.cfg.gaussianhairmodule.num_strands = 10140         # number of strands
+        self.cfg.gaussianhairmodule.strand_length = 100         # length of the strand
+        self.cfg.gaussianhairmodule.strand_scale = 0.001       # scale factor for the strand    
+        self.cfg.gaussianhairmodule.simplify_strands = False    # simplify the strands or not
+        self.cfg.gaussianhairmodule.aspect_ratio = 1            # aspect ratio of the hair
+        self.cfg.gaussianhairmodule.quantile = 1                # quantile of the hair width
+        self.cfg.gaussianhairmodule.train_directions = False    # train the hair directions or not
+        self.cfg.gaussianhairmodule.train_features_rest = False # train the rest features or not
+        self.cfg.gaussianhairmodule.train_width = False         # train the hair width or not
+        self.cfg.gaussianhairmodule.train_opacity = False       # train the hair opacity or not
+        self.cfg.gaussianhairmodule.sh_degree = 3               # degree of spherical harmonics
+
 
         self.cfg.recorder = CN()
         self.cfg.recorder.debug_tool = 'tensorboard'            # debug tool, tensorboard or wandb

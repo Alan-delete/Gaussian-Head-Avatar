@@ -12,6 +12,7 @@ from simple_knn._C import distCUDA2
 from pytorch3d.transforms import so3_exponential_map
 from pytorch3d.transforms.rotation_conversions import quaternion_to_matrix, matrix_to_quaternion
 from pytorch3d.ops.knn import knn_gather, knn_points
+import open3d as o3d
 
 from lib.utils.general_utils import inverse_sigmoid
 from lib.module.GaussianBaseModule import GaussianBaseModule
@@ -76,19 +77,21 @@ def parallel_transport(a, b):
     return q
 
 class GaussianHairModule(GaussianBaseModule):
-    def __init__(self, strands_config, optimizer=None ):
+    def __init__(self, cfg, optimizer=None ):
         super().__init__(optimizer)
 
+        self.cfg = cfg
         # Hair strands
-        self.num_strands = strands_config['extra_args']['num_strands']
-        self.strand_length = strands_config['extra_args']['strand_length']
-        self.simplify_strands = strands_config['extra_args']['simplify_strands']
-        self.aspect_ratio = strands_config['extra_args']['aspect_ratio']
-        self.quantile = strands_config['extra_args']['quantile']
-        self.train_features_rest = strands_config['extra_args']['train_features_rest']
-        self.train_width = strands_config['extra_args']['train_width']
-        self.train_opacity = strands_config['extra_args']['train_opacity']
-        self.train_directions = strands_config['extra_args']['train_directions']
+        self.num_strands = cfg['num_strands']
+        self.strand_length = cfg['strand_length']
+        self.simplify_strands = cfg['simplify_strands']
+        self.aspect_ratio = cfg['aspect_ratio']
+        self.quantile = cfg['quantile']
+        self.train_features_rest = cfg['train_features_rest']
+        self.train_width = cfg['train_width']
+        self.train_opacity = cfg['train_opacity']
+        self.train_directions = cfg['train_directions']
+        self.max_sh_degree = cfg['sh_degree']
         # TODO: change the path to the format like {dir_perm}/checkpoints
         self.strands_generator = Perm(
             model_path=f'{dir_path}/../../ext/perm/checkpoints', 
@@ -106,26 +109,58 @@ class GaussianHairModule(GaussianBaseModule):
             init_theta = self.strands_generator.G_raw.mapping(torch.zeros(1, self.strands_generator.G_raw.z_dim).cuda())
         self.theta = nn.Parameter(init_theta.requires_grad_().cuda())
         self.beta = nn.Parameter(torch.zeros(1, self.strands_generator.G_res.num_ws, self.strands_generator.G_res.w_dim).requires_grad_().cuda())
-        if self.train_directions:
-            self.dir_raw = torch.empty(0)
-        else:
-            self.points_raw = torch.empty(0)
+
         self.origins_raw = torch.empty(0)
         self.points_raw = torch.empty(0)
         self.dir_raw = torch.empty(0)
         self.features_dc_raw = torch.empty(0)
         self.features_rest_raw = torch.empty(0)
-        self.width_raw = torch.empty(0)
         self.opacity_raw = torch.empty(0)
+        self.width_raw = torch.empty(0)
 
 
-        self.pose_color_mlp = MLP(strands_config.pose_color_mlp, last_op=None)
-        self.pose_attributes_mlp = MLP(strands_config.pose_attributes_mlp, last_op=None)
-        self.pose_deform_mlp = MLP(strands_config.pose_deform_mlp, last_op=nn.Tanh())
-        self.pos_embedding, _ = get_embedder(strands_config.pos_freq)
+        self.pose_color_mlp = MLP(cfg.pose_color_mlp, last_op=None)
+        self.pose_attributes_mlp = MLP(cfg.pose_attributes_mlp, last_op=None)
+        self.pose_deform_mlp = MLP(cfg.pose_deform_mlp, last_op=nn.Tanh())
+        self.pos_embedding, _ = get_embedder(cfg.pos_freq)
 
         self.transform = torch.eye(4).cuda()
 
+        self.create_hair_gaussians(cfg.strand_scale)
+
+        # TODO: Add learning rate for each parameter
+        # l_struct = [
+        #     {'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"}
+        # ]
+        # if self.train_directions:
+        #     l_struct.append({'params': [self.dir_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
+        # else:
+        #     l_struct.append({'params': [self.points_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
+        # if self.train_features_rest:
+        #     l_struct.append({'params': [self.features_rest_raw], 'lr': cfg.feature_lr / 20.0, "name": "f_rest"})
+        # if self.train_width:
+        #     l_struct.append({'params': [self.width_raw], 'lr': cfg.scaling_lr, "name": "width"})
+        # if self.train_opacity:
+        #     l_struct.append({'params': [self.opacity_raw], 'lr': cfg.opacity_lr, "name": "opacity"})
+        l_struct = [
+            {'params': [self.features_dc_raw], 'lr': 1e-4, "name": "f_dc"}
+        ]
+        if self.train_directions:
+            l_struct.append({'params': [self.dir_raw], 'lr': 1e-4, "name": "pts"})
+        else:
+            l_struct.append({'params': [self.points_raw], 'lr':1e-4, "name": "pts"})
+        if self.train_features_rest:
+            l_struct.append({'params': [self.features_rest_raw], 'lr': 1e-5, "name": "f_rest"})
+        if self.train_width:
+            l_struct.append({'params': [self.width_raw], 'lr': 1e-4, "name": "width"})
+        if self.train_opacity:
+            l_struct.append({'params': [self.opacity_raw], 'lr': 1e-4, "name": "opacity"})
+  
+        self.optimizer = torch.optim.Adam(l_struct, lr=0.0, eps=1e-15)     
+
+
+
+    # TODO: data should provide image_height and image_width and world_view_transform
     def get_direction_2d(self, viewpoint_camera):
         mean = self.get_xyz
 
@@ -171,6 +206,36 @@ class GaussianHairModule(GaussianBaseModule):
         dir2D = torch.nn.functional.normalize(dir2D, dim=-1)
 
         return dir2D
+
+    def update_mesh_alignment_transform(self, dir_path, flame_mesh_dir):
+        # Estimate the transform to align Perm canonical space with the scene
+        print('Updating FLAME to Pinscreen alignment transform')
+        source_mesh = o3d.io.read_triangle_mesh(f'{dir_path}/data/flame_mesh_aligned_to_pinscreen.obj')
+        target_mesh = o3d.io.read_triangle_mesh(flame_mesh_dir)
+        source = torch.from_numpy(np.asarray(source_mesh.vertices))
+        target = torch.from_numpy(np.asarray(target_mesh.vertices))
+        source = torch.cat([source, torch.ones_like(source[:, :1])], -1)
+        target = torch.cat([target, torch.ones_like(target[:, :1])], -1)
+        transform = (source.transpose(0, 1) @ source).inverse() @ source.transpose(0, 1) @ target
+        self.transform = transform.cuda().unsqueeze(0).float()
+        mesh_width = (target[4051, :3] - target[4597, :3]).norm() # 2 x distance between the eyes
+        width_raw_new = self.width_raw * mesh_width / self.prev_mesh_width
+        if self.train_width:
+            optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, width_raw_new, "width")
+            self.width_raw = optimizable_tensors["width"]
+        else:
+            self.width_raw = width_raw_new
+        self.prev_mesh_width = mesh_width
+
+    def reset_strands(self):
+        print('Resetting strands using the current weights of the prior')
+        points_raw_new, dir_raw_new, self.origins_raw, _ = self.sample_strands_from_prior(self.num_strands)
+        if self.train_directions:
+            optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, dir_raw_new, "pts")
+            self.dir_raw = optimizable_tensors["pts"]
+        else:
+            optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, points_raw_new, "pts")
+            self.points_raw = optimizable_tensors["pts"]
 
     def sample_strands_from_prior(self, num_strands = -1):
         # Subsample Perm strands if needed
@@ -367,20 +432,32 @@ class GaussianHairModule(GaussianBaseModule):
         self.width_raw.data *= scaling_factor
         self.opacity_raw = nn.Parameter(inverse_sigmoid(1.0 * torch.ones(self.num_strands * (self.strand_length - 1), 1, dtype=torch.float, device="cuda")))
         self.generate_hair_gaussians(skip_color=True, skip_smpl=True)
-        closest_idx = []
-        with torch.no_grad():
-            print('Initializing hair Gaussians color using closest COLMAP points')
-            for i in tqdm(range(self.xyz.shape[0] // 1_000 + (self.xyz.shape[0] % 1000 > 0))):
-                closest_idx.append(((self.xyz[i*1_000 : (i+1)*1_000, None, :] - self.init_xyz[None, :, :])**2).sum(-1).amin(-1))
-        closest_idx = torch.cat(closest_idx).long()
-        features_dc = self.init_features[closest_idx].view(self.num_strands, self.strand_length - 1, 3).mean(1, keepdim=True)
-        features_dc = features_dc.repeat(1, self.strand_length - 1, 1).view(self.num_strands * (self.strand_length - 1), 3)
+
+        # closest_idx = []
+        # with torch.no_grad():
+        #     print('Initializing hair Gaussians color using closest COLMAP points')
+        #     for i in tqdm(range(self.xyz.shape[0] // 1_000 + (self.xyz.shape[0] % 1000 > 0))):
+        #         closest_idx.append(((self.xyz[i*1_000 : (i+1)*1_000, None, :] - self.init_xyz[None, :, :])**2).sum(-1).amin(-1))
+        # closest_idx = torch.cat(closest_idx).long()
+        # features_dc = self.init_features[closest_idx].view(self.num_strands, self.strand_length - 1, 3).mean(1, keepdim=True)
+        # features_dc = features_dc.repeat(1, self.strand_length - 1, 1).view(self.num_strands * (self.strand_length - 1), 3)      
+        features_dc = torch.zeros( self.num_strands * (self.strand_length - 1), 3)
+
         self.features_dc_raw = nn.Parameter(features_dc[:, None, :].contiguous().cuda().requires_grad_(True))
         assert self.features_dc_raw.shape[0] == self.num_strands * (self.strand_length - 1)
         self.features_rest_raw = nn.Parameter(torch.zeros(self.num_strands * (self.strand_length - 1), (self.max_sh_degree + 1) ** 2 - 1, 3).cuda().requires_grad_(True))
 
     def generate(self,data):
-        B = data['exp_coeff'].shape[0]
+        B = data['pose'].shape[0]
+        
+        hair_data = {}
+        hair_data['xyz'] = torch.empty(0).cuda()
+        hair_data['color'] = torch.empty(0).cuda()
+        hair_data['scales'] = torch.empty(0).cuda()
+        hair_data['rotation'] = torch.empty(0).cuda()
+        hair_data['opacity'] = torch.empty(0).cuda()
+
+        return hair_data
 
         xyz = self.xyz.unsqueeze(0).repeat(B, 1, 1)
         feature = torch.tanh(self.feature).unsqueeze(0).repeat(B, 1, 1)
@@ -388,7 +465,7 @@ class GaussianHairModule(GaussianBaseModule):
         pose_weights = 1 
         pose_controlled = torch.arange(self.xyz.shape[0], device=xyz.device).unsqueeze(0).repeat(B, 1)
 
-        color = torch.zeros([B, xyz.shape[1], self.exp_color_mlp.dims[-1]], device=xyz.device)
+        color = torch.zeros([B, xyz.shape[1], 32], device=xyz.device)
         # dir2d + depth + seg = 1 + 1 + 3
         extra_feature = torch.zeros([B, xyz.shape[1], 5], device=xyz.device)
         delta_xyz = torch.zeros_like(xyz, device=xyz.device)

@@ -6,6 +6,7 @@ from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianR
 
 class CameraModule():
     def __init__(self):
+        # TODO: Currently it's fine, but don't forget to add extra bg_color if using segmentation or depth
         self.bg_color = torch.tensor([1.0] * 32).float()
         self.scale_modifier = 1.0
 
