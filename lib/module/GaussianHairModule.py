@@ -76,6 +76,42 @@ def parallel_transport(a, b):
 
     return q
 
+def get_expon_lr_func(
+    lr_init, lr_final, lr_delay_steps=0, lr_delay_mult=1.0, max_steps=1000000
+):
+    """
+    Copied from Plenoxels
+
+    Continuous learning rate decay function. Adapted from JaxNeRF
+    The returned rate is lr_init when step=0 and lr_final when step=max_steps, and
+    is log-linearly interpolated elsewhere (equivalent to exponential decay).
+    If lr_delay_steps>0 then the learning rate will be scaled by some smooth
+    function of lr_delay_mult, such that the initial learning rate is
+    lr_init*lr_delay_mult at the beginning of optimization but will be eased back
+    to the normal learning rate when steps>lr_delay_steps.
+    :param conf: config subtree 'lr' or similar
+    :param max_steps: int, the number of steps during optimization.
+    :return HoF which takes step as input
+    """
+
+    def helper(step):
+        if step < 0 or (lr_init == 0.0 and lr_final == 0.0):
+            # Disable this parameter
+            return 0.0
+        if lr_delay_steps > 0:
+            # A kind of reverse cosine decay.
+            delay_rate = lr_delay_mult + (1 - lr_delay_mult) * np.sin(
+                0.5 * np.pi * np.clip(step / lr_delay_steps, 0, 1)
+            )
+        else:
+            delay_rate = 1.0
+        t = np.clip(step / max_steps, 0, 1)
+        log_lerp = np.exp(np.log(lr_init) * (1 - t) + np.log(lr_final) * t)
+        return delay_rate * log_lerp
+
+    return helper
+
+
 class GaussianHairModule(GaussianBaseModule):
     def __init__(self, cfg, optimizer=None ):
         super().__init__(optimizer)
@@ -128,37 +164,69 @@ class GaussianHairModule(GaussianBaseModule):
 
         self.create_hair_gaussians(cfg.strand_scale)
 
+        # TODO: By printing the value of Gaussian Hair cut. Need to get this value in this project
+        self.cameras_extent = 4.907987451553345
+        self.spatial_lr_scale = self.cameras_extent
+
         # TODO: Add learning rate for each parameter
-        # l_struct = [
-        #     {'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"}
-        # ]
-        # if self.train_directions:
-        #     l_struct.append({'params': [self.dir_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
-        # else:
-        #     l_struct.append({'params': [self.points_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
-        # if self.train_features_rest:
-        #     l_struct.append({'params': [self.features_rest_raw], 'lr': cfg.feature_lr / 20.0, "name": "f_rest"})
-        # if self.train_width:
-        #     l_struct.append({'params': [self.width_raw], 'lr': cfg.scaling_lr, "name": "width"})
-        # if self.train_opacity:
-        #     l_struct.append({'params': [self.opacity_raw], 'lr': cfg.opacity_lr, "name": "opacity"})
         l_struct = [
-            {'params': [self.features_dc_raw], 'lr': 1e-4, "name": "f_dc"}
+            {'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"}
         ]
         if self.train_directions:
-            l_struct.append({'params': [self.dir_raw], 'lr': 1e-4, "name": "pts"})
+            l_struct.append({'params': [self.dir_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
         else:
-            l_struct.append({'params': [self.points_raw], 'lr':1e-4, "name": "pts"})
+            l_struct.append({'params': [self.points_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
         if self.train_features_rest:
-            l_struct.append({'params': [self.features_rest_raw], 'lr': 1e-5, "name": "f_rest"})
+            l_struct.append({'params': [self.features_rest_raw], 'lr': cfg.feature_lr / 20.0, "name": "f_rest"})
         if self.train_width:
-            l_struct.append({'params': [self.width_raw], 'lr': 1e-4, "name": "width"})
+            l_struct.append({'params': [self.width_raw], 'lr': cfg.scaling_lr, "name": "width"})
         if self.train_opacity:
-            l_struct.append({'params': [self.opacity_raw], 'lr': 1e-4, "name": "opacity"})
-  
+            l_struct.append({'params': [self.opacity_raw], 'lr': cfg.opacity_lr, "name": "opacity"})
+
+        self.pts_scheduler_args = get_expon_lr_func(lr_init=cfg.position_lr_init*0.1*self.spatial_lr_scale,
+                                                    lr_final=cfg.position_lr_final*self.spatial_lr_scale,
+                                                    lr_delay_mult=cfg.position_lr_delay_mult,
+                                                    max_steps=cfg.position_lr_max_steps)
         self.optimizer = torch.optim.Adam(l_struct, lr=0.0, eps=1e-15)     
 
+        self.milestones = cfg['milestones']
+        self.lrs = cfg['lrs']
+        self.optimizers = {
+            'theta': torch.optim.Adam([self.theta], self.lrs['theta']),
+            'G_raw': torch.optim.Adam(self.strands_generator.G_raw.parameters(), self.lrs['G_raw']),
+            'G_superres': torch.optim.Adam(self.strands_generator.G_superres.parameters(), self.lrs['G_superres']),
+            'beta': torch.optim.Adam([self.beta], self.lrs['beta']),
+            'G_res': torch.optim.Adam(self.strands_generator.G_res.parameters(), self.lrs['G_res']),
+        }
+        for k, [iter_start, _] in self.milestones.items():
+            for param_group in self.optimizers[k].param_groups:
+                if iter_start != 0:
+                    print(f'Disabling optimization of {k}')
+                    param_group['lr'] = 0.0
+                    param_group['opt'] = 'disabled'
+                else:
+                    param_group['opt'] = 'enabled'
 
+
+
+    def update_learning_rate(self, iter):
+        ''' Learning rate scheduling per step '''
+        for param_group in self.optimizer.param_groups:
+            if param_group["name"] == "pts":
+                lr = self.pts_scheduler_args(iter)
+                param_group['lr'] = lr
+
+        for k in self.optimizers.keys():
+            iter_start, iter_end = self.milestones[k]
+            for param_group in self.optimizers[k].param_groups:
+                if iter >= iter_start and iter <= iter_end and param_group['opt'] == 'disabled':
+                    print(f'Starting optimization of {k}')
+                    param_group['lr'] = self.lrs[k]
+                    param_group['opt'] = 'enabled'
+                elif iter > iter_end and param_group['opt'] == 'enabled':
+                    print(f'Ending optimization of {k}')
+                    param_group['lr'] = 0.0
+                    param_group['opt'] = 'disabled'
 
     # TODO: data should provide image_height and image_width and world_view_transform
     def get_direction_2d(self, viewpoint_camera):
@@ -281,15 +349,16 @@ class GaussianHairModule(GaussianBaseModule):
                     self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
             else:
                 num_strands = self.num_strands
-                self.origins = self.origins_raw
+                # need that [:num_strands] slicing operation to avoid making tensor be parameters
+                self.origins = self.origins_raw[:num_strands]
                 if self.train_directions:
-                    self.dir = self.dir_raw
+                    self.dir = self.dir_raw[:num_strands]
                     self.points_origins = torch.cumsum(torch.cat([
                         self.origins, 
                         self.dir.view(num_strands, self.strand_length -1, 3)
                     ], dim=1), dim=1)
                 else:
-                    self.points = self.points_raw
+                    self.points = self.points_raw[:num_strands]
                     self.points_origins = torch.cat([self.origins, self.points], dim=1)
                     self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
 
@@ -446,6 +515,7 @@ class GaussianHairModule(GaussianBaseModule):
         self.features_dc_raw = nn.Parameter(features_dc[:, None, :].contiguous().cuda().requires_grad_(True))
         assert self.features_dc_raw.shape[0] == self.num_strands * (self.strand_length - 1)
         self.features_rest_raw = nn.Parameter(torch.zeros(self.num_strands * (self.strand_length - 1), (self.max_sh_degree + 1) ** 2 - 1, 3).cuda().requires_grad_(True))
+
 
     def generate(self,data):
         B = data['pose'].shape[0]

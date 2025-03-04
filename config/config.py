@@ -31,7 +31,6 @@ class config_train(config_base):
         self.cfg.lr_pose = 0.0                                  # learning rate for delta_poses
         self.cfg.batch_size = 1                                 # recommend batch_size = 1
         self.cfg.optimize_pose = False                          # optimize delta_poses or not
-        self.cfg.densify = False                                # densify the GS or not    
         
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset
@@ -72,6 +71,15 @@ class config_train(config_base):
         self.cfg.gaussianheadmodule.dist_threshold_far = 0.2    # thresgold t2
         self.cfg.gaussianheadmodule.deform_scale = 0.3          # scale factor for deformation
         self.cfg.gaussianheadmodule.attributes_scale = 0.05     # scale factor for attribute offset
+        self.cfg.gaussianheadmodule.densify = False             # densify the GS or not    
+        self.cfg.gaussianheadmodule.densify_from_iter = 500     # densify the GS from this iteration
+        self.cfg.gaussianheadmodule.densify_until_iter = 15_000
+        self.cfg.gaussianheadmodule.densification_interval = 100
+        self.cfg.gaussianheadmodule.densify_grad_threshold = 0.0002
+        self.cfg.gaussianheadmodule.opacity_reset_interval = 3_000
+        self.cfg.gaussianheadmodule.opacity_reg_from_iter = 30_000
+        self.cfg.gaussianheadmodule.gaussian_pruning_threshold = 0.5
+
 
         self.cfg.gaussianhairmodule = CN()
         # contain all pose related 
@@ -85,7 +93,8 @@ class config_train(config_base):
         self.cfg.gaussianhairmodule.attributes_scale = 0.05     # scale factor for attribute offset
         self.cfg.gaussianhairmodule.num_strands = 10140         # number of strands
         self.cfg.gaussianhairmodule.strand_length = 100         # length of the strand
-        self.cfg.gaussianhairmodule.strand_scale = 0.001       # scale factor for the strand    
+        self.cfg.gaussianhairmodule.strand_scale = 0.001       # scale factor for the strand  
+        
         self.cfg.gaussianhairmodule.simplify_strands = False    # simplify the strands or not
         self.cfg.gaussianhairmodule.aspect_ratio = 1            # aspect ratio of the hair
         self.cfg.gaussianhairmodule.quantile = 1                # quantile of the hair width
@@ -94,6 +103,37 @@ class config_train(config_base):
         self.cfg.gaussianhairmodule.train_width = False         # train the hair width or not
         self.cfg.gaussianhairmodule.train_opacity = False       # train the hair opacity or not
         self.cfg.gaussianhairmodule.sh_degree = 3               # degree of spherical harmonics
+        
+        self.cfg.gaussianhairmodule.strands_reset_from_iter = 4_000
+        self.cfg.gaussianhairmodule.strands_reset_until_iter = 15_000
+        self.cfg.gaussianhairmodule.strands_reset_interval = 1_000
+
+        # for perm 
+        self.cfg.gaussianhairmodule.lrs = CN()  
+        self.cfg.gaussianhairmodule.milestones = CN()    
+        self.cfg.gaussianhairmodule.lrs.theta = 0.005
+        self.cfg.gaussianhairmodule.lrs.beta = 0.01
+        self.cfg.gaussianhairmodule.lrs.G_raw = 0.001
+        self.cfg.gaussianhairmodule.lrs.G_superres = 0.001
+        self.cfg.gaussianhairmodule.lrs.G_res = 0.001
+        self.cfg.gaussianhairmodule.milestones.theta = [0, 15_000]
+        self.cfg.gaussianhairmodule.milestones.G_raw = [0, 15_000]
+        self.cfg.gaussianhairmodule.milestones.G_superres = [0, 15_000]
+        self.cfg.gaussianhairmodule.milestones.beta = [1_000, 15_000]
+        self.cfg.gaussianhairmodule.milestones.G_res = [1_000, 15_000]
+
+        # for raw strucutured gaussian
+        self.cfg.gaussianhairmodule.position_lr_init = 0.00016
+        self.cfg.gaussianhairmodule.position_lr_final = 0.0000016
+        self.cfg.gaussianhairmodule.position_lr_delay_mult = 0.01
+        self.cfg.gaussianhairmodule.position_lr_max_steps = 30_000
+        self.cfg.gaussianhairmodule.feature_lr = 0.0025
+        self.cfg.gaussianhairmodule.opacity_lr = 0.05
+        self.cfg.gaussianhairmodule.label_lr = 0.05
+        self.cfg.gaussianhairmodule.orient_conf_lr = 0.05
+        self.cfg.gaussianhairmodule.scaling_lr = 0.005
+        self.cfg.gaussianhairmodule.rotation_lr = 0.001
+
 
 
         self.cfg.recorder = CN()

@@ -24,6 +24,7 @@ class GaussianHeadHairTrainer():
         for epoch in range(start_epoch, epochs):
             for idx, data in tqdm(enumerate(self.dataloader)):
                 
+                iteration = idx + epoch * len(self.dataloader)
                 # prepare data
                 to_cuda = ['images', 'masks', 'visibles', 'images_coarse', 'masks_coarse', 'visibles_coarse', 
                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
@@ -44,6 +45,10 @@ class GaussianHeadHairTrainer():
                 resolution_fine = images.shape[2]
 
                 data['pose'] = data['pose'] + self.delta_poses[data['exp_id'], :]
+
+                backprop_into_prior = iteration <= self.cfg.gaussianhairmodule.strands_reset_from_iter
+                self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, backprop_into_prior=backprop_into_prior)
+                self.gaussianhair.update_learning_rate(iteration)
 
                 # render coarse images
                 head_data = self.gaussianhead.generate(data)
@@ -82,17 +87,11 @@ class GaussianHeadHairTrainer():
                 self.optimizer.step()
 
                 # Densification
-                if self.cfg.densify:
+                if self.cfg.gaussianheadmodule.densify:
                     with torch.no_grad():
-                        opacity_reset_interval = 3000
-                        densify_from_iter = 500 
-                        densify_until_iter = 15_000
-                        densify_grad_threshold = 0.0002
-                        opacity_reset_interval = 3_000
                         # TODO: By printing the value of Gaussian Hair cut. Need to get this value in this project
                         cameras_extent = 4.907987451553345
-                        iteration = idx + epoch * len(self.dataloader)
-                        if iteration <= densify_until_iter :
+                        if iteration <= self.cfg.gaussianheadmodule.densify_until_iter :
                             # Keep track of max radii in image-space for pruning
                             # TODO: visibility_filter and radii here is batched(with batchsize=1), confict with the original code
                             unstrct_gaussian_num = self.gaussianhead.xyz.shape[0]
@@ -102,11 +101,11 @@ class GaussianHeadHairTrainer():
                             self.gaussianhead.max_radii2D[visibility_filter] = torch.max(self.gaussianhead.max_radii2D[visibility_filter], radii[visibility_filter])
                             self.gaussianhead.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                            if iteration >= densify_from_iter and iteration % 2000 == 0:
-                                size_threshold = 20 if iteration > opacity_reset_interval else None
-                                self.gaussianhead.densify_and_prune(densify_grad_threshold, 0.005, cameras_extent, size_threshold)
+                            if iteration >= self.cfg.gaussianheadmodule.densify_from_iter and iteration % 2000 == 0:
+                                size_threshold = 20 if iteration > self.cfg.gaussianheadmodule.opacity_reset_interval else None
+                                self.gaussianhead.densify_and_prune(self.cfg.gaussianheadmodule.densify_grad_threshold, 0.005, cameras_extent, size_threshold)
                             
-                            if iteration % opacity_reset_interval == 0 :
+                            if iteration % self.cfg.gaussianheadmodule.opacity_reset_interval == 0 :
                                 self.gaussianhead.reset_opacity()
 
                 log = {
