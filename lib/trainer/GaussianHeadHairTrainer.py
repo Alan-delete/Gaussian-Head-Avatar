@@ -84,16 +84,30 @@ class GaussianHeadHairTrainer():
 
                 self.optimizer.zero_grad()
                 loss.backward()
+                # Optimizer step, for super
+                for param in self.optimizer.param_groups[0]['params']:
+                    if param.grad is not None and param.grad.isnan().any():
+                        self.optimizer.zero_grad()
+                        print(f'NaN during backprop in {iteration} was found, skipping iteration...')
                 self.optimizer.step()
 
-                # Densification
-                if self.cfg.gaussianheadmodule.densify:
-                    with torch.no_grad():
+                # Optimizer step, for hair prior
+                for k, optimizer in self.gaussianhair.prior_optimizers.items():
+                    for param in optimizer.param_groups[0]['params']:
+                        if param.grad is not None and param.grad.isnan().any():
+                            optimizer.zero_grad()
+                            print(f'NaN during backprop in {k} was found, skipping iteration...')
+                    optimizer.step()
+                    optimizer.zero_grad(set_to_none = True)
+
+
+                with torch.no_grad():
+                    # Densification
+                    if self.cfg.gaussianheadmodule.densify:
                         # TODO: By printing the value of Gaussian Hair cut. Need to get this value in this project
                         cameras_extent = 4.907987451553345
                         if iteration <= self.cfg.gaussianheadmodule.densify_until_iter :
                             # Keep track of max radii in image-space for pruning
-                            # TODO: visibility_filter and radii here is batched(with batchsize=1), confict with the original code
                             unstrct_gaussian_num = self.gaussianhead.xyz.shape[0]
                             # [B, total_gaussian_num] -> [unstruct_gaussian_num]
                             visibility_filter = visibility_filter[0][:unstrct_gaussian_num]
@@ -107,6 +121,54 @@ class GaussianHeadHairTrainer():
                             
                             if iteration % self.cfg.gaussianheadmodule.opacity_reset_interval == 0 :
                                 self.gaussianhead.reset_opacity()
+                
+                    # regenerate raw data from perm prior
+                    if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter \
+                                                    and iteration % self.cfg.gaussianhairmodule.strands_reset_interval == 0: 
+                        self.gaussianshair.reset_strands()
+
+                    # Optimizer step, for gaussians
+                    # unstrctured
+                    nan_grad = False
+                    params = [self.gaussianhead.xyz, 
+                            self.gaussianhead.features_dc, 
+                            self.gaussianhead.features_rest, 
+                            self.gaussianhead.opacity, 
+                            self.gaussianhead.label_hair, 
+                            self.gaussianhead.label_body, 
+                            self.gaussianhead.scales, 
+                            self.gaussianhead.rotation]
+                    labels = ['xyz', 'features_dc', 'features_rest', 'opacity', 'label_hair', 'label_body', 'scaling', 'rotation']
+                    for param, label in zip(params, labels):
+                        if param.grad is not None and param.grad.isnan().any():
+                            nan_grad = True
+                            print(f'NaN during backprop in {label} unstruct was found, skipping iteration')
+                    if not nan_grad:
+                        self.gaussianhead.optimizer.step()
+                    self.gaussianhead.optimizer.zero_grad(set_to_none = True)
+                        
+                    # strctured
+                    nan_grad = False
+                    # TODO: shouln't it be xyz_raw?
+                    params = [self.gaussianhair.xyz, 
+                            self.gaussianhair.features_dc]
+                    labels = ['xyz', 'features_dc']
+                    if self.gaussianhair.train_features_rest:
+                        params.append(self.gaussianhair.features_rest)
+                        labels.append('features_rest')
+                    if self.gaussianhair.train_opacity:
+                        params.append(self.gaussianhair.opacity)
+                        labels.append('opacity')
+                    if self.gaussianhair.train_width:
+                        params.append(self.gaussianhair.width)
+                        labels.append('width')
+                    for param, label in zip(params, labels):
+                        if param.grad is not None and param.grad.isnan().any():
+                            nan_grad = True
+                            print(f'NaN during backprop in {label} struct was found, skipping iteration')
+                    if not nan_grad:
+                        self.gaussianhair.optimizer.step()
+                    self.gaussianhair.optimizer.zero_grad(set_to_none = True)
 
                 log = {
                     'data': data,

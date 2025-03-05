@@ -15,6 +15,8 @@ from lib.recorder.Recorder import GaussianHeadTrainRecorder
 from lib.trainer.GaussianHeadTrainer import GaussianHeadTrainer
 from lib.trainer.GaussianHeadHairTrainer import GaussianHeadHairTrainer
 
+os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s2_N031.yaml')
@@ -71,8 +73,10 @@ if __name__ == '__main__':
     camera = CameraModule()
     recorder = GaussianHeadTrainRecorder(cfg)
 
-    optimized_parameters = [{'params' : supres.parameters(), 'lr' : cfg.lr_net, 'name' : 'supres'},
-                            {'params' : gaussianhead.xyz, 'lr' : cfg.lr_net * 0.1, 'name' : 'xyz'},
+    # TODO: move the gaussianhead optimizer to the gaussianhead module
+    optimized_parameters = [{'params' : supres.parameters(), 'lr' : cfg.lr_net, 'name' : 'supres'},]
+
+    gaussianhead_optimized_parameters = [{'params' : gaussianhead.xyz, 'lr' : cfg.lr_net * 0.1, 'name' : 'xyz'},
                             {'params' : gaussianhead.feature, 'lr' : cfg.lr_net * 0.1, 'name' : 'feature'},
                             {'params' : gaussianhead.exp_color_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_color_mlp'},
                             {'params' : gaussianhead.pose_color_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_color_mlp'},
@@ -83,6 +87,8 @@ if __name__ == '__main__':
                             {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 0.3, 'name' : 'scales'},
                             {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.1, 'name' : 'rotation'},
                             {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net, 'name' : 'opacity'},]
+
+    gaussianhead.optimizer = torch.optim.Adam(gaussianhead_optimized_parameters)
 
     if os.path.exists(cfg.load_delta_poses_checkpoint):
         delta_poses = torch.load(cfg.load_delta_poses_checkpoint)
@@ -96,7 +102,7 @@ if __name__ == '__main__':
         delta_poses = delta_poses.requires_grad_(False)
 
     optimizer = torch.optim.Adam(optimized_parameters)
-    gaussianhead.optimizer = optimizer  
+
     trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
     trainer.train(0, 1000)
 

@@ -191,7 +191,7 @@ class GaussianHairModule(GaussianBaseModule):
 
         self.milestones = cfg['milestones']
         self.lrs = cfg['lrs']
-        self.optimizers = {
+        self.prior_optimizers = {
             'theta': torch.optim.Adam([self.theta], self.lrs['theta']),
             'G_raw': torch.optim.Adam(self.strands_generator.G_raw.parameters(), self.lrs['G_raw']),
             'G_superres': torch.optim.Adam(self.strands_generator.G_superres.parameters(), self.lrs['G_superres']),
@@ -199,7 +199,7 @@ class GaussianHairModule(GaussianBaseModule):
             'G_res': torch.optim.Adam(self.strands_generator.G_res.parameters(), self.lrs['G_res']),
         }
         for k, [iter_start, _] in self.milestones.items():
-            for param_group in self.optimizers[k].param_groups:
+            for param_group in self.prior_optimizers[k].param_groups:
                 if iter_start != 0:
                     print(f'Disabling optimization of {k}')
                     param_group['lr'] = 0.0
@@ -216,9 +216,9 @@ class GaussianHairModule(GaussianBaseModule):
                 lr = self.pts_scheduler_args(iter)
                 param_group['lr'] = lr
 
-        for k in self.optimizers.keys():
+        for k in self.prior_optimizers.keys():
             iter_start, iter_end = self.milestones[k]
-            for param_group in self.optimizers[k].param_groups:
+            for param_group in self.prior_optimizers[k].param_groups:
                 if iter >= iter_start and iter <= iter_end and param_group['opt'] == 'disabled':
                     print(f'Starting optimization of {k}')
                     param_group['lr'] = self.lrs[k]
