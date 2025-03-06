@@ -190,6 +190,7 @@ class GaussianDataset(Dataset):
         frames = os.listdir(image_folder)
         
         self.num_exp_id = 0
+        pre_two_frames_params_path = [ os.path.join(param_folder, '0000', 'params.npz'), os.path.join(param_folder, '0000', 'params.npz')]
         for frame in frames:
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
@@ -199,8 +200,9 @@ class GaussianDataset(Dataset):
             landmarks_3d_path = os.path.join(param_folder, frame, 'lmk_3d.npy')
             vertices_path = os.path.join(param_folder, frame, 'vertices.npy')
 
-            sample = (image_paths, mask_paths, visible_paths, camera_paths, param_path, landmarks_3d_path, vertices_path, self.num_exp_id)
+            sample = (image_paths, mask_paths, visible_paths, camera_paths, param_path, landmarks_3d_path, vertices_path, self.num_exp_id, pre_two_frames_params_path)
             self.samples.append(sample)
+            pre_two_frames_params_path[0], pre_two_frames_params_path[1] = pre_two_frames_params_path[1], param_path
             self.num_exp_id += 1
 
     def get_item(self, index):
@@ -272,6 +274,12 @@ class GaussianDataset(Dataset):
         
         exp_id = torch.tensor(sample[7]).long()
 
+        pre_two_frames_poses = []
+        for pre_two_frames_param_path in sample[8]:
+            pre_two_frames_param = np.load(pre_two_frames_param_path)
+            pre_two_frames_pose = torch.from_numpy(pre_two_frames_param['pose'][0]).float()
+            pre_two_frames_poses.append(pre_two_frames_pose)
+
         return {
                 'images': image,
                 'masks': mask,
@@ -291,7 +299,8 @@ class GaussianDataset(Dataset):
                 'world_view_transform': world_view_transform,
                 'projection_matrix': projection_matrix,
                 'full_proj_transform': full_proj_transform,
-                'camera_center': camera_center}
+                'camera_center': camera_center,
+                'pre_two_frames_poses': pre_two_frames_poses}
 
     def __len__(self):
         return len(self.samples)

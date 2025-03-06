@@ -31,7 +31,8 @@ class config_train(config_base):
         self.cfg.lr_pose = 0.0                                  # learning rate for delta_poses
         self.cfg.batch_size = 1                                 # recommend batch_size = 1
         self.cfg.optimize_pose = False                          # optimize delta_poses or not
-        
+        self.cfg.use_supres = True                              # use super resolution network or not, if not, directly use first 3 channels of the 32 channels 
+
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset
         self.cfg.dataset.camera_ids = []                        # which cameras are used
@@ -86,6 +87,8 @@ class config_train(config_base):
         self.cfg.gaussianhairmodule.pose_color_mlp = []         # dimensions of pose color MLP
         self.cfg.gaussianhairmodule.pose_attributes_mlp = []    # dimensions of pose attribute MLP  
         self.cfg.gaussianhairmodule.pose_deform_mlp = []        # dimensions of pose deformation MLP
+        self.cfg.gaussianhairmodule.pose_point_mlp = []         # dimensions of pose point MLP
+        self.cfg.gaussianhairmodule.pose_prior_mlp = []        # dimension of the pose coefficients
         self.cfg.gaussianhairmodule.pos_freq = 4                # frequency of positional encoding
         self.cfg.gaussianhairmodule.dist_threshold_near = 0.1   # threshold t1
         self.cfg.gaussianhairmodule.dist_threshold_far = 0.2    # thresgold t2
