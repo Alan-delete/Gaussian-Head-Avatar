@@ -34,12 +34,12 @@ class GaussianHeadHairTrainer():
 
                 images = data['images']
                 visibles = data['visibles']
-                if self.supres is None:
-                    images_coarse = images
-                    visibles_coarse = visibles
-                else:
+                if self.cfg.use_supres:
                     images_coarse = data['images_coarse']
                     visibles_coarse = data['visibles_coarse']
+                else:
+                    images_coarse = images
+                    visibles_coarse = visibles
 
                 resolution_coarse = images_coarse.shape[2]
                 resolution_fine = images.shape[2]
@@ -49,6 +49,10 @@ class GaussianHeadHairTrainer():
                 backprop_into_prior = iteration <= self.cfg.gaussianhairmodule.strands_reset_from_iter
                 self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, backprop_into_prior=backprop_into_prior)
                 self.gaussianhair.update_learning_rate(iteration)
+
+                # Every 1000 its we increase the levels of SH up to a maximum degree
+                # if iteration % 1000 == 0:
+                #     self.gaussianhair.oneupSHdegree()
 
                 # render coarse images
                 head_data = self.gaussianhead.generate(data)
@@ -71,7 +75,7 @@ class GaussianHeadHairTrainer():
                 data['cropped_images'] = cropped_images
                 
                 # generate super resolution images
-                supres_images = self.supres(cropped_render_images) if self.supres else cropped_render_images
+                supres_images = self.supres(cropped_render_images) if self.cfg.use_supres else cropped_render_images[:,:3]
                 data['supres_images'] = supres_images
 
                 # loss functions
@@ -115,17 +119,17 @@ class GaussianHeadHairTrainer():
                             self.gaussianhead.max_radii2D[visibility_filter] = torch.max(self.gaussianhead.max_radii2D[visibility_filter], radii[visibility_filter])
                             self.gaussianhead.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                            if iteration >= self.cfg.gaussianheadmodule.densify_from_iter and iteration % 2000 == 0:
+                            if iteration >= self.cfg.gaussianheadmodule.densify_from_iter and iteration % self.cfg.gaussianheadmodule.densification_interval == 0:
                                 size_threshold = 20 if iteration > self.cfg.gaussianheadmodule.opacity_reset_interval else None
                                 self.gaussianhead.densify_and_prune(self.cfg.gaussianheadmodule.densify_grad_threshold, 0.005, cameras_extent, size_threshold)
                             
-                            if iteration % self.cfg.gaussianheadmodule.opacity_reset_interval == 0 :
-                                self.gaussianhead.reset_opacity()
+                            # if iteration % self.cfg.gaussianheadmodule.opacity_reset_interval == 0 :
+                            #     self.gaussianhead.reset_opacity()
                 
                     # regenerate raw data from perm prior
                     if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter \
                                                     and iteration % self.cfg.gaussianhairmodule.strands_reset_interval == 0: 
-                        self.gaussianshair.reset_strands()
+                        self.gaussianhair.reset_strands()
 
                     # Optimizer step, for gaussians
                     # unstrctured

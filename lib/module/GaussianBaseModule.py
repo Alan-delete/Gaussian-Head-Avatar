@@ -101,6 +101,12 @@ class GaussianBaseModule(nn.Module):
     def get_rotation(self):
         return self.rotation_activation(self.rotation)
 
+    @property
+    def get_features(self):
+        features_dc = self.features_dc
+        features_rest = self.features_rest
+        return torch.cat((features_dc, features_rest), dim=1)    
+
 
     def get_direction_2d(self, viewpoint_camera):
         mean = self.get_xyz

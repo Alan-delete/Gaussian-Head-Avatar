@@ -52,18 +52,18 @@ if __name__ == '__main__':
                                           feature=torch.atanh(data['verts_feature'].cpu()), 
                                           landmarks_3d_neutral=meshhead.landmarks_3d_neutral.detach().cpu(),
                                           add_mouth_points=True).to(device)
-        gaussianhead.exp_color_mlp.load_state_dict(meshhead.exp_color_mlp.state_dict())
-        gaussianhead.pose_color_mlp.load_state_dict(meshhead.pose_color_mlp.state_dict())
-        gaussianhead.exp_deform_mlp.load_state_dict(meshhead.exp_deform_mlp.state_dict())
-        gaussianhead.pose_deform_mlp.load_state_dict(meshhead.pose_deform_mlp.state_dict())
+        # gaussianhead.exp_color_mlp.load_state_dict(meshhead.exp_color_mlp.state_dict())
+        # gaussianhead.pose_color_mlp.load_state_dict(meshhead.pose_color_mlp.state_dict())
+        # gaussianhead.exp_deform_mlp.load_state_dict(meshhead.exp_deform_mlp.state_dict())
+        # gaussianhead.pose_deform_mlp.load_state_dict(meshhead.pose_deform_mlp.state_dict())
+        
+        # release memory
+        meshhead = meshhead.cpu()
+        del meshhead
+        torch.cuda.empty_cache()
     
-    # TODO: create hair gaussian, 
-    # update transform
-    # reset strand
-    # before every rendering use generate strand gaussians
+    # create hair gaussian, 
     gaussianhair = GaussianHairModule(cfg.gaussianhairmodule).to(device)
-    gaussianhair.reset_strands()
-    gaussianhair.generate_hair_gaussians()
 
 
     supres = SuperResolutionModule(cfg.supresmodule).to(device)
@@ -73,7 +73,7 @@ if __name__ == '__main__':
     camera = CameraModule()
     recorder = GaussianHeadTrainRecorder(cfg)
 
-    # TODO: move the gaussianhead optimizer to the gaussianhead module
+    # TODO: move the gaussianhead optimizer into the gaussianhead module
     optimized_parameters = [{'params' : supres.parameters(), 'lr' : cfg.lr_net, 'name' : 'supres'},]
 
     gaussianhead_optimized_parameters = [{'params' : gaussianhead.xyz, 'lr' : cfg.lr_net * 0.1, 'name' : 'xyz'},
@@ -104,5 +104,5 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(optimized_parameters)
 
     trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
-    trainer.train(0, 1000)
+    trainer.train(0, 100)
 

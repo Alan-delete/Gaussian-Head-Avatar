@@ -89,19 +89,19 @@ class GaussianHeadModule(GaussianBaseModule):
         delta_attributes = torch.zeros([B, xyz.shape[1], self.scales.shape[1] + self.rotation.shape[1] + self.opacity.shape[1]], device=xyz.device)
         for b in range(B):
             if exp_controlled[b].sum() != 0:
-                # color
+                # color, [features + exp_coeff] -> [color]
                 feature_exp_controlled = feature[b, exp_controlled[b], :]
                 exp_color_input = torch.cat([feature_exp_controlled.t(), 
                                             data['exp_coeff'][b].unsqueeze(-1).repeat(1, feature_exp_controlled.shape[0])], 0)[None]
                 exp_color = self.exp_color_mlp(exp_color_input)[0].t()
                 color[b, exp_controlled[b], :] += exp_color * exp_weights[b, exp_controlled[b], :]
 
-                # attributes: scales, rotation, opacity
+                # attributes: scales, rotation, opacity, [features + exp_coeff] -> [attributes]
                 exp_attributes_input = exp_color_input
                 exp_delta_attributes = self.exp_attributes_mlp(exp_attributes_input)[0].t()
                 delta_attributes[b, exp_controlled[b], :] += exp_delta_attributes * exp_weights[b, exp_controlled[b], :]
 
-                # xyz deform
+                # xyz deform, [xyz_embedding + exp_coeff] -> [xyz]
                 xyz_exp_controlled = xyz[b, exp_controlled[b], :]
                 exp_deform_input = torch.cat([self.pos_embedding(xyz_exp_controlled).t(), 
                                             data['exp_coeff'][b].unsqueeze(-1).repeat(1, xyz_exp_controlled.shape[0])], 0)[None]
@@ -109,19 +109,19 @@ class GaussianHeadModule(GaussianBaseModule):
                 delta_xyz[b, exp_controlled[b], :] += exp_deform * exp_weights[b, exp_controlled[b], :]
 
             if pose_controlled[b].sum() != 0:    
-                # color
+                # color, [features + pose_embedding] -> [color]
                 feature_pose_controlled = feature[b, pose_controlled[b], :]
                 pose_color_input = torch.cat([feature_pose_controlled.t(), 
                                                 self.pos_embedding(data['pose'][b]).unsqueeze(-1).repeat(1, feature_pose_controlled.shape[0])], 0)[None]
                 pose_color = self.pose_color_mlp(pose_color_input)[0].t()
                 color[b, pose_controlled[b], :] += pose_color * pose_weights[b, pose_controlled[b], :]
 
-                # attributes: scales, rotation, opacity
+                # attributes: scales, rotation, opacity, [features + pose_embedding] -> [attributes]
                 pose_attributes_input = pose_color_input
                 pose_attributes = self.pose_attributes_mlp(pose_attributes_input)[0].t()
                 delta_attributes[b, pose_controlled[b], :] += pose_attributes * pose_weights[b, pose_controlled[b], :]
 
-                # xyz deform
+                # xyz deform, [xyz_embedding + pose_embedding] -> [xyz]
                 xyz_pose_controlled = xyz[b, pose_controlled[b], :]
                 pose_deform_input = torch.cat([self.pos_embedding(xyz_pose_controlled).t(), 
                                             self.pos_embedding(data['pose'][b]).unsqueeze(-1).repeat(1, xyz_pose_controlled.shape[0])], 0)[None]
