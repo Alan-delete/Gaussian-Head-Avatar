@@ -271,7 +271,18 @@ class GaussianHairModule(GaussianBaseModule):
                 else:
                     param_group['opt'] = 'enabled'
 
-
+    @property
+    def get_seg_label(self):
+        seg_label_struct = torch.cat([torch.zeros_like(self.opacity), torch.zeros_like(self.opacity) ,torch.ones_like(self.opacity)], dim =-1)
+        return seg_label_struct
+    
+    @property
+    def get_hair_label(self):
+        return torch.ones_like(self.opacity)
+    
+    @property
+    def get_body_label(self):
+        return torch.ones_like(self.opacity)
 
     def update_learning_rate(self, iter):
         ''' Learning rate scheduling per step '''
@@ -599,7 +610,9 @@ class GaussianHairModule(GaussianBaseModule):
             sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
             color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
 
+        
 
+        color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
         opacity = self.get_opacity.unsqueeze(0).repeat(B, 1, 1)
 
         hair_data['xyz'] = xyz

@@ -1,10 +1,14 @@
-export GPU="1"
+export GPU="0"
 export CAMERA="PINHOLE"
 export EXP_NAME_1="stage1"
 export EXP_NAME_2="stage2"
 export EXP_NAME_3="stage3"
 export EXP_PATH_1=$DATA_PATH/3d_gaussian_splatting/$EXP_NAME_1
 
+# Manual steps for now:
+SUBJECT="031"
+DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
+PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
 
 #
 # Ensure that the following environment variables are accessible to the script:
@@ -18,11 +22,15 @@ eval "$(conda shell.bash hook)"
 # PREPROCESSING #
 #################
 
+# Donwload NeRsemble dataset
+# nersemble-data download datasets/NeRSemble/ --participant 17,18 --sequence 'HAIR','EXP-1-head'
+
+
 # conda activate sapiens_lite 
 # cd $PROJECT_DIR/src/preprocessing && ./depth.sh
 
 # conda activate depth-pro 
-# cd $PROJECT_DIR/src/preprocessing 
+# cd $PROJECT_DIR/preprocess
 # CUDA_VISIBLE_DEVICES="$GPU" python calc_depth.py \
 #     --data_path $DATA_PATH --module_path $PROJECT_DIR/ext/ml-depth-pro 
 
@@ -39,11 +47,14 @@ eval "$(conda shell.bash hook)"
 #     --camera $CAMERA --max_size 1024
 
 # # Run Matte-Anything
+# # Error: bbox_annotator = sv.BoxAnnotator(color_lookup=sv.ColorLookup.INDEX)
+# # Error: TypeError: __init__() got an unexpected keyword argument 'color_lookup'
+# # Sol: change sv.BoxAnnotator to sv.BoundingBoxAnnotator
 # conda deactivate && conda activate matte_anything
-# cd $PROJECT_DIR/src/preprocessing
+# cd $PROJECT_DIR/preprocess
 # CUDA_VISIBLE_DEVICES="$GPU" python calc_masks.py \
-#     --data_path $DATA_PATH --image_format png --max_size 2048 \
-#     --postfix _2 --kernel_size 15
+#     --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --max_size 2048 \
+#     --kernel_size 15
 
 # # Filter images using their IQA scores
 # conda deactivate && conda activate gaussian_splatting_hair
@@ -136,9 +147,12 @@ eval "$(conda shell.bash hook)"
 # # RECONSTRUCTION #
 # ##################
 
-conda activate gha 
+cd $PROJECT_DIR
+conda activate gha2 
 # CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_N036.yaml
-CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_N031.yaml
+# CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_N031.yaml
+# CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N031.yaml
+CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N031_Simplified.yaml
 
 
 # Run 3D Gaussian Splatting reconstruction

@@ -8,6 +8,7 @@ lr_pose: 1e-5
 batch_size: 1
 optimize_pose: True
 use_supres: False
+train_segment: True
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'

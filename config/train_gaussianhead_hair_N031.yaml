@@ -7,6 +7,7 @@ lr_net: 1e-4
 lr_pose: 1e-5
 batch_size: 1
 optimize_pose: True
+use_supres: False
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
@@ -58,9 +59,11 @@ gaussianheadmodule:
   gaussian_pruning_threshold: 0.5
 
 gaussianhairmodule:
-  pose_color_mlp: [182, 128, 32]
-  pose_deform_mlp: [81, 256, 256, 3]
-  pose_attributes_mlp: [182, 128, 128, 8]
+  # pose_color_mlp: [182, 128, 32]
+  # pose_deform_mlp: [81, 256, 256, 3]
+  # pose_attributes_mlp: [182, 128, 128, 8]
+  pose_point_mlp: [81, 256, 256, 3]
+  pose_prior_mlp: [54, 256] 
   pos_freq: 4
   dist_threshold_near: 0.1
   dist_threshold_far: 0.25

@@ -86,7 +86,8 @@ if __name__ == '__main__':
                             {'params' : gaussianhead.pose_attributes_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_attributes_mlp'},
                             {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 0.3, 'name' : 'scales'},
                             {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.1, 'name' : 'rotation'},
-                            {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net, 'name' : 'opacity'},]
+                            {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net, 'name' : 'opacity'},
+                            {'params' : gaussianhead.seg_label, 'lr' : cfg.lr_net , 'name' : 'seg_label'},]
 
     gaussianhead.optimizer = torch.optim.Adam(gaussianhead_optimized_parameters)
 
@@ -104,5 +105,5 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(optimized_parameters)
 
     trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
-    trainer.train(0, 100)
+    trainer.train(0, 200)
 

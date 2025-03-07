@@ -8,6 +8,9 @@ class CameraModule():
     def __init__(self):
         # TODO: Currently it's fine, but don't forget to add extra bg_color if using segmentation or depth
         self.bg_color = torch.tensor([1.0] * 32).float()
+        # segment -- [1,0,0]
+        self.bg_color[4] = 0
+        self.bg_color[5] = 0
         self.scale_modifier = 1.0
 
     def perspective_camera(self, points, camera_proj):
@@ -141,6 +144,7 @@ class CameraModule():
             pass
 
         render_images = []
+        render_segments = []
         radii = []
         for b in range(B):
 
@@ -191,16 +195,20 @@ class CameraModule():
             # seg + dir2d + depth +  = 3 + 1 + 1
             
             # rendered_image, rendered_segment_map, rendered_orient_conf, rendered_depth = render_images_b.split([32, 3, 1, 1], dim=0)
-            rendered_image= render_images_b
+            rendered_image= render_images_b[:3]
+            rendered_segment = render_images_b[3:6]
 
             # render_images.append(render_images_b)
             render_images.append(rendered_image)
+            render_segments.append(rendered_segment)
             radii.append(radii_b)
 
         render_images = torch.stack(render_images)
+        render_segments = torch.stack(render_segments)
         radii = torch.stack(radii)
         data['render_images'] = render_images
         data['viewspace_points'] =  screenspace_points
         data['visibility_filter'] = radii > 0
         data['radii'] = radii
+        data['render_segments'] = render_segments
         return data

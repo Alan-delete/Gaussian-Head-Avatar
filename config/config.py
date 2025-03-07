@@ -32,6 +32,7 @@ class config_train(config_base):
         self.cfg.batch_size = 1                                 # recommend batch_size = 1
         self.cfg.optimize_pose = False                          # optimize delta_poses or not
         self.cfg.use_supres = True                              # use super resolution network or not, if not, directly use first 3 channels of the 32 channels 
+        self.cfg.train_segment = False                          # train the segmentation or not
 
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset

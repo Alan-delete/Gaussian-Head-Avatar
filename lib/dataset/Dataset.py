@@ -171,7 +171,7 @@ class MeshDataset(Dataset):
 
 
 
-
+# TODO: use same model to predict mask and hair mask, and put them in unified folder.
 class GaussianDataset(Dataset):
 
     def __init__(self, cfg):
@@ -187,6 +187,7 @@ class GaussianDataset(Dataset):
         image_folder = os.path.join(self.dataroot, 'images')
         param_folder = os.path.join(self.dataroot, 'params')
         camera_folder = os.path.join(self.dataroot, 'cameras')
+        hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
         frames = os.listdir(image_folder)
         
         self.num_exp_id = 0
@@ -194,13 +195,14 @@ class GaussianDataset(Dataset):
         for frame in frames:
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
+            hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_%s.png' % camera_id) for camera_id in self.camera_ids]
             visible_paths = [os.path.join(image_folder, frame, 'visible_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             camera_paths = [os.path.join(camera_folder, frame, 'camera_%s.npz' % camera_id) for camera_id in self.camera_ids]
             param_path = os.path.join(param_folder, frame, 'params.npz')
             landmarks_3d_path = os.path.join(param_folder, frame, 'lmk_3d.npy')
             vertices_path = os.path.join(param_folder, frame, 'vertices.npy')
 
-            sample = (image_paths, mask_paths, visible_paths, camera_paths, param_path, landmarks_3d_path, vertices_path, self.num_exp_id, pre_two_frames_params_path)
+            sample = (image_paths, mask_paths, visible_paths, camera_paths, param_path, landmarks_3d_path, vertices_path, self.num_exp_id, pre_two_frames_params_path, hair_mask_path)
             self.samples.append(sample)
             pre_two_frames_params_path[0], pre_two_frames_params_path[1] = pre_two_frames_params_path[1], param_path
             self.num_exp_id += 1
@@ -211,7 +213,7 @@ class GaussianDataset(Dataset):
     
     def __getitem__(self, index):
         sample = self.samples[index]
-        
+        # randomly pick a view
         view = random.sample(range(len(self.camera_ids)), 1)[0]
 
         image_path = sample[0][view]
@@ -219,6 +221,11 @@ class GaussianDataset(Dataset):
         mask_path = sample[1][view]
         mask = cv2.resize(io.imread(mask_path), (self.original_resolution, self.original_resolution))[:, :, 0:1] / 255
         image = image * mask + (1 - mask)
+        hair_mask_path = sample[9][view]
+        if os.path.exists(hair_mask_path):
+            hair_mask = cv2.resize(io.imread(hair_mask_path), (self.original_resolution, self.original_resolution))[:, :, None] / 255
+        else:
+            hair_mask = np.zeros_like(mask)
 
         visible_path = sample[2][view]
         if os.path.exists(visible_path):
@@ -238,6 +245,8 @@ class GaussianDataset(Dataset):
             image, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=image)
             mask, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=mask)
             visible, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=visible)
+            hair_mask, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=hair_mask)
+
 
         intrinsic[0, 0] = intrinsic[0, 0] * 2 / self.original_resolution
         intrinsic[0, 2] = intrinsic[0, 2] * 2 / self.original_resolution - 1
@@ -247,9 +256,11 @@ class GaussianDataset(Dataset):
 
         image = torch.from_numpy(cv2.resize(image, (self.resolution, self.resolution))).permute(2, 0, 1).float()
         mask = torch.from_numpy(cv2.resize(mask, (self.resolution, self.resolution)))[None].float()
+        hair_mask = torch.from_numpy(cv2.resize(hair_mask, (self.resolution, self.resolution)))[None].float()
         visible = torch.from_numpy(cv2.resize(visible, (self.resolution, self.resolution)))[None].float()
         image_coarse = F.interpolate(image[None], scale_factor=0.25)[0]
         mask_coarse = F.interpolate(mask[None], scale_factor=0.25)[0]
+        hair_mask_coarse = F.interpolate(hair_mask[None], scale_factor=0.25)[0]
         visible_coarse = F.interpolate(visible[None], scale_factor=0.25)[0]
 
         fovx = 2 * math.atan(1 / intrinsic[0, 0])
@@ -283,9 +294,11 @@ class GaussianDataset(Dataset):
         return {
                 'images': image,
                 'masks': mask,
+                'hair_masks': hair_mask,
                 'visibles': visible,
                 'images_coarse': image_coarse,
                 'masks_coarse': mask_coarse,
+                'hair_masks_coarse': hair_mask_coarse,
                 'visibles_coarse': visible_coarse,
                 'pose': pose,
                 'scale': scale,

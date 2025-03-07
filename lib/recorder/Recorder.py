@@ -97,6 +97,8 @@ class GaussianHeadTrainRecorder():
             wandb.log({"loss_rgb_hr": log_data['loss_rgb_hr'], 
                        "loss_rgb_lr": log_data['loss_rgb_lr'], 
                        "loss_vgg": log_data['loss_vgg'],
+                       "loss_segment": log_data['loss_segment'],
+                       "seg_label": log_data['gaussianhead'].seg_label.mean(),
                        "points_num": log_data['gaussianhead'].xyz.shape[0] })
 
         if log_data['iter'] % self.save_freq == 0:
@@ -126,8 +128,23 @@ class GaussianHeadTrainRecorder():
             result = np.hstack((image, render_image, cropped_image, supres_image))
             
             if self.debug_tool == 'wandb':
+                images = []
+
                 result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
-                wandb.log({"Images": [wandb.Image(result, caption="rendered")]})
+                images.append(wandb.Image(result, caption="rendered"))
+
+                segment_vis = log_data['data']['gt_segment'][0]
+                segment_vis[1] = torch.clamp(segment_vis[1] - segment_vis[2] , 0, 1)
+                segment_vis = segment_vis.permute(1, 2, 0).detach().cpu().numpy()
+                segment_vis = (segment_vis * 255).astype(np.uint8)
+                images.append(wandb.Image(segment_vis, caption="Segmentation"))
+
+                render_segment = log_data['data']['render_segments'][0].permute(1, 2, 0).detach().cpu().numpy()
+                render_segment = (render_segment * 255).astype(np.uint8)
+                images.append(wandb.Image(render_segment, caption="rendered_segment"))
+
+                wandb.log({"Images": images})
+
             else:
                 cv2.imwrite('%s/%s/%06d.jpg' % (self.result_path, self.name, log_data['iter']), result)
 

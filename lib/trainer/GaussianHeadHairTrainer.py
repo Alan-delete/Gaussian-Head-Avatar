@@ -26,7 +26,7 @@ class GaussianHeadHairTrainer():
                 
                 iteration = idx + epoch * len(self.dataloader)
                 # prepare data
-                to_cuda = ['images', 'masks', 'visibles', 'images_coarse', 'masks_coarse', 'visibles_coarse', 
+                to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
                            'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id']
                 for data_item in to_cuda:
@@ -67,6 +67,20 @@ class GaussianHeadHairTrainer():
                 visibility_filter = data["visibility_filter"]
                 radii = data["radii"]
                 render_images = data['render_images']
+                # we have predicted label [background, body, hair], the gt_segment now is atcully [background, body & hair, hair]
+                gt_hair_mask = data['hair_masks']
+                gt_mask = data['masks']
+                # TODO: don't forget to change dim if removing batch dimension
+                gt_segment = torch.cat([ 1 - gt_mask, gt_mask, gt_hair_mask], dim=1) 
+                data['gt_segment'] = gt_segment
+                
+                render_segments = data["render_segments"]
+                segment_clone = render_segments.clone()
+                segment_clone[:,1] = render_segments[:,1] + render_segments[:,2]
+                def l1_loss(a, b):
+                    return (a - b).abs().mean()
+                loss_segment = l1_loss(segment_clone, gt_segment) if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+
 
                 # crop images for augmentation
                 scale_factor = random.random() * 0.45 + 0.8
@@ -84,7 +98,7 @@ class GaussianHeadHairTrainer():
                 left_up = (random.randint(0, supres_images.shape[2] - 512), random.randint(0, supres_images.shape[3] - 512))
                 loss_vgg = self.fn_lpips((supres_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], 
                                             (cropped_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], normalize=True).mean()
-                loss = loss_rgb_hr + loss_rgb_lr + loss_vgg * 1e-1
+                loss = loss_rgb_hr + loss_rgb_lr + loss_vgg * 1e-1 + loss_segment * 1e-3
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -183,6 +197,7 @@ class GaussianHeadHairTrainer():
                     'loss_rgb_lr' : loss_rgb_lr,
                     'loss_rgb_hr' : loss_rgb_hr,
                     'loss_vgg' : loss_vgg,
+                    'loss_segment' : loss_segment,
                     'epoch' : epoch,
                     'iter' : idx + epoch * len(self.dataloader)
                 }

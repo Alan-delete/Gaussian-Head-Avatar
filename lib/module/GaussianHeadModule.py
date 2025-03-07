@@ -18,7 +18,7 @@ from lib.utils.general_utils import inverse_sigmoid
 
 
 class GaussianHeadModule(GaussianBaseModule):
-    def __init__(self, cfg, xyz, feature, landmarks_3d_neutral, add_mouth_points=False, optimizer=None, GS_parameter_names = ["xyz", "feature", "scales", "rotation", "opacity"]):
+    def __init__(self, cfg, xyz, feature, landmarks_3d_neutral, add_mouth_points=False, optimizer=None, GS_parameter_names = ["xyz", "feature", "scales", "rotation", "opacity", "seg_label"]):
         super(GaussianHeadModule, self).__init__(optimizer)
 
         self.cfg = cfg
@@ -49,6 +49,7 @@ class GaussianHeadModule(GaussianBaseModule):
         self.rotation = nn.Parameter(rots)
 
         self.opacity = nn.Parameter(inverse_sigmoid(0.3 * torch.ones((xyz.shape[0], 1))))
+        self.seg_label = nn.Parameter(torch.zeros((xyz.shape[0], 3), device=xyz.device))
 
         self.xyz_gradient_accum = torch.zeros_like(self.opacity, device="cuda")
         self.denom = torch.zeros_like(self.opacity, device="cuda")
@@ -70,6 +71,20 @@ class GaussianHeadModule(GaussianBaseModule):
         self.deform_scale = cfg.deform_scale
         self.attributes_scale = cfg.attributes_scale
     
+    @property
+    def get_seg_label(self):
+        seg_label_unstruct = torch.cat([self.seg_label_activation(self.seg_label[..., :2]), torch.zeros_like(self.opacity)], dim = -1)
+        return seg_label_unstruct
+
+    @property
+    def get_hair_label(self):
+        return self.label_activation(self.label_hair)
+    
+    @property
+    def get_body_label(self):
+        return self.label_activation(self.label_body)
+
+
     def generate(self, data):
         B = data['exp_coeff'].shape[0]
 
@@ -157,6 +172,8 @@ class GaussianHeadModule(GaussianBaseModule):
             scales = scales * S
         # color = torch.cat([color, extra_feature], dim=-1)
         # data['exp_deform'] = exp_deform
+        color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
+
         data['xyz'] = xyz
         data['color'] = color
         data['scales'] = scales
