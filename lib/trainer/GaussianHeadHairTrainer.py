@@ -47,7 +47,8 @@ class GaussianHeadHairTrainer():
                 data['pose'] = data['pose'] + self.delta_poses[data['exp_id'], :]
 
                 backprop_into_prior = iteration <= self.cfg.gaussianhairmodule.strands_reset_from_iter
-                self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, backprop_into_prior=backprop_into_prior)
+                # self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, backprop_into_prior=backprop_into_prior)
+                self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, backprop_into_prior=backprop_into_prior, pose_params=data['pose'][0])
                 self.gaussianhair.update_learning_rate(iteration)
 
                 # Every 1000 its we increase the levels of SH up to a maximum degree
@@ -79,7 +80,8 @@ class GaussianHeadHairTrainer():
                 segment_clone[:,1] = render_segments[:,1] + render_segments[:,2]
                 def l1_loss(a, b):
                     return (a - b).abs().mean()
-                loss_segment = l1_loss(segment_clone, gt_segment) if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+                # find that the hair segment is not well predicted, so add extra hair segment loss
+                loss_segment = l1_loss(segment_clone, gt_segment) + 5 * l1_loss(segment_clone[:,2], gt_segment[:,2]) if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
 
 
                 # crop images for augmentation
@@ -98,7 +100,7 @@ class GaussianHeadHairTrainer():
                 left_up = (random.randint(0, supres_images.shape[2] - 512), random.randint(0, supres_images.shape[3] - 512))
                 loss_vgg = self.fn_lpips((supres_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], 
                                             (cropped_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], normalize=True).mean()
-                loss = loss_rgb_hr + loss_rgb_lr + loss_vgg * 1e-1 + loss_segment * 1e-3
+                loss = loss_rgb_hr + loss_rgb_lr + loss_vgg * 1e-1 + loss_segment * 5e-1
 
                 self.optimizer.zero_grad()
                 loss.backward()
