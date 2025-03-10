@@ -98,7 +98,7 @@ class GaussianHeadTrainRecorder():
                        "loss_rgb_lr": log_data['loss_rgb_lr'], 
                        "loss_vgg": log_data['loss_vgg'],
                        "loss_segment": log_data['loss_segment'],
-                       "seg_label": log_data['gaussianhead'].seg_label.mean(),
+                    #    "seg_label": log_data['gaussianhead'].seg_label.mean(),
                        "points_num": log_data['gaussianhead'].xyz.shape[0] })
 
         if log_data['iter'] % self.save_freq == 0:

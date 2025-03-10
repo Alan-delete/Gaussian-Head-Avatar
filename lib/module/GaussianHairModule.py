@@ -349,14 +349,17 @@ class GaussianHairModule(GaussianBaseModule):
         dir2D = torch.nn.functional.normalize(dir2D, dim=-1)
 
         return dir2D
-
-    def update_mesh_alignment_transform(self, dir_path, flame_mesh_dir):
+    # TODO: dirpath and flame_mesh_dir should be provided instead of hardcoded
+    def update_mesh_alignment_transform(self, dir_path = None, flame_mesh_dir = None):
         # Estimate the transform to align Perm canonical space with the scene
         print('Updating FLAME to Pinscreen alignment transform')
-        source_mesh = o3d.io.read_triangle_mesh(f'{dir_path}/data/flame_mesh_aligned_to_pinscreen.obj')
-        target_mesh = o3d.io.read_triangle_mesh(flame_mesh_dir)
+        # source_mesh = o3d.io.read_triangle_mesh(f'{dir_path}/data/flame_mesh_aligned_to_pinscreen.obj')
+        source_mesh = o3d.io.read_triangle_mesh(f'assets/flame_mesh_aligned_to_pinscreen.obj')
+        # target_mesh = o3d.io.read_triangle_mesh(flame_mesh_dir)
         source = torch.from_numpy(np.asarray(source_mesh.vertices))
-        target = torch.from_numpy(np.asarray(target_mesh.vertices))
+        # target = torch.from_numpy(np.asarray(target_mesh.vertices)) 
+        target = torch.from_numpy(np.load('datasets/mini_demo_dataset/031/FLAME_params/0000/vertices.npy').astype(np.double))
+        # target = torch.from_numpy(np.load('datasets/mini_demo_dataset/031/params/0000/vertices.npy').astype(np.double))
         source = torch.cat([source, torch.ones_like(source[:, :1])], -1)
         target = torch.cat([target, torch.ones_like(target[:, :1])], -1)
         transform = (source.transpose(0, 1) @ source).inverse() @ source.transpose(0, 1) @ target
@@ -367,7 +370,7 @@ class GaussianHairModule(GaussianBaseModule):
             optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, width_raw_new, "width")
             self.width_raw = optimizable_tensors["width"]
         else:
-            self.width_raw = width_raw_new
+            self.width_raw.data = width_raw_new
         self.prev_mesh_width = mesh_width
 
     def reset_strands(self):

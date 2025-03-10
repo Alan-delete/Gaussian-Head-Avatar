@@ -1,4 +1,4 @@
-export GPU="0"
+export GPU="2"
 export CAMERA="PINHOLE"
 export EXP_NAME_1="stage1"
 export EXP_NAME_2="stage2"
@@ -25,6 +25,18 @@ eval "$(conda shell.bash hook)"
 # Donwload NeRsemble dataset
 # nersemble-data download datasets/NeRSemble/ --participant 17,18 --sequence 'HAIR','EXP-1-head'
 
+# landmark detection and FLAME fitting
+cd $PROJECT_DIR/preprocess
+conda deactivate && conda activate mv-3dmm-fitting
+# CUDA_VISIBLE_DEVICES="$GPU" python detect_landmarks.py \
+#     --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml
+
+# CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
+#     --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml
+
+# CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
+#     --config $PROJECT_DIR/config/BFM_fitting_NeRSemble_031.yaml
+conda deactivate 
 
 # conda activate sapiens_lite 
 # cd $PROJECT_DIR/src/preprocessing && ./depth.sh
@@ -149,7 +161,7 @@ eval "$(conda shell.bash hook)"
 
 cd $PROJECT_DIR
 conda activate gha2 
-# CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_N036.yaml
+# CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_N031.yaml
 # CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_N031.yaml
 # CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N031.yaml
 CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N031_Simplified.yaml

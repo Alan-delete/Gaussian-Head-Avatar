@@ -102,6 +102,9 @@ class MeshHeadModule(nn.Module):
         pose_weights = 1 - exp_weights
 
         exp_color_input = torch.cat([verts_features_batch.permute(0, 2, 1), data['exp_coeff'].unsqueeze(-1).repeat(1, 1, num_pts_max)], 1)
+        # TODO: In some random cases, exp_color_input.shape[-1] is 0. Need to check why
+        if exp_color_input.shape[-1] ==0:
+            breakpoint()
         verts_color_batch = self.exp_color(exp_color_input).permute(0, 2, 1) * exp_weights
         
         pose_color_input = torch.cat([verts_features_batch.permute(0, 2, 1), self.pos_embedding(data['pose']).unsqueeze(-1).repeat(1, 1, num_pts_max)], 1)

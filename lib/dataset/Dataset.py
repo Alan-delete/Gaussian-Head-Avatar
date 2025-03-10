@@ -144,6 +144,8 @@ class MeshDataset(Dataset):
         param = np.load(param_path)
         pose = torch.from_numpy(param['pose'][0]).float()
         scale = torch.from_numpy(param['scale']).float()
+        # unify shape for BFM and FLAME
+        scale = scale.view(-1)
         exp_coeff = torch.from_numpy(param['exp_coeff'][0]).float()
         
         landmarks_3d_path = sample[5]
@@ -274,7 +276,11 @@ class GaussianDataset(Dataset):
         param_path = sample[4]
         param = np.load(param_path)
         pose = torch.from_numpy(param['pose'][0]).float()
+        
         scale = torch.from_numpy(param['scale']).float()
+        # different shape For BFM and FLAME, so unify it
+        scale = scale.view(-1)
+
         exp_coeff = torch.from_numpy(param['exp_coeff'][0]).float()
         
         landmarks_3d_path = sample[5]
