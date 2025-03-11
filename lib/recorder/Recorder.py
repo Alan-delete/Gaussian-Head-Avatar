@@ -4,6 +4,7 @@ import os
 import numpy as np
 import cv2
 import wandb
+import open3d as o3d
 
 class MeshHeadTrainRecorder():
     def __init__(self, cfg):
@@ -98,6 +99,7 @@ class GaussianHeadTrainRecorder():
                        "loss_rgb_lr": log_data['loss_rgb_lr'], 
                        "loss_vgg": log_data['loss_vgg'],
                        "loss_segment": log_data['loss_segment'],
+                       "loss_transform_reg": log_data['loss_transform_reg'],
                     #    "seg_label": log_data['gaussianhead'].seg_label.mean(),
                        "points_num": log_data['gaussianhead'].xyz.shape[0] })
 
@@ -109,6 +111,7 @@ class GaussianHeadTrainRecorder():
             torch.save(log_data['supres'].state_dict(), '%s/%s/supres_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest' % (self.checkpoint_path, self.name))
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+
 
         if log_data['iter'] % self.show_freq == 0:
             image = log_data['data']['images'][0].permute(1, 2, 0).detach().cpu().numpy()
@@ -127,6 +130,23 @@ class GaussianHeadTrainRecorder():
             render_image = cv2.resize(render_image, (image.shape[0], image.shape[1]))
             result = np.hstack((image, render_image, cropped_image, supres_image))
             
+            # too memory consuming, only used when reuiqring SIBR viewer
+            # log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
+            # log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
+
+            xyz = log_data['gaussianhair'].xyz.detach().cpu().numpy()
+            hairmesh = o3d.geometry.TriangleMesh()
+            hairmesh.vertices = o3d.utility.Vector3dVector(xyz)
+            hairmesh.compute_vertex_normals() 
+            o3d.io.write_triangle_mesh('%s/%s/%06d_hair.ply' % (self.result_path, self.name, log_data['iter']), hairmesh)
+
+            xyz = log_data['gaussianhead'].xyz.detach().cpu().numpy()
+            headmesh = o3d.geometry.TriangleMesh()
+            headmesh.vertices = o3d.utility.Vector3dVector(xyz)
+            headmesh.compute_vertex_normals()
+            o3d.io.write_triangle_mesh('%s/%s/%06d_head.ply' % (self.result_path, self.name, log_data['iter']), headmesh)
+
+
             if self.debug_tool == 'wandb':
                 images = []
 
@@ -142,6 +162,9 @@ class GaussianHeadTrainRecorder():
                 render_segment = log_data['data']['render_segments'][0].permute(1, 2, 0).detach().cpu().numpy()
                 render_segment = (render_segment * 255).astype(np.uint8)
                 images.append(wandb.Image(render_segment, caption="rendered_segment"))
+
+                # append segment[2]
+                images.append(wandb.Image(segment_vis[...,2], caption="hair mask"))
 
                 wandb.log({"Images": images})
 

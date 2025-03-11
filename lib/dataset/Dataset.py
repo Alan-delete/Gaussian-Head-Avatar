@@ -209,6 +209,13 @@ class GaussianDataset(Dataset):
             pre_two_frames_params_path[0], pre_two_frames_params_path[1] = pre_two_frames_params_path[1], param_path
             self.num_exp_id += 1
 
+        # FLAME_param_folder = os.path.join(self.dataroot, 'FLAME_params')
+        param = np.load(os.path.join(param_folder, frames[0], 'params.npz'))
+        pose = torch.from_numpy(param['pose'][0]).float()
+        self.R = so3_exponential_map(pose[None, :3])[0]
+        self.T = pose[None, 3:]
+        self.S = torch.from_numpy(param['scale']).float()
+
     def get_item(self, index):
         data = self.__getitem__(index)
         return data

@@ -167,14 +167,14 @@ class GaussianBaseModule(nn.Module):
     def construct_list_of_attributes(self):
         l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
         # All channels except the 3 DC
-        for i in range(self._features_dc.shape[1]*self._features_dc.shape[2]):
+        for i in range(self.features_dc.shape[1]*self.features_dc.shape[2]):
             l.append('f_dc_{}'.format(i))
-        for i in range(self._features_rest.shape[1]*self._features_rest.shape[2]):
+        for i in range(self.features_rest.shape[1]*self.features_rest.shape[2]):
             l.append('f_rest_{}'.format(i))
         l.append('opacity')
-        for i in range(self._scaling.shape[1]):
+        for i in range(self.scales.shape[1]):
             l.append('scale_{}'.format(i))
-        for i in range(self._rotation.shape[1]):
+        for i in range(self.rotation.shape[1]):
             l.append('rot_{}'.format(i))
         return l
 
@@ -214,7 +214,7 @@ class GaussianBaseModule(nn.Module):
     def save_ply(self, path):
         dir = os.path.dirname(path)
         name = os.path.basename(path)
-        os.mkdir(dir, exist_ok=True)
+        os.makedirs(dir, exist_ok=True)
 
         # Re-initialize the buffers
         # self.get_feature
@@ -224,6 +224,11 @@ class GaussianBaseModule(nn.Module):
 
         xyz = self.xyz.detach().cpu().numpy()
         normals = np.zeros_like(xyz)
+        # In case use color mlp to learn the color, set the default feature
+        if self.features_dc.shape[0] == 0:
+            self.features_dc = torch.ones((self.xyz.shape[0], 1, 3), device=self.xyz.device)
+        if self.features_rest.shape[0] == 0:
+            self.features_rest = torch.ones((self.xyz.shape[0], 1, 3), device=self.xyz.device)
         f_dc = self.features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
         f_rest = self.features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
         opacities = self.opacity.detach().cpu().numpy()

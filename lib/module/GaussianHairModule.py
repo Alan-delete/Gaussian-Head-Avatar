@@ -222,7 +222,7 @@ class GaussianHairModule(GaussianBaseModule):
         # pose [6] -> pose embedding [54]
         self.pos_embedding, _ = get_embedder(cfg.pos_freq)
 
-        self.transform = torch.eye(4).cuda()
+        self.transform = nn.Parameter(torch.eye(4).cuda())
 
         self.create_hair_gaussians(cfg.strand_scale)
 
@@ -246,6 +246,9 @@ class GaussianHairModule(GaussianBaseModule):
             l_struct.append({'params': [self.width_raw], 'lr': cfg.scaling_lr, "name": "width"})
         if self.train_opacity:
             l_struct.append({'params': [self.opacity_raw], 'lr': cfg.opacity_lr, "name": "opacity"})
+        # TODO: transform actually should be more related to prior, since it's used by prior to generate strand 
+        # better add it to prior optimizer
+        l_struct.append({'params': [self.transform], 'lr': 1e-4 , "name": "transform"})
 
         self.pts_scheduler_args = get_expon_lr_func(lr_init=cfg.position_lr_init*0.1*self.spatial_lr_scale,
                                                     lr_final=cfg.position_lr_final*self.spatial_lr_scale,
@@ -350,20 +353,41 @@ class GaussianHairModule(GaussianBaseModule):
 
         return dir2D
     # TODO: dirpath and flame_mesh_dir should be provided instead of hardcoded
-    def update_mesh_alignment_transform(self, dir_path = None, flame_mesh_dir = None):
+    def update_mesh_alignment_transform(self, R, T, S, dir_path = None, flame_mesh_dir = None):
         # Estimate the transform to align Perm canonical space with the scene
         print('Updating FLAME to Pinscreen alignment transform')
         # source_mesh = o3d.io.read_triangle_mesh(f'{dir_path}/data/flame_mesh_aligned_to_pinscreen.obj')
         source_mesh = o3d.io.read_triangle_mesh(f'assets/flame_mesh_aligned_to_pinscreen.obj')
         # target_mesh = o3d.io.read_triangle_mesh(flame_mesh_dir)
         source = torch.from_numpy(np.asarray(source_mesh.vertices))
-        # target = torch.from_numpy(np.asarray(target_mesh.vertices)) 
+        # target = torch.from_numpy(np.asarray(target_mesh.vertices))
         target = torch.from_numpy(np.load('datasets/mini_demo_dataset/031/FLAME_params/0000/vertices.npy').astype(np.double))
+        # tensor double
+        R = R.to(torch.double)
+        T = T.to(torch.double) 
+        S = S.to(torch.double)
+        target = (torch.matmul(target- T, R)) / S 
+
+        # create a mesh from xyz
+        hair_mesh = o3d.geometry.TriangleMesh()
+        hair_mesh.vertices = o3d.utility.Vector3dVector(self.xyz.detach().cpu().numpy())
+        hair_mesh.compute_vertex_normals()
+        o3d.io.write_triangle_mesh('Init_source_hair.ply', hair_mesh)
+
+        # create a mesh from the target vertices for debugging
+        target_mesh = o3d.geometry.TriangleMesh()
+        target_mesh.vertices = o3d.utility.Vector3dVector(target)
+        target_mesh.compute_vertex_normals()
+        o3d.io.write_triangle_mesh('Init_target_mesh.ply', target_mesh) 
+
+
         # target = torch.from_numpy(np.load('datasets/mini_demo_dataset/031/params/0000/vertices.npy').astype(np.double))
         source = torch.cat([source, torch.ones_like(source[:, :1])], -1)
         target = torch.cat([target, torch.ones_like(target[:, :1])], -1)
         transform = (source.transpose(0, 1) @ source).inverse() @ source.transpose(0, 1) @ target
-        self.transform = transform.cuda().unsqueeze(0).float()
+        self.transform.data = transform.cuda().unsqueeze(0).float()
+        self.init_transform = self.transform.detach()
+
         mesh_width = (target[4051, :3] - target[4597, :3]).norm() # 2 x distance between the eyes
         width_raw_new = self.width_raw * mesh_width / self.prev_mesh_width
         if self.train_width:
@@ -438,12 +462,22 @@ class GaussianHairModule(GaussianBaseModule):
         # Add dynamics to the hair strands
         # Points shift
         if pose_params is not None:
+            # pose_embedding = self.pos_embedding(pose_params)
+            # points = self.points_origins.view(-1, 3)
+            # pose_deform_input = torch.cat([self.pos_embedding(points).t(), 
+            #                                 pose_embedding.unsqueeze(-1).repeat(1, points.shape[0])], 0)[None]
+            # pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
+            # self.points_origins = self.points_origins + pose_deform.view(num_strands, self.strand_length, 3)
+            # self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+
+            # try to only change the origin
             pose_embedding = self.pos_embedding(pose_params)
-            points = self.points_origins.view(-1, 3)
-            pose_deform_input = torch.cat([self.pos_embedding(points).t(), 
-                                            pose_embedding.unsqueeze(-1).repeat(1, points.shape[0])], 0)[None]
+            origins = self.origins.view(-1, 3)
+            pose_deform_input = torch.cat([self.pos_embedding(origins).t(), 
+                                            pose_embedding.unsqueeze(-1).repeat(1, origins.shape[0])], 0)[None]
             pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
-            self.points_origins = self.points_origins + pose_deform.view(num_strands, self.strand_length, 3)
+            self.origins = self.origins + pose_deform.view(num_strands, 1, 3)
+            self.points_origins = torch.cat([self.origins, self.points], dim=1)
             self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
         
         self.width = self.width_raw[strands_idx]

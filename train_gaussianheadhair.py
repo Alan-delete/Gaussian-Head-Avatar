@@ -64,7 +64,8 @@ if __name__ == '__main__':
     
     # create hair gaussian, 
     gaussianhair = GaussianHairModule(cfg.gaussianhairmodule).to(device)
-    gaussianhair.update_mesh_alignment_transform()
+    gaussianhair.update_mesh_alignment_transform(dataset.R, dataset.T, dataset.S)
+    gaussianhair.reset_strands()
 
     supres = SuperResolutionModule(cfg.supresmodule).to(device)
     if os.path.exists(cfg.load_supres_checkpoint):
