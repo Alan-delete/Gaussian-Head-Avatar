@@ -1,4 +1,5 @@
 import os
+os.environ['PYOPENGL_PLATFORM'] = 'egl'
 import sys
 import torch
 import argparse
@@ -45,19 +46,17 @@ class Recorder():
                 np.save('%s/vertices.npy' % (os.path.join(self.save_folder, frame)), vertices[n].cpu().numpy())
 
             if self.visualize:
+                faces = log_data['face_model'].faces.cpu().numpy()
+                mesh_trimesh = trimesh.Trimesh(vertices=vertices[n].cpu().numpy(), faces=faces)
+                # save the trimesh
+                mesh_trimesh.export('%s/mesh_%d.obj' % (os.path.join(self.save_folder, frame), 0))
                 for v in range(intrinsics.shape[1]):
-                    faces = log_data['face_model'].faces.cpu().numpy()
-                    mesh_trimesh = trimesh.Trimesh(vertices=vertices[n].cpu().numpy(), faces=faces)
-                    # save the trimesh
-                    mesh_trimesh.export('%s/mesh_%d.obj' % (os.path.join(self.save_folder, frame), v))
-                    break
+                    
+                    mesh = pyrender.Mesh.from_trimesh(mesh_trimesh)
+                    self.camera.init_renderer(intrinsic=intrinsics[n, v], extrinsic=extrinsics[n, v])
+                    render_image = self.camera.render(mesh)
 
-                    # mesh = pyrender.Mesh.from_trimesh(mesh_trimesh)
-
-                    # self.camera.init_renderer(intrinsic=intrinsics[n, v], extrinsic=extrinsics[n, v])
-                    # render_image = self.camera.render(mesh)
-
-                    # cv2.imwrite('%s/vis_%d.jpg' % (os.path.join(self.save_folder, frame), v), render_image[:,:,::-1])
+                    cv2.imwrite('%s/vis_%d.jpg' % (os.path.join(self.save_folder, frame), v), render_image[:,:,::-1])
 
 if __name__ == '__main__':
 

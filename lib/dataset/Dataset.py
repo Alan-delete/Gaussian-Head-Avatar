@@ -115,7 +115,8 @@ class MeshDataset(Dataset):
             images.append(image)
 
             mask_path = sample[1][view]
-            mask = cv2.resize(io.imread(mask_path), (self.resolution, self.resolution))[:, :, 0:1]
+            mask = cv2.resize(io.imread(mask_path), (self.resolution, self.resolution))
+            mask = mask[:, :, 0:1] if len(mask.shape) == 3 else mask[:, :, None]
             mask = torch.from_numpy(mask / 255).permute(2, 0, 1).float()
             masks.append(mask)
 
@@ -190,6 +191,7 @@ class GaussianDataset(Dataset):
         param_folder = os.path.join(self.dataroot, 'params')
         camera_folder = os.path.join(self.dataroot, 'cameras')
         hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
+        optical_flow_folder = os.path.join(self.dataroot, 'optical_flow')
         frames = os.listdir(image_folder)
         
         self.num_exp_id = 0
@@ -198,13 +200,14 @@ class GaussianDataset(Dataset):
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_%s.png' % camera_id) for camera_id in self.camera_ids]
+            optical_flow_path = [os.path.join(optical_flow_folder, frame, 'image_%s.npy' % camera_id) for camera_id in self.camera_ids]
             visible_paths = [os.path.join(image_folder, frame, 'visible_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             camera_paths = [os.path.join(camera_folder, frame, 'camera_%s.npz' % camera_id) for camera_id in self.camera_ids]
             param_path = os.path.join(param_folder, frame, 'params.npz')
             landmarks_3d_path = os.path.join(param_folder, frame, 'lmk_3d.npy')
             vertices_path = os.path.join(param_folder, frame, 'vertices.npy')
 
-            sample = (image_paths, mask_paths, visible_paths, camera_paths, param_path, landmarks_3d_path, vertices_path, self.num_exp_id, pre_two_frames_params_path, hair_mask_path)
+            sample = (image_paths, mask_paths, visible_paths, camera_paths, param_path, landmarks_3d_path, vertices_path, self.num_exp_id, pre_two_frames_params_path, hair_mask_path, optical_flow_path)
             self.samples.append(sample)
             pre_two_frames_params_path[0], pre_two_frames_params_path[1] = pre_two_frames_params_path[1], param_path
             self.num_exp_id += 1
@@ -228,7 +231,8 @@ class GaussianDataset(Dataset):
         image_path = sample[0][view]
         image = cv2.resize(io.imread(image_path), (self.original_resolution, self.original_resolution)) / 255
         mask_path = sample[1][view]
-        mask = cv2.resize(io.imread(mask_path), (self.original_resolution, self.original_resolution))[:, :, 0:1] / 255
+        mask = cv2.resize(io.imread(mask_path), (self.original_resolution, self.original_resolution)) / 255
+        mask = mask[:, :, 0:1] if len(mask.shape) == 3 else mask[:, :, None]
         image = image * mask + (1 - mask)
         hair_mask_path = sample[9][view]
         if os.path.exists(hair_mask_path):
@@ -303,6 +307,13 @@ class GaussianDataset(Dataset):
             pre_two_frames_param = np.load(pre_two_frames_param_path)
             pre_two_frames_pose = torch.from_numpy(pre_two_frames_param['pose'][0]).float()
             pre_two_frames_poses.append(pre_two_frames_pose)
+
+        optical_flow_path = sample[10][view]
+        if os.path.exists(optical_flow_path):
+            x= np.load(optical_flow_path, allow_pickle=True)
+        else:
+            pass
+            # optical_flow = torch.zeros(2, self.resolution, self.resolution)
 
         return {
                 'images': image,

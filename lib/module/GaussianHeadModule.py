@@ -174,6 +174,8 @@ class GaussianHeadModule(GaussianBaseModule):
         # data['exp_deform'] = exp_deform
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
 
+        # TODO: use delta_xyz after pose as the 3D optical flow property sent to differentiable renderer 
+
         data['xyz'] = xyz
         data['color'] = color
         data['scales'] = scales

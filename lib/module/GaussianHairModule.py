@@ -7,6 +7,7 @@ from torch import nn
 import tqdm
 from plyfile import PlyData, PlyElement
 from einops import rearrange
+import pickle
 
 from simple_knn._C import distCUDA2
 from pytorch3d.transforms import so3_exponential_map
@@ -213,14 +214,19 @@ class GaussianHairModule(GaussianBaseModule):
         self.opacity_raw = torch.empty(0)
         self.width_raw = torch.empty(0)
 
+        # for dynamic hair, points deformation should be used only when directly training point_raw
+        self.points_deform_accumulate = torch.empty(0)
+        self.points_velocity = torch.empty(0)
 
         self.pose_color_mlp = MLP(cfg.pose_color_mlp, last_op=None)
         self.pose_attributes_mlp = MLP(cfg.pose_attributes_mlp, last_op=None)
         self.pose_deform_mlp = MLP(cfg.pose_deform_mlp, last_op=nn.Tanh())
         self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
         self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
+    
         # pose [6] -> pose embedding [54]
         self.pos_embedding, _ = get_embedder(cfg.pos_freq)
+
 
         self.transform = nn.Parameter(torch.eye(4).cuda())
 
@@ -287,6 +293,10 @@ class GaussianHairModule(GaussianBaseModule):
     def get_body_label(self):
         return torch.ones_like(self.opacity)
 
+    def epoch_start(self):
+        self.points_deform_accumulate = torch.zeros_like(self.points_origins)
+        self.points_velocity = torch.zeros_like(self.points_origins)
+
     def update_learning_rate(self, iter):
         ''' Learning rate scheduling per step '''
         for param_group in self.optimizer.param_groups:
@@ -352,6 +362,41 @@ class GaussianHairModule(GaussianBaseModule):
         dir2D = torch.nn.functional.normalize(dir2D, dim=-1)
 
         return dir2D
+    
+    def solve_rigid_transform(self, X, y, allow_scaling=True):
+        # Compute centroids
+        X_mean = X.mean(dim=0, keepdim=True)  # (1, 3)
+        y_mean = y.mean(dim=0, keepdim=True)  # (1, 3)
+
+        # Center the points
+        X_centered = X - X_mean
+        y_centered = y - y_mean
+
+        # Compute cross-covariance matrix
+        H = X_centered.T @ y_centered  # (3, 3)
+
+        # SVD of H
+        U, S, Vt = torch.svd(H)
+
+        # Compute optimal rotation
+        R = Vt @ U.T
+
+        # Ensure a proper rotation (det(R) = 1)
+        if torch.det(R) < 0:
+            Vt[:, -1] *= -1
+            R = Vt @ U.T
+
+        # Compute scaling (optional)
+        if allow_scaling:
+            s = (S.sum() / (X_centered**2).sum()).item()
+        else:
+            s = 1.0
+
+        # Compute translation
+        t = y_mean - s * X_mean @ R
+
+        return R, s, t
+
     # TODO: dirpath and flame_mesh_dir should be provided instead of hardcoded
     def update_mesh_alignment_transform(self, R, T, S, dir_path = None, flame_mesh_dir = None):
         # Estimate the transform to align Perm canonical space with the scene
@@ -361,32 +406,67 @@ class GaussianHairModule(GaussianBaseModule):
         # target_mesh = o3d.io.read_triangle_mesh(flame_mesh_dir)
         source = torch.from_numpy(np.asarray(source_mesh.vertices))
         # target = torch.from_numpy(np.asarray(target_mesh.vertices))
-        target = torch.from_numpy(np.load('datasets/mini_demo_dataset/031/FLAME_params/0000/vertices.npy').astype(np.double))
+        # already posed mesh, for hair we don't do the pose transformation again in generate() function
+        # target = torch.from_numpy(np.load('datasets/mini_demo_dataset/031/FLAME_params/0000/vertices.npy').astype(np.double))
+        target = o3d.io.read_triangle_mesh('datasets/mini_demo_dataset/031/FLAME_params/0000/mesh_0.obj')
+        target = torch.from_numpy(np.asarray(target.vertices))
+
         # tensor double
         R = R.to(torch.double)
         T = T.to(torch.double) 
         S = S.to(torch.double)
         target = (torch.matmul(target- T, R)) / S 
 
-        # create a mesh from xyz
-        hair_mesh = o3d.geometry.TriangleMesh()
-        hair_mesh.vertices = o3d.utility.Vector3dVector(self.xyz.detach().cpu().numpy())
-        hair_mesh.compute_vertex_normals()
-        o3d.io.write_triangle_mesh('Init_source_hair.ply', hair_mesh)
 
-        # create a mesh from the target vertices for debugging
-        target_mesh = o3d.geometry.TriangleMesh()
-        target_mesh.vertices = o3d.utility.Vector3dVector(target)
-        target_mesh.compute_vertex_normals()
-        o3d.io.write_triangle_mesh('Init_target_mesh.ply', target_mesh) 
+        # hair_list_filename = "assets/FLAME/hair_list.pkl"
+        # with open(hair_list_filename, 'rb') as f:
+        #     scalp_indices = torch.tensor(pickle.load(f))
+        #     self.scalp_indices = scalp_indices
+            # source = source[scalp_indices]  
+            # target = target[scalp_indices] 
 
 
-        # target = torch.from_numpy(np.load('datasets/mini_demo_dataset/031/params/0000/vertices.npy').astype(np.double))
+        # # create a mesh from xyz
+        # hair_mesh = o3d.geometry.TriangleMesh()
+        # hair_mesh.vertices = o3d.utility.Vector3dVector(self.xyz.detach().cpu().numpy())
+        # hair_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('Init_source_hair.ply', hair_mesh)
+
+        # # source mesh
+        # source_mesh = o3d.geometry.TriangleMesh()
+        # source_mesh.vertices = o3d.utility.Vector3dVector(source)
+        # source_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('Init_source_mesh.ply', source_mesh)
+
+        # # create a mesh from the target vertices for debugging
+        # target_mesh = o3d.geometry.TriangleMesh()
+        # target_mesh.vertices = o3d.utility.Vector3dVector(target)
+        # target_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('Init_target_mesh.ply', target_mesh) 
+        
+
         source = torch.cat([source, torch.ones_like(source[:, :1])], -1)
         target = torch.cat([target, torch.ones_like(target[:, :1])], -1)
         transform = (source.transpose(0, 1) @ source).inverse() @ source.transpose(0, 1) @ target
-        self.transform.data = transform.cuda().unsqueeze(0).float()
-        self.init_transform = self.transform.detach()
+        self.transform.data = transform.cuda().float()
+
+        # don't simply use detach here, returned value from detach shares the same memory with the original tensor
+        self.init_transform = self.transform.detach().clone()
+        
+
+        # # transformed hair
+        # transformed_hair = (torch.cat([self.xyz, torch.ones_like(self.xyz[:, :1])], -1) @ self.transform).detach().cpu().numpy()[:, :3]
+        # # transformed_hair = (self.xyz * s @ R.cuda().float() + t.cuda().float()).detach().cpu().numpy()
+        # hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_hair)
+        # hair_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('Init_transformed_hair.ply', hair_mesh)
+
+        # # transformed source
+        # transformed_source = (torch.cat([source[:, :3], torch.ones_like(source[:, :1])], -1) @ transform).detach().cpu().numpy()[:, :3]
+        # # transformed_source = (source[:, :3] * s @ R + t).detach().cpu().numpy()
+        # hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_source)
+        # hair_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('Init_transformed_source.ply', hair_mesh)
 
         mesh_width = (target[4051, :3] - target[4597, :3]).norm() # 2 x distance between the eyes
         width_raw_new = self.width_raw * mesh_width / self.prev_mesh_width
@@ -426,6 +506,12 @@ class GaussianHairModule(GaussianBaseModule):
 
         out = self.strands_generator(roots, self.theta, self.beta)
         pts_perm = out['strands'][0].position
+        
+        # TODO: add strand length control, Later maybe adptively change the strand length on certain area
+        # maybe choose the points evenly, instead of simply cut the points
+        evenly_indices = torch.linspace(0, 99, self.strand_length).long()
+        pts_perm = pts_perm[:, evenly_indices]
+        # pts_perm = pts_perm[:, :self.strand_length]
 
         # Map strands into the scene coordinates
         pts = (torch.cat([pts_perm, torch.ones_like(pts_perm[..., :1])], dim=-1) @ self.transform)[..., :3]
@@ -433,6 +519,87 @@ class GaussianHairModule(GaussianBaseModule):
 
         return pts[:, 1:], dir.view(-1, 3), pts[:, :1], strands_idx
     
+    # TODO: according to split num or length threshold?
+    def split_strands(self, length_threshold):
+        # Split the strands into groups according the length
+        long_axis = self.dir.norm(dim=-1) * 0.66
+        short_axis = self.width
+        # [strand_num, strand_length-1]
+        length_ratio = long_axis / short_axis
+        # [strand_num]
+        length_ratio = length_ratio.mean(dim=-1)
+        groups = []
+
+
+        while (length_threshold > 0.1):
+            nxt_length_threshold = length_threshold / 2
+            candidates = torch.logical_and(length_ratio <= length_threshold, length_ratio > nxt_length_threshold)
+            if candidates.sum() == 0:
+                break
+            groups.append(candidates)
+            length_threshold = nxt_length_threshold
+
+        return groups
+    
+    def simplify_strands(self, groups):
+
+        xyz_list = []
+        scales_list = []
+        opacity_list = []
+        seg_label_list = []
+        rotation_list = []
+        features_dc_list = []
+        features_rest_list = []
+
+        for idx, group in enumerate(groups):
+            
+            target_len = max(2, int(self.strand_length / (2 ** idx)))
+            
+            # strand_length includes the root point, so target_length - 1 is the real strand length
+            evenly_indices = torch.linspace(0, self.strand_length - 1, target_len).long()
+            points_origin = self.points_origins[group].view(-1, self.strand_length, 3)[:, evenly_indices]
+            dir = points_origin[:, 1:] - points_origin[:, :-1]
+            
+            xyz = (points_origin[:, 1:] + points_origin[:, :-1]).view(-1, 3) * 0.5
+            scales = torch.ones_like(xyz)
+            scales[:, 0] = dir.norm(dim=-1) * 0.66
+            scales[:, 1:] = self.width[group].repeat(1, target_len - 1).view(-1, 1)
+            scales = self.scales_inverse_activation(scales)
+            opacity = self.opacity[group].view(-1, 1)
+            seg_label = torch.zeros_like(xyz)
+            rotation = parallel_transport(
+            a=torch.cat(
+                [
+                    torch.ones_like(self.xyz[:, :1]),
+                    torch.zeros_like(self.xyz[:, :2])
+                ],
+                dim=-1
+            ),
+            b=self.dir
+            ).view(-1, 4) # rotation parameters that align x-axis with the segment direction
+
+            features_dc = self.features_dc.view(-1, self.strand_length - 1, 3)[group, evenly_indices]
+            features_rest = self.features_rest.view(-1, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3)[group, evenly_indices]
+
+            xyz_list.append(xyz)
+            scales_list.append(scales)
+            opacity_list.append(opacity)
+            seg_label_list.append(seg_label)
+            rotation_list.append(rotation)
+            features_dc_list.append(features_dc)
+            features_rest_list.append(features_rest)
+        
+        self.xyz = torch.cat(xyz_list, dim=0)
+        self.scales = torch.cat(scales_list, dim=0)
+        self.opacity = torch.cat(opacity_list, dim=0)
+        self.seg_label = torch.cat(seg_label_list, dim=0)
+        self.rotation = torch.cat(rotation_list, dim=0)
+        self.features_dc = torch.cat(features_dc_list, dim=0)
+        self.features_rest = torch.cat(features_rest_list, dim=0)
+
+        return 
+
+
 
     # set gaussian representation from hair strands
     def generate_hair_gaussians(self, num_strands = -1, skip_color = False, skip_smpl = False, backprop_into_prior = False, pose_params = None):
@@ -462,21 +629,16 @@ class GaussianHairModule(GaussianBaseModule):
         # Add dynamics to the hair strands
         # Points shift
         if pose_params is not None:
-            # pose_embedding = self.pos_embedding(pose_params)
-            # points = self.points_origins.view(-1, 3)
-            # pose_deform_input = torch.cat([self.pos_embedding(points).t(), 
-            #                                 pose_embedding.unsqueeze(-1).repeat(1, points.shape[0])], 0)[None]
-            # pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
-            # self.points_origins = self.points_origins + pose_deform.view(num_strands, self.strand_length, 3)
-            # self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
-
-            # try to only change the origin
+            # try only change the points
             pose_embedding = self.pos_embedding(pose_params)
-            origins = self.origins.view(-1, 3)
-            pose_deform_input = torch.cat([self.pos_embedding(origins).t(), 
-                                            pose_embedding.unsqueeze(-1).repeat(1, origins.shape[0])], 0)[None]
+            # [strand_num, strand_length-1, 3] -> [strand_num * (strand_length-1), 3]
+            points = self.points.contiguous().view(-1, 3)
+            pose_deform_input = torch.cat([self.pos_embedding(points).t(),
+                                            pose_embedding.unsqueeze(-1).repeat(1, points.shape[0])], 0)[None]
             pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
-            self.origins = self.origins + pose_deform.view(num_strands, 1, 3)
+            # pose deformation corresponds to the optical flow(velocity) of the xyz
+            # self.pose_deform = pose_deform
+            self.points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
             self.points_origins = torch.cat([self.origins, self.points], dim=1)
             self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
         
@@ -485,6 +647,12 @@ class GaussianHairModule(GaussianBaseModule):
         if not skip_color:
             self.features_dc = self.features_dc_raw.view(self.num_strands, self.strand_length - 1, 1, 3)[strands_idx].view(-1, 1, 3)
             self.features_rest = self.features_rest_raw.view(self.num_strands, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3).view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3) 
+
+        # TODO: split the hair strands to different groups based on length condition
+        # for each group, decrease the strand point number.
+        # can do it iteratively util the length condition is satisfied
+        # finlly merge the results.
+        # ideally should get something like [ [group1_strand_indices], [group2_strand_indices], ...]
 
         self.xyz = (self.points_origins[:, 1:] + self.points_origins[:, :-1]).view(-1, 3) * 0.5
 
@@ -647,10 +815,26 @@ class GaussianHairModule(GaussianBaseModule):
             sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
             color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
 
+        # debug, let all have same color
+        # color[:,:,:3] = color[0,0,:3]
         
-
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
         opacity = self.get_opacity.unsqueeze(0).repeat(B, 1, 1)
+
+        # from canonical space to world space, uses in orginal codes.
+        if 'pose' in data:
+            R = so3_exponential_map(data['pose'][:, :3])
+            T = data['pose'][:, None, 3:]
+            S = data['scale'][:, :, None]
+            xyz = torch.bmm(xyz * S, R.permute(0, 2, 1)) + T
+
+            rotation_matrix = quaternion_to_matrix(rotation)
+            rotation_matrix = rearrange(rotation_matrix, 'b n x y -> (b n) x y')
+            R = rearrange(R.unsqueeze(1).repeat(1, rotation.shape[1], 1, 1), 'b n x y -> (b n) x y')
+            rotation_matrix = rearrange(torch.bmm(R, rotation_matrix), '(b n) x y -> b n x y', b=B)
+            rotation = matrix_to_quaternion(rotation_matrix)
+
+            scales = scales * S
 
         hair_data['xyz'] = xyz
         hair_data['color'] = color

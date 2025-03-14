@@ -100,6 +100,7 @@ class GaussianHeadTrainRecorder():
                        "loss_vgg": log_data['loss_vgg'],
                        "loss_segment": log_data['loss_segment'],
                        "loss_transform_reg": log_data['loss_transform_reg'],
+                       "loss_dir": log_data['loss_dir'],
                     #    "seg_label": log_data['gaussianhead'].seg_label.mean(),
                        "points_num": log_data['gaussianhead'].xyz.shape[0] })
 
@@ -112,6 +113,9 @@ class GaussianHeadTrainRecorder():
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest' % (self.checkpoint_path, self.name))
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
 
+            # too memory consuming, only used when reuiqring SIBR viewer
+            log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
+            # log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
 
         if log_data['iter'] % self.show_freq == 0:
             image = log_data['data']['images'][0].permute(1, 2, 0).detach().cpu().numpy()
@@ -121,18 +125,16 @@ class GaussianHeadTrainRecorder():
             render_image = log_data['data']['render_images'][0, 0:3].permute(1, 2, 0).detach().cpu().numpy()
             render_image = (render_image * 255).astype(np.uint8)[:,:,::-1]
 
-            cropped_image = log_data['data']['cropped_images'][0].permute(1, 2, 0).detach().cpu().numpy()
-            cropped_image = (cropped_image * 255).astype(np.uint8)[:,:,::-1]
+            # cropped_image = log_data['data']['cropped_images'][0].permute(1, 2, 0).detach().cpu().numpy()
+            # cropped_image = (cropped_image * 255).astype(np.uint8)[:,:,::-1]
 
-            supres_image = log_data['data']['supres_images'][0].permute(1, 2, 0).detach().cpu().numpy()
-            supres_image = (supres_image * 255).astype(np.uint8)[:,:,::-1]
+            # supres_image = log_data['data']['supres_images'][0].permute(1, 2, 0).detach().cpu().numpy()
+            # supres_image = (supres_image * 255).astype(np.uint8)[:,:,::-1]
 
             render_image = cv2.resize(render_image, (image.shape[0], image.shape[1]))
-            result = np.hstack((image, render_image, cropped_image, supres_image))
+            # result = np.hstack((image, render_image, cropped_image, supres_image))
+            result = np.hstack((image, render_image))
             
-            # too memory consuming, only used when reuiqring SIBR viewer
-            # log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
-            # log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
 
             xyz = log_data['gaussianhair'].xyz.detach().cpu().numpy()
             hairmesh = o3d.geometry.TriangleMesh()
@@ -150,17 +152,27 @@ class GaussianHeadTrainRecorder():
             if self.debug_tool == 'wandb':
                 images = []
 
-                result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
-                images.append(wandb.Image(result, caption="rendered"))
+                # result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
+                # result = cv2.resize(result, (image.shape[0] * 2, image.shape[1]))
+                # images.append(wandb.Image(result, caption="rendered"))
+                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                image = cv2.resize(image, (render_image.shape[0], render_image.shape[1]))
+                images.append(wandb.Image(image, caption="gt_image"))
+
+                render_image = cv2.cvtColor(render_image, cv2.COLOR_BGR2RGB)
+                render_image = cv2.resize(render_image, (render_image.shape[0], render_image.shape[1]))
+                images.append(wandb.Image(render_image, caption="rendered_image"))
 
                 segment_vis = log_data['data']['gt_segment'][0]
                 segment_vis[1] = torch.clamp(segment_vis[1] - segment_vis[2] , 0, 1)
                 segment_vis = segment_vis.permute(1, 2, 0).detach().cpu().numpy()
                 segment_vis = (segment_vis * 255).astype(np.uint8)
+                segment_vis = cv2.resize(segment_vis, (image.shape[0], image.shape[1]))
                 images.append(wandb.Image(segment_vis, caption="Segmentation"))
 
                 render_segment = log_data['data']['render_segments'][0].permute(1, 2, 0).detach().cpu().numpy()
                 render_segment = (render_segment * 255).astype(np.uint8)
+                render_segment = cv2.resize(render_segment, (image.shape[0], image.shape[1]))
                 images.append(wandb.Image(render_segment, caption="rendered_segment"))
 
                 # append segment[2]

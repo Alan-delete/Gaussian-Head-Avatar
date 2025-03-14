@@ -227,7 +227,8 @@ if __name__ == '__main__':
 
 
     # there may be legacy mask images in image folder, so we need to filter out those by using image_[0-9]*.
-    filepaths = glob.glob(os.path.join(data_dir, 'images', '*', f'image_[0-9]*.{args.image_format}'))
+    # filepaths = glob.glob(os.path.join(data_dir, 'images', '*', f'image_[0-9]*.{args.image_format}'))
+    filepaths = glob.glob(os.path.join(data_dir, 'images', '*', f'image_*.{args.image_format}'))
     for filename in tqdm.tqdm(sorted(filepaths)):
         with torch.no_grad():
             img = Image.open(filename)
@@ -237,6 +238,7 @@ if __name__ == '__main__':
                 max_size = max_size if max_size != -1 else None
                 img = Resize(img_size, InterpolationMode.BICUBIC, max_size)(img)
 
+            # TODO:images like "image_lowres_220700191.jpg" don't need to be processed for hair mask
             _, mask_hair, _, _ = run_inference(
                 np.asarray(img), [], 
                 erode_kernel_size=args.kernel_size, 
@@ -247,7 +249,7 @@ if __name__ == '__main__':
                 tr_box_threshold=0.5, 
                 tr_text_threshold=0.25,
                 tr_caption="glass.lens.crystal.diamond.bubble.bulb.web.grid")
-
+                
             # _, mask_face, _, _ = run_inference(
             #     np.asarray(img), [], 
             #     erode_kernel_size=args.kernel_size, 
@@ -259,26 +261,29 @@ if __name__ == '__main__':
             #     tr_text_threshold=0.25,
             #     tr_caption="glass.lens.crystal.diamond.bubble.bulb.web.grid")
 
-            # _, mask_body, _, _ = run_inference(
-            #     np.asarray(img), [], 
-            #     erode_kernel_size=args.kernel_size, 
-            #     dilate_kernel_size=args.kernel_size, 
-            #     fg_box_threshold=0.25, 
-            #     fg_text_threshold=0.25, 
-            #     fg_caption="human", 
-            #     tr_box_threshold=0.5, 
-            #     tr_text_threshold=0.25,
-            #     tr_caption="glass.lens.crystal.diamond.bubble.bulb.web.grid")
+            _, mask_body, _, _ = run_inference(
+                np.asarray(img), [], 
+                erode_kernel_size=args.kernel_size, 
+                dilate_kernel_size=args.kernel_size, 
+                fg_box_threshold=0.25, 
+                fg_text_threshold=0.25, 
+                fg_caption="human", 
+                tr_box_threshold=0.5, 
+                tr_text_threshold=0.25,
+                tr_caption="glass.lens.crystal.diamond.bubble.bulb.web.grid")
             
             mask_hair = Image.fromarray((mask_hair * 255).astype('uint8'))
             # mask_face = Image.fromarray((mask_face * 255).astype('uint8'))
-            # mask_body = Image.fromarray((mask_body * 255).astype('uint8'))
+            mask_body = Image.fromarray((mask_body * 255).astype('uint8'))
 
             if img_size != -1:
                 mask_hair = mask_hair.resize(orig_img_size, Image.BICUBIC)
                 # mask_face = mask_face.resize(orig_img_size, Image.BICUBIC)
-                # mask_body = mask_body.resize(orig_img_size, Image.BICUBIC)
+                mask_body = mask_body.resize(orig_img_size, Image.BICUBIC)
 
             mask_hair.save(filename.replace(f'images', f'masks{args.postfix}/hair').replace(args.image_format, 'png'))
             # mask_face.save(filename.replace(f'images', f'masks{args.postfix}/face').replace(args.image_format, 'png'))
             # mask_body.save(filename.replace(f'images', f'masks{args.postfix}/body').replace(args.image_format, 'png'))
+            
+            # HAVATAR way of data storage
+            mask_body.save(filename.replace(f'image_', f'mask_'))

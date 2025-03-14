@@ -4,6 +4,48 @@ from tqdm import tqdm
 import random
 import lpips
 
+import math
+def gaussian(window_size, sigma):
+    gauss = torch.Tensor([math.exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
+    return gauss / gauss.sum()
+
+def create_window(window_size, channel):
+    _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
+    _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
+    window = torch.autograd.Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
+    return window
+
+def ssim(img1, img2, window_size=11):
+    channel = img1.size(-3)
+    window = create_window(window_size, channel)
+
+    if img1.is_cuda:
+        window = window.cuda(img1.get_device())
+    window = window.type_as(img1)
+
+    return _ssim(img1, img2, window, window_size, channel, size_average=True)
+
+def _ssim(img1, img2, window, window_size, channel, size_average=True):
+    mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
+    mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
+
+    mu1_sq = mu1.pow(2)
+    mu2_sq = mu2.pow(2)
+    mu1_mu2 = mu1 * mu2
+
+    sigma1_sq = F.conv2d(img1 * img1, window, padding=window_size // 2, groups=channel) - mu1_sq
+    sigma2_sq = F.conv2d(img2 * img2, window, padding=window_size // 2, groups=channel) - mu2_sq
+    sigma12 = F.conv2d(img1 * img2, window, padding=window_size // 2, groups=channel) - mu1_mu2
+
+    C1 = 0.01 ** 2
+    C2 = 0.03 ** 2
+
+    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
+
+    if size_average:
+        return ssim_map.mean()
+    else:
+        return ssim_map.mean(1).mean(1).mean(1)
 
 class GaussianHeadHairTrainer():
     def __init__(self, dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, gpu_id, cfg = None):
@@ -22,6 +64,7 @@ class GaussianHeadHairTrainer():
 
     def train(self, start_epoch=0, epochs=1):
         for epoch in range(start_epoch, epochs):
+            # TODO: set time decay for frame at the begining of each epoch to learning more about the first frame
             for idx, data in tqdm(enumerate(self.dataloader)):
                 
                 iteration = idx + epoch * len(self.dataloader)
@@ -45,13 +88,20 @@ class GaussianHeadHairTrainer():
                 resolution_fine = images.shape[2]
 
                 data['pose'] = data['pose'] + self.delta_poses[data['exp_id'], :]
-
+                
+                if iteration == self.cfg.gaussianhairmodule.strands_reset_from_iter: 
+                    self.gaussianhair.reset_strands()
+                # before 4000, backprop into prior
                 backprop_into_prior = iteration <= self.cfg.gaussianhairmodule.strands_reset_from_iter
-                self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, backprop_into_prior=backprop_into_prior)
-                # self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, 
-                #                                           backprop_into_prior=backprop_into_prior, 
-                #                                           pose_params= data['pose'][0])
+                # self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, backprop_into_prior=backprop_into_prior)
+                self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, 
+                                                          backprop_into_prior=backprop_into_prior, 
+                                                          pose_params= data['pose'][0] if iteration > 0 else None)
                 self.gaussianhair.update_learning_rate(iteration)
+
+                if iteration == 100: 
+                    groups = self.gaussianhair.split_strands(40)
+                    # self.gaussianhair.simplify_strands(groups)
 
                 # Every 1000 its we increase the levels of SH up to a maximum degree
                 # if iteration % 1000 == 0:
@@ -66,6 +116,12 @@ class GaussianHeadHairTrainer():
                     data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
 
                 data = self.camera.render_gaussian(data, resolution_coarse)
+                
+                #  default [4000, 15000], during that period, use strand raw data to rectify the prior 
+                if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter:
+                    points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
+                    pred_pts = dirs if self.gaussianhair.train_directions else points
+
                 viewspace_point_tensor = data["viewspace_points"]
                 visibility_filter = data["visibility_filter"]
                 radii = data["radii"]
@@ -88,16 +144,24 @@ class GaussianHeadHairTrainer():
                     return (gt - pred).clamp(min=0).mean()
                 
                 def relax_recall_loss(gt, pred):
-                    return (gt - pred).clamp(min=0).mean() + 0.05 * (pred - gt).clamp(min=0).mean()
+                    return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.1
                 
                 # find that the hair segment is not well predicted, so add extra hair segment loss
                 # loss_segment = l1_loss(segment_clone, gt_segment)  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
                 # loss_segment =  10 * l1_loss(segment_clone[:,2], gt_segment[:,2]) if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
                 
                 # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
-                loss_segment =  25 * relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+                loss_segment =(relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+                
+                
+                loss_transform_reg =  F.mse_loss(self.gaussianhair.init_transform, self.gaussianhair.transform) 
 
-                loss_transform_reg = 0.1 * F.mse_loss(self.gaussianhair.init_transform, self.gaussianhair.transform) if iteration < 1000 else 0
+                
+                # TODO: try mesh distance loss, also try knn color regularization
+
+                gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
+                loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
+
 
                 # crop images for augmentation
                 scale_factor = random.random() * 0.45 + 0.8
@@ -115,7 +179,15 @@ class GaussianHeadHairTrainer():
                 left_up = (random.randint(0, supres_images.shape[2] - 512), random.randint(0, supres_images.shape[3] - 512))
                 loss_vgg = self.fn_lpips((supres_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], 
                                             (cropped_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], normalize=True).mean()
-                loss = loss_rgb_hr + loss_rgb_lr + loss_vgg * 1e-1 + loss_segment * 5e-1 + loss_transform_reg * 1e-1
+                # loss = loss_rgb_hr + loss_rgb_lr + loss_vgg * 1e-1 + loss_segment * 12.5
+                loss = (
+                        loss_rgb_hr * self.cfg.loss_weights.rgb_hr +
+                        loss_rgb_lr * self.cfg.loss_weights.rgb_lr +
+                        loss_vgg * self.cfg.loss_weights.vgg +
+                        loss_segment * self.cfg.loss_weights.segment + 
+                        loss_transform_reg * self.cfg.loss_weights.transform_reg +
+                        loss_dir * self.cfg.loss_weights.dir
+                    )
 
                 self.optimizer.zero_grad()
                 loss.backward()
@@ -215,6 +287,7 @@ class GaussianHeadHairTrainer():
                     'loss_vgg' : loss_vgg,
                     'loss_segment' : loss_segment,
                     'loss_transform_reg' : loss_transform_reg,
+                    'loss_dir' : loss_dir,
                     'epoch' : epoch,
                     'iter' : idx + epoch * len(self.dataloader)
                 }

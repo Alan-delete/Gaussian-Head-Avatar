@@ -33,6 +33,16 @@ class config_train(config_base):
         self.cfg.optimize_pose = False                          # optimize delta_poses or not
         self.cfg.use_supres = True                              # use super resolution network or not, if not, directly use first 3 channels of the 32 channels 
         self.cfg.train_segment = False                          # train the segmentation or not
+   
+        self.cfg.loss_weights = CN()
+        self.cfg.loss_weights.rgb_hr = 1.0                      # loss for high resolution image
+        self.cfg.loss_weights.rgb_lr = 1.0                      # loss for low resolution image
+        self.cfg.loss_weights.dssim = 2e-1                      # loss for SSIM
+        self.cfg.loss_weights.vgg = 1e-1                        # loss for perceptual loss
+        self.cfg.loss_weights.segment = 1.25e1                  # loss for segmentation
+        self.cfg.loss_weights.transform_reg = 1e-4              # loss for transformation regularization
+        self.cfg.loss_weights.dir = 1e1                         # loss for prior
+
 
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset

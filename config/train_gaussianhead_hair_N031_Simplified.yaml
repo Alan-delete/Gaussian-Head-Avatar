@@ -17,6 +17,15 @@ dataset:
   original_resolution: 2048
   resolution: 2048
 
+
+loss_weights:
+  rgb_hr: 1.0
+  rgb_lr: 1.0
+  vgg: 1e-1
+  segment: 1e1
+  transform_reg: 1e-1
+  dir: 1e1
+
 meshheadmodule:
   geo_mlp: [27, 256, 256, 256, 256, 256, 132]
   exp_color_mlp: [192, 256, 256, 32]
@@ -74,7 +83,7 @@ gaussianhairmodule:
   deform_scale: 0.3
   attributes_scale: 0.2
   num_strands: 10_140
-  strand_length: 100
+  strand_length: 30
   simplify_strands: False
   aspect_ratio: 1
   quantile: 1
@@ -85,7 +94,9 @@ gaussianhairmodule:
   strand_scale : 0.001
   sh_degree : 3
 
-  strands_reset_from_iter: 4_000
+  # strands_reset_from_iter: 4_000
+  # just reset strands once at 15000, just [0, 15000] train the prior and [15000, ] train the strands
+  strands_reset_from_iter: 15_000
   strands_reset_until_iter: 15_000
   strands_reset_interval: 1_000
 
@@ -110,7 +121,8 @@ gaussianhairmodule:
   position_lr_final: 0.0000016
   position_lr_delay_mult: 0.01
   position_lr_max_steps: 30_000
-  feature_lr: 0.0025
+  # feature_lr: 0.0025
+  feature_lr: 0.01
   opacity_lr: 0.05
   label_lr: 0.05
   orient_conf_lr: 0.05
@@ -125,5 +137,5 @@ recorder:
   logdir: 'log/gaussianhead_NeRSemble031_Simplified'
   checkpoint_path: 'checkpoints'
   result_path: 'results'
-  save_freq: 20000
-  show_freq: 2000
+  save_freq: 5000
+  show_freq: 100
