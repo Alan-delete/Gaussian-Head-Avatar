@@ -42,11 +42,14 @@ class config_train(config_base):
         self.cfg.loss_weights.segment = 1.25e1                  # loss for segmentation
         self.cfg.loss_weights.transform_reg = 1e-4              # loss for transformation regularization
         self.cfg.loss_weights.dir = 1e1                         # loss for prior
-
+        self.cfg.loss_weights.mesh_dist = 1e-4                  # loss for mesh distance
+        self.cfg.loss_weights.knn_feature = 1e-4                # loss for knn feature loss
+        self.cfg.loss_weights.orient = 1e-1                     # loss for orientation
 
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset
         self.cfg.dataset.camera_ids = []                        # which cameras are used
+        self.cfg.dataset.test_camera_ids = []                   # which cameras are used for testing
         self.cfg.dataset.original_resolution = 2048             # original image resolution, should match the intrinsic
         self.cfg.dataset.resolution = 512                       # image resolution for rendering
         self.cfg.dataset.num_sample_view = 8                    # number of sampled images from different views during mesh head training

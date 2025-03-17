@@ -317,19 +317,25 @@ class GaussianHairModule(GaussianBaseModule):
                     param_group['opt'] = 'disabled'
 
     # TODO: data should provide image_height and image_width and world_view_transform
-    def get_direction_2d(self, viewpoint_camera):
-        mean = self.get_xyz
+    def get_direction_2d(self, fovx, fovy, height, width, viewmatrix, xyz = None, dir = None):
+        mean = self.get_xyz if xyz is None else xyz
+        
+        # fovx = viewpoint_camera['fovx']
+        # fovy = viewpoint_camera['fovy']
 
-        height = int(viewpoint_camera.image_height)
-        width = int(viewpoint_camera.image_width)
+        # resolution = viewpoint_camera['image'].shape[2]
+
+        # height = int(resolution)
+        # width = int(resolution)
     
-        tan_fovx = torch.tan(viewpoint_camera.FoVx * 0.5)
-        tan_fovy = torch.tan(viewpoint_camera.FoVy * 0.5)
+        tan_fovx = torch.tan(fovx * 0.5)
+        tan_fovy = torch.tan(fovy * 0.5)
+
 
         focal_y = height / (2.0 * tan_fovy)
         focal_x = width / (2.0 * tan_fovx)
 
-        viewmatrix = viewpoint_camera.world_view_transform
+        # viewmatrix = viewpoint_camera['world_view_transform']
 
         t = (mean[:, None, :] @ viewmatrix[None, :3, :3] + viewmatrix[None, [3], :3])[:, 0]
         tx, ty, tz = t[:, 0], t[:, 1], t[:, 2]
@@ -358,7 +364,8 @@ class GaussianHairModule(GaussianBaseModule):
         T = W @ J
 
         #dir3D = F.normalize(self.dir, dim=-1)
-        dir2D = (self.dir[:, None, :] @ T)[:, 0]
+        dir = self.dir if dir is None else dir
+        dir2D = (dir[:, None, :] @ T)[:, 0]
         dir2D = torch.nn.functional.normalize(dir2D, dim=-1)
 
         return dir2D
@@ -397,8 +404,33 @@ class GaussianHairModule(GaussianBaseModule):
 
         return R, s, t
 
+    def mesh_distance_loss(self):
+        # strand_num, 3
+        roots = self.origins.view(-1, 3)
+        vecrtices = torch.from_numpy(np.asarray(self.FLAME_mesh.vertices)).cuda()
+        square_dist = ((roots[:, None] - vecrtices[None])**2).sum(dim=-1)
+        square_dist = square_dist.min(dim=-1)[0]
+        return square_dist.mean()
+    
+    # TODO: use root distance or point distance?
+    def knn_feature_loss(self):
+        # strand_num, 3
+        roots = self.origins.view(-1, 3)
+        # don't need to do it every time
+        # _, indices = distCUDA2(roots, roots)
+        square_dist = ((roots[:, None] - roots[None])**2).sum(dim=-1)
+        _, indices = square_dist.topk(2, dim=-1, largest=False)
+        indices = indices[:, 1]
+
+        # should get idx of size [num_strands], indicating the nearest neighbor
+        feature_dc = self.features_dc_raw.view(self.num_strands, self.strand_length -1, -1)
+        feature_diff = (feature_dc - feature_dc[indices]) ** 2
+        
+        return feature_diff.mean()
+
+
     # TODO: dirpath and flame_mesh_dir should be provided instead of hardcoded
-    def update_mesh_alignment_transform(self, R, T, S, dir_path = None, flame_mesh_dir = None):
+    def update_mesh_alignment_transform(self, R, T, S, dir_path = None, flame_mesh_path = 'datasets/mini_demo_dataset/031/FLAME_params/0000/mesh_0.obj'):
         # Estimate the transform to align Perm canonical space with the scene
         print('Updating FLAME to Pinscreen alignment transform')
         # source_mesh = o3d.io.read_triangle_mesh(f'{dir_path}/data/flame_mesh_aligned_to_pinscreen.obj')
@@ -408,7 +440,8 @@ class GaussianHairModule(GaussianBaseModule):
         # target = torch.from_numpy(np.asarray(target_mesh.vertices))
         # already posed mesh, for hair we don't do the pose transformation again in generate() function
         # target = torch.from_numpy(np.load('datasets/mini_demo_dataset/031/FLAME_params/0000/vertices.npy').astype(np.double))
-        target = o3d.io.read_triangle_mesh('datasets/mini_demo_dataset/031/FLAME_params/0000/mesh_0.obj')
+        target = o3d.io.read_triangle_mesh(flame_mesh_path)
+        self.FLAME_mesh = target
         target = torch.from_numpy(np.asarray(target.vertices))
 
         # tensor double
@@ -418,31 +451,32 @@ class GaussianHairModule(GaussianBaseModule):
         target = (torch.matmul(target- T, R)) / S 
 
 
+
         # hair_list_filename = "assets/FLAME/hair_list.pkl"
         # with open(hair_list_filename, 'rb') as f:
         #     scalp_indices = torch.tensor(pickle.load(f))
         #     self.scalp_indices = scalp_indices
-            # source = source[scalp_indices]  
-            # target = target[scalp_indices] 
+        #     source = source[scalp_indices]  
+        #     target = target[scalp_indices] 
 
 
         # # create a mesh from xyz
-        # hair_mesh = o3d.geometry.TriangleMesh()
+        hair_mesh = o3d.geometry.TriangleMesh()
         # hair_mesh.vertices = o3d.utility.Vector3dVector(self.xyz.detach().cpu().numpy())
         # hair_mesh.compute_vertex_normals()
         # o3d.io.write_triangle_mesh('Init_source_hair.ply', hair_mesh)
 
-        # # source mesh
-        # source_mesh = o3d.geometry.TriangleMesh()
-        # source_mesh.vertices = o3d.utility.Vector3dVector(source)
-        # source_mesh.compute_vertex_normals()
-        # o3d.io.write_triangle_mesh('Init_source_mesh.ply', source_mesh)
+        # source mesh
+        source_mesh = o3d.geometry.TriangleMesh()
+        source_mesh.vertices = o3d.utility.Vector3dVector(source)
+        source_mesh.compute_vertex_normals()
+        o3d.io.write_triangle_mesh('Init_source_mesh.ply', source_mesh)
 
-        # # create a mesh from the target vertices for debugging
-        # target_mesh = o3d.geometry.TriangleMesh()
-        # target_mesh.vertices = o3d.utility.Vector3dVector(target)
-        # target_mesh.compute_vertex_normals()
-        # o3d.io.write_triangle_mesh('Init_target_mesh.ply', target_mesh) 
+        # create a mesh from the target vertices for debugging
+        target_mesh = o3d.geometry.TriangleMesh()
+        target_mesh.vertices = o3d.utility.Vector3dVector(target)
+        target_mesh.compute_vertex_normals()
+        o3d.io.write_triangle_mesh('Init_target_mesh.ply', target_mesh) 
         
 
         source = torch.cat([source, torch.ones_like(source[:, :1])], -1)
@@ -454,19 +488,19 @@ class GaussianHairModule(GaussianBaseModule):
         self.init_transform = self.transform.detach().clone()
         
 
-        # # transformed hair
-        # transformed_hair = (torch.cat([self.xyz, torch.ones_like(self.xyz[:, :1])], -1) @ self.transform).detach().cpu().numpy()[:, :3]
-        # # transformed_hair = (self.xyz * s @ R.cuda().float() + t.cuda().float()).detach().cpu().numpy()
-        # hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_hair)
-        # hair_mesh.compute_vertex_normals()
-        # o3d.io.write_triangle_mesh('Init_transformed_hair.ply', hair_mesh)
+        # transformed hair
+        transformed_hair = (torch.cat([self.xyz, torch.ones_like(self.xyz[:, :1])], -1) @ self.transform).detach().cpu().numpy()[:, :3]
+        # transformed_hair = (self.xyz * s @ R.cuda().float() + t.cuda().float()).detach().cpu().numpy()
+        hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_hair)
+        hair_mesh.compute_vertex_normals()
+        o3d.io.write_triangle_mesh('Init_transformed_hair.ply', hair_mesh)
 
-        # # transformed source
-        # transformed_source = (torch.cat([source[:, :3], torch.ones_like(source[:, :1])], -1) @ transform).detach().cpu().numpy()[:, :3]
-        # # transformed_source = (source[:, :3] * s @ R + t).detach().cpu().numpy()
-        # hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_source)
-        # hair_mesh.compute_vertex_normals()
-        # o3d.io.write_triangle_mesh('Init_transformed_source.ply', hair_mesh)
+        # transformed source
+        transformed_source = (torch.cat([source[:, :3], torch.ones_like(source[:, :1])], -1) @ transform).detach().cpu().numpy()[:, :3]
+        # transformed_source = (source[:, :3] * s @ R + t).detach().cpu().numpy()
+        hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_source)
+        hair_mesh.compute_vertex_normals()
+        o3d.io.write_triangle_mesh('Init_transformed_source.ply', hair_mesh)
 
         mesh_width = (target[4051, :3] - target[4597, :3]).norm() # 2 x distance between the eyes
         width_raw_new = self.width_raw * mesh_width / self.prev_mesh_width
@@ -522,14 +556,15 @@ class GaussianHairModule(GaussianBaseModule):
     # TODO: according to split num or length threshold?
     def split_strands(self, length_threshold):
         # Split the strands into groups according the length
-        long_axis = self.dir.norm(dim=-1) * 0.66
-        short_axis = self.width
+        # [strand_num, strand_length-1]
+        long_axis = 0.66 * self.dir.norm(dim=-1).view(self.num_strands, self.strand_length-1) 
+        # [strand_num, 1]
+        short_axis = self.width.view(self.num_strands, -1)
         # [strand_num, strand_length-1]
         length_ratio = long_axis / short_axis
         # [strand_num]
         length_ratio = length_ratio.mean(dim=-1)
         groups = []
-
 
         while (length_threshold > 0.1):
             nxt_length_threshold = length_threshold / 2
@@ -541,7 +576,7 @@ class GaussianHairModule(GaussianBaseModule):
 
         return groups
     
-    def simplify_strands(self, groups):
+    def shorten_strands(self, groups):
 
         xyz_list = []
         scales_list = []
@@ -553,33 +588,39 @@ class GaussianHairModule(GaussianBaseModule):
 
         for idx, group in enumerate(groups):
             
-            target_len = max(2, int(self.strand_length / (2 ** idx)))
+            target_len = max(2, int(self.strand_length / (2 ** (idx + 1))))
             
             # strand_length includes the root point, so target_length - 1 is the real strand length
             evenly_indices = torch.linspace(0, self.strand_length - 1, target_len).long()
+            # create mask for indexing
+            # indice_mask = torch.zeros(self.strand_length, dtype=torch.bool)
+            # indice_mask[evenly_indices] = True 
+
             points_origin = self.points_origins[group].view(-1, self.strand_length, 3)[:, evenly_indices]
-            dir = points_origin[:, 1:] - points_origin[:, :-1]
+            dir = (points_origin[:, 1:] - points_origin[:, :-1]).view(-1, 3)
             
             xyz = (points_origin[:, 1:] + points_origin[:, :-1]).view(-1, 3) * 0.5
             scales = torch.ones_like(xyz)
-            scales[:, 0] = dir.norm(dim=-1) * 0.66
+            # breakpoint()
+            scales[:, 0] = 0.66 * dir.norm(dim=-1).view(-1)
             scales[:, 1:] = self.width[group].repeat(1, target_len - 1).view(-1, 1)
             scales = self.scales_inverse_activation(scales)
-            opacity = self.opacity[group].view(-1, 1)
+            # opacity = self.opacity.view(-1, self.strand_length - 1, 1)[group, evenly_indices[:-1], :].view(-1, 1)
+            opacity = self.opacity.view(-1, self.strand_length - 1, 1)[group][:, evenly_indices[:-1], :].view(-1, 1)
             seg_label = torch.zeros_like(xyz)
             rotation = parallel_transport(
             a=torch.cat(
                 [
-                    torch.ones_like(self.xyz[:, :1]),
-                    torch.zeros_like(self.xyz[:, :2])
+                    torch.ones_like(xyz[:, :1]),
+                    torch.zeros_like(xyz[:, :2])
                 ],
                 dim=-1
             ),
-            b=self.dir
+            b=dir
             ).view(-1, 4) # rotation parameters that align x-axis with the segment direction
 
-            features_dc = self.features_dc.view(-1, self.strand_length - 1, 3)[group, evenly_indices]
-            features_rest = self.features_rest.view(-1, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3)[group, evenly_indices]
+            features_dc = self.features_dc.view(-1, self.strand_length - 1, 3)[group][:, evenly_indices[:-1]].view(-1, 1, 3)
+            features_rest = self.features_rest.view(-1, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3)[group][:,evenly_indices[:-1]].view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3)
 
             xyz_list.append(xyz)
             scales_list.append(scales)
@@ -803,6 +844,7 @@ class GaussianHairModule(GaussianBaseModule):
         xyz = self.get_xyz.unsqueeze(0).repeat(B, 1, 1)
         scales = self.get_scales.unsqueeze(0).repeat(B, 1, 1)   
         rotation = self.get_rotation.unsqueeze(0).repeat(B, 1, 1)
+        dir = self.dir.unsqueeze(0).repeat(B, 1, 1)
         
         # need 32 channels for the color
         color = torch.zeros([B, self.xyz.shape[0], 32], device=xyz.device)
@@ -828,13 +870,29 @@ class GaussianHairModule(GaussianBaseModule):
             S = data['scale'][:, :, None]
             xyz = torch.bmm(xyz * S, R.permute(0, 2, 1)) + T
 
+            dir = torch.bmm(dir, R.permute(0, 2, 1))
+
+
             rotation_matrix = quaternion_to_matrix(rotation)
             rotation_matrix = rearrange(rotation_matrix, 'b n x y -> (b n) x y')
             R = rearrange(R.unsqueeze(1).repeat(1, rotation.shape[1], 1, 1), 'b n x y -> (b n) x y')
             rotation_matrix = rearrange(torch.bmm(R, rotation_matrix), '(b n) x y -> b n x y', b=B)
             rotation = matrix_to_quaternion(rotation_matrix)
 
+
             scales = scales * S
+        
+        # TODO: get direction 2d from xyz and direction
+        dir2D = []
+        for b in range(B):
+            image_height = data['images'].shape[2]
+            image_width = data['images'].shape[3]
+            dir2D.append(self.get_direction_2d(data['fovx'][b], data['fovy'][b], 
+                                               image_height, image_width,
+                                               data['world_view_transform'][b], 
+                                               xyz[b], dir[b]))
+        dir2D = torch.stack(dir2D, dim=0)
+        color[..., 6:9] = dir2D
 
         hair_data['xyz'] = xyz
         hair_data['color'] = color

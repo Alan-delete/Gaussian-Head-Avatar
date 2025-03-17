@@ -47,6 +47,32 @@ def _ssim(img1, img2, window, window_size, channel, size_average=True):
     else:
         return ssim_map.mean(1).mean(1).mean(1)
 
+def mse(img1, img2):
+    return (((img1 - img2)) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
+
+def psnr(img1, img2):
+    mse = (((img1 - img2)) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
+    return 20 * torch.log10(1.0 / torch.sqrt(mse))
+
+def or_loss(network_output, gt, confs = None, weight = None, mask = None):
+    weight = torch.ones_like(gt[:1]) if weight is None else weight
+    loss = torch.minimum(
+        (network_output - gt).abs(),
+        torch.minimum(
+            (network_output - gt - 1).abs(), 
+            (network_output - gt + 1).abs()
+        ))
+    if confs is not None:
+        loss = loss * confs - (confs + 1e-7).log()    
+    if mask is not None:
+        loss = (loss * mask).sum() / mask.sum()
+    return loss.mean()
+    # if weight is not None:
+    #     return (loss * weight).sum() / weight.sum()
+    # else:
+    #     return loss * weight
+
+
 class GaussianHeadHairTrainer():
     def __init__(self, dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, gpu_id, cfg = None):
         self.dataloader = dataloader
@@ -71,7 +97,7 @@ class GaussianHeadHairTrainer():
                 # prepare data
                 to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
-                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id']
+                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle']
                 for data_item in to_cuda:
                     data[data_item] = data[data_item].to(device=self.device)
 
@@ -98,10 +124,12 @@ class GaussianHeadHairTrainer():
                                                           backprop_into_prior=backprop_into_prior, 
                                                           pose_params= data['pose'][0] if iteration > 0 else None)
                 self.gaussianhair.update_learning_rate(iteration)
+                # self.gaussianhead.update_learning_rate(iteration)
 
-                if iteration == 100: 
-                    groups = self.gaussianhair.split_strands(40)
-                    # self.gaussianhair.simplify_strands(groups)
+                # if iteration >= 2000:
+                #     if iteration % 2000 == 0: 
+                #         self.groups = self.gaussianhair.split_strands(40)
+                #     self.gaussianhair.shorten_strands(self.groups)
 
                 # Every 1000 its we increase the levels of SH up to a maximum degree
                 # if iteration % 1000 == 0:
@@ -132,7 +160,13 @@ class GaussianHeadHairTrainer():
                 # TODO: don't forget to change dim if removing batch dimension
                 gt_segment = torch.cat([ 1 - gt_mask, gt_mask, gt_hair_mask], dim=1) 
                 data['gt_segment'] = gt_segment
-                
+
+                gt_orientation = data['orient_angle']
+                pred_orientation = data['render_orient']
+                # orient_weight = torch.ones_like(gt_mask[:1]) * gt_orient_conf
+                loss_orient = or_loss(pred_orientation , gt_orientation, mask=gt_hair_mask) #orient_conf, ) #, weight=orient_weight
+                if torch.isnan(loss_orient).any(): loss_orient = 0.0
+
                 # B, C, H, W 
                 render_segments = data["render_segments"]
                 segment_clone = render_segments.clone()
@@ -144,7 +178,7 @@ class GaussianHeadHairTrainer():
                     return (gt - pred).clamp(min=0).mean()
                 
                 def relax_recall_loss(gt, pred):
-                    return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.1
+                    return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.3
                 
                 # find that the hair segment is not well predicted, so add extra hair segment loss
                 # loss_segment = l1_loss(segment_clone, gt_segment)  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
@@ -153,12 +187,15 @@ class GaussianHeadHairTrainer():
                 # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
                 loss_segment =(relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
                 
-                
+
                 loss_transform_reg =  F.mse_loss(self.gaussianhair.init_transform, self.gaussianhair.transform) 
 
                 
                 # TODO: try mesh distance loss, also try knn color regularization
+                loss_mesh_dist = self.gaussianhair.mesh_distance_loss()
 
+                loss_knn_feature = self.gaussianhair.knn_feature_loss()
+                
                 gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
                 loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
 
@@ -173,6 +210,10 @@ class GaussianHeadHairTrainer():
                 supres_images = self.supres(cropped_render_images) if self.cfg.use_supres else cropped_render_images[:,:3]
                 data['supres_images'] = supres_images
 
+                psnr_train = psnr(render_images * visibles, images * visibles)
+                ssim_train = ssim(render_images * visibles, images * visibles)
+                loss_ssim = 1.0 - ssim(render_images * visibles, images * visibles)
+
                 # loss functions
                 loss_rgb_lr = F.l1_loss(render_images[:, 0:3, :, :] * visibles_coarse, images_coarse * visibles_coarse)
                 loss_rgb_hr = F.l1_loss(supres_images * cropped_visibles, cropped_images * cropped_visibles)
@@ -183,10 +224,14 @@ class GaussianHeadHairTrainer():
                 loss = (
                         loss_rgb_hr * self.cfg.loss_weights.rgb_hr +
                         loss_rgb_lr * self.cfg.loss_weights.rgb_lr +
+                        loss_ssim * self.cfg.loss_weights.dssim +
                         loss_vgg * self.cfg.loss_weights.vgg +
                         loss_segment * self.cfg.loss_weights.segment + 
                         loss_transform_reg * self.cfg.loss_weights.transform_reg +
-                        loss_dir * self.cfg.loss_weights.dir
+                        loss_dir * self.cfg.loss_weights.dir + 
+                        loss_mesh_dist * self.cfg.loss_weights.mesh_dist + 
+                        loss_knn_feature * self.cfg.loss_weights.knn_feature + 
+                        loss_orient * self.cfg.loss_weights.orient
                     )
 
                 self.optimizer.zero_grad()
@@ -281,6 +326,7 @@ class GaussianHeadHairTrainer():
                     'delta_poses' : self.delta_poses,
                     'gaussianhead' : self.gaussianhead,
                     'gaussianhair' : self.gaussianhair,
+                    'camera' : self.camera,
                     'supres' : self.supres,
                     'loss_rgb_lr' : loss_rgb_lr,
                     'loss_rgb_hr' : loss_rgb_hr,
@@ -288,10 +334,17 @@ class GaussianHeadHairTrainer():
                     'loss_segment' : loss_segment,
                     'loss_transform_reg' : loss_transform_reg,
                     'loss_dir' : loss_dir,
+                    'loss_mesh_dist' : loss_mesh_dist,
+                    'loss_knn_feature' : loss_knn_feature,
+                    'loss_ssim' : loss_ssim,
+                    'loss_orient' : loss_orient,
+                    'psnr_train' : psnr_train,
+                    'ssim_train' : ssim_train,
                     'epoch' : epoch,
                     'iter' : idx + epoch * len(self.dataloader)
                 }
-                self.recorder.log(log)
+                with torch.no_grad():
+                    self.recorder.log(log)
 
 
     def random_crop(self, render_images, images, visibles, scale_factor, resolution_coarse, resolution_fine):

@@ -2,7 +2,7 @@ import torch
 import kaolin
 import math
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
-
+from torch.nn import functional as F
 
 class CameraModule():
     def __init__(self):
@@ -145,6 +145,7 @@ class CameraModule():
 
         render_images = []
         render_segments = []
+        render_orient = []
         radii = []
         for b in range(B):
 
@@ -197,18 +198,27 @@ class CameraModule():
             # rendered_image, rendered_segment_map, rendered_orient_conf, rendered_depth = render_images_b.split([32, 3, 1, 1], dim=0)
             rendered_image= render_images_b[:3]
             rendered_segment = render_images_b[3:6]
+            rendered_cov2D = render_images_b[6:9]
+            
+            rendered_dir2D = F.normalize(rendered_cov2D[:2], dim=0)
+            to_mirror = torch.ones_like(rendered_dir2D[[0]])
+            to_mirror[rendered_dir2D[[0]] < 0] *= -1
+            rendered_orient_angle = torch.acos(rendered_dir2D[[1]].clamp(-1 + 1e-3, 1 - 1e-3) * to_mirror) / math.pi
 
             # render_images.append(render_images_b)
             render_images.append(rendered_image)
             render_segments.append(rendered_segment)
+            render_orient.append(rendered_orient_angle)
             radii.append(radii_b)
 
         render_images = torch.stack(render_images)
         render_segments = torch.stack(render_segments)
+        render_orient = torch.stack(render_orient)
         radii = torch.stack(radii)
         data['render_images'] = render_images
         data['viewspace_points'] =  screenspace_points
         data['visibility_filter'] = radii > 0
         data['radii'] = radii
         data['render_segments'] = render_segments
+        data['render_orient'] = render_orient
         return data

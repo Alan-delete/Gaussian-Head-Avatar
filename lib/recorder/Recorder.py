@@ -52,15 +52,50 @@ class MeshHeadTrainRecorder():
             result = np.hstack((image, render_image, render_normal))
             cv2.imwrite('%s/%s/%06d.jpg' % (self.result_path, self.name, log_data['iter']), result)
             
+# def vis_orientation(rad, mask):
+#     red = np.clip(1 - np.abs(rad -  0.) / 45., a_min=0, a_max=1) + np.clip(1 - np.abs(rad - 180.) / 45., a_min=0, a_max=1)
+#     green = np.clip(1 - np.abs(rad - 90.) / 45., a_min=0, a_max=1)
+#     magenta = np.clip(1 - np.abs(rad - 45.) / 45., a_min=0, a_max=1)
+#     teal = np.clip(1 - np.abs(rad - 135.) / 45., a_min=0, a_max=1)
+#     rgb = (
+#         np.array([0, 0, 1])[None, None] * red[..., None] +
+#         np.array([0, 1, 0])[None, None] * green[..., None] +
+#         np.array([1, 0, 1])[None, None] * magenta[..., None] +
+#         np.array([1, 1, 0])[None, None] * teal[..., None]
+#     )
+#     # norm = (r + g + b) * 0.5
+#     # b = np.zeros_like(r)
+#     norm = np.ones_like(rgb[..., 0])
 
+#     vis_img = np.clip(rgb / norm[..., None], a_min=0, a_max=1) * mask[..., None] * 255
+#     return vis_img
+
+def vis_orient(orient_angle, mask):
+    device = orient_angle.device
+    deg = orient_angle * 180
+    red = torch.clamp(1 - torch.abs(deg -  0.) / 45., 0, 1) + torch.clamp(1 - torch.abs(deg - 180.) / 45., 0, 1) # vertical
+    green = torch.clamp(1 - torch.abs(deg - 90.) / 45., 0, 1) # horizontal
+    magenta = torch.clamp(1 - torch.abs(deg - 45.) / 45., 0, 1) # diagonal down
+    teal = torch.clamp(1 - torch.abs(deg - 135.) / 45., 0, 1) # diagonal up
+    bgr = (
+        torch.tensor([0, 0, 1])[:, None, None].to(device) * red +
+        torch.tensor([0, 1, 0])[:, None, None].to(device) * green +
+        torch.tensor([1, 0, 1])[:, None, None].to(device) * magenta +
+        torch.tensor([1, 1, 0])[:, None, None].to(device) * teal
+    )
+    rgb = torch.stack([bgr[2], bgr[1], bgr[0]], dim=0)
+
+    return rgb * mask
 
 class GaussianHeadTrainRecorder():
-    def __init__(self, full_cfg):
+    def __init__(self, full_cfg, test_dataloader=None):
         
         if full_cfg.recorder: 
             cfg = full_cfg.recorder
         else:
             cfg = full_cfg
+        
+        self.test_dataloader = test_dataloader
 
         self.debug_tool = cfg.debug_tool
         self.logdir = cfg.logdir
@@ -90,6 +125,7 @@ class GaussianHeadTrainRecorder():
 
     
     def log(self, log_data):
+
         if self.logger:
             self.logger.add_scalar('loss_rgb_hr', log_data['loss_rgb_hr'], log_data['iter'])
             self.logger.add_scalar('loss_rgb_lr', log_data['loss_rgb_lr'], log_data['iter'])
@@ -101,7 +137,12 @@ class GaussianHeadTrainRecorder():
                        "loss_segment": log_data['loss_segment'],
                        "loss_transform_reg": log_data['loss_transform_reg'],
                        "loss_dir": log_data['loss_dir'],
-                    #    "seg_label": log_data['gaussianhead'].seg_label.mean(),
+                       "loss_mesh_dist": log_data['loss_mesh_dist'],
+                       "loss_knn_feature": log_data['loss_knn_feature'],
+                       "loss_ssim": log_data['loss_ssim'],
+                       "loss_orient": log_data['loss_orient'],
+                       "psnr_train": log_data['psnr_train'],
+                       "ssim_train": log_data['ssim_train'],
                        "points_num": log_data['gaussianhead'].xyz.shape[0] })
 
         if log_data['iter'] % self.save_freq == 0:
@@ -117,25 +158,6 @@ class GaussianHeadTrainRecorder():
             log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
             # log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
 
-        if log_data['iter'] % self.show_freq == 0:
-            image = log_data['data']['images'][0].permute(1, 2, 0).detach().cpu().numpy()
-            # [:,:,::-1] to convert RGB to BGR
-            image = (image * 255).astype(np.uint8)[:,:,::-1]
-
-            render_image = log_data['data']['render_images'][0, 0:3].permute(1, 2, 0).detach().cpu().numpy()
-            render_image = (render_image * 255).astype(np.uint8)[:,:,::-1]
-
-            # cropped_image = log_data['data']['cropped_images'][0].permute(1, 2, 0).detach().cpu().numpy()
-            # cropped_image = (cropped_image * 255).astype(np.uint8)[:,:,::-1]
-
-            # supres_image = log_data['data']['supres_images'][0].permute(1, 2, 0).detach().cpu().numpy()
-            # supres_image = (supres_image * 255).astype(np.uint8)[:,:,::-1]
-
-            render_image = cv2.resize(render_image, (image.shape[0], image.shape[1]))
-            # result = np.hstack((image, render_image, cropped_image, supres_image))
-            result = np.hstack((image, render_image))
-            
-
             xyz = log_data['gaussianhair'].xyz.detach().cpu().numpy()
             hairmesh = o3d.geometry.TriangleMesh()
             hairmesh.vertices = o3d.utility.Vector3dVector(xyz)
@@ -147,6 +169,59 @@ class GaussianHeadTrainRecorder():
             headmesh.vertices = o3d.utility.Vector3dVector(xyz)
             headmesh.compute_vertex_normals()
             o3d.io.write_triangle_mesh('%s/%s/%06d_head.ply' % (self.result_path, self.name, log_data['iter']), headmesh)
+        
+        if log_data['iter'] % self.show_freq == 0:
+
+            data = log_data['data']
+
+            if self.test_dataloader is not None:
+                # already inside the torhc.no_grad() context
+                data = next(iter(self.tese_dataloader)) 
+                to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
+                           'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
+                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle']
+                for data_item in to_cuda:
+                    data[data_item] = data[data_item].cuda()
+
+                images = data['images']
+                visibles = data['visibles']
+                images_coarse = images
+                visibles_coarse = visibles
+
+                resolution_coarse = images_coarse.shape[2]
+                resolution_fine = images.shape[2]
+
+                # data['pose'] = data['pose'] + self.delta_poses[data['exp_id'], :]
+            
+
+                # render coarse images
+                head_data = log_data['gaussianhead'].generate(data)
+                hair_data = log_data['gaussianhair'].generate(data)
+                # combine head and hair data
+                for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
+                    # first dimension is batch size, concat along the second dimension
+                    data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
+
+                data = log_data['camera'].render_gaussian(data, resolution_coarse)
+
+
+
+            image = data['images'][0].permute(1, 2, 0).detach().cpu().numpy()
+            # [:,:,::-1] to convert RGB to BGR
+            image = (image * 255).astype(np.uint8)[:,:,::-1]
+
+            render_image = data['render_images'][0, 0:3].permute(1, 2, 0).detach().cpu().numpy()
+            render_image = (render_image * 255).astype(np.uint8)[:,:,::-1]
+
+            # cropped_image = data['cropped_images'][0].permute(1, 2, 0).detach().cpu().numpy()
+            # cropped_image = (cropped_image * 255).astype(np.uint8)[:,:,::-1]
+
+            # supres_image = data['supres_images'][0].permute(1, 2, 0).detach().cpu().numpy()
+            # supres_image = (supres_image * 255).astype(np.uint8)[:,:,::-1]
+
+            render_image = cv2.resize(render_image, (image.shape[0], image.shape[1]))
+            # result = np.hstack((image, render_image, cropped_image, supres_image))
+            result = np.hstack((image, render_image))
 
 
             if self.debug_tool == 'wandb':
@@ -163,27 +238,37 @@ class GaussianHeadTrainRecorder():
                 render_image = cv2.resize(render_image, (render_image.shape[0], render_image.shape[1]))
                 images.append(wandb.Image(render_image, caption="rendered_image"))
 
-                segment_vis = log_data['data']['gt_segment'][0]
+                segment_vis = data['gt_segment'][0]
                 segment_vis[1] = torch.clamp(segment_vis[1] - segment_vis[2] , 0, 1)
                 segment_vis = segment_vis.permute(1, 2, 0).detach().cpu().numpy()
                 segment_vis = (segment_vis * 255).astype(np.uint8)
                 segment_vis = cv2.resize(segment_vis, (image.shape[0], image.shape[1]))
                 images.append(wandb.Image(segment_vis, caption="Segmentation"))
 
-                render_segment = log_data['data']['render_segments'][0].permute(1, 2, 0).detach().cpu().numpy()
+                render_segment = data['render_segments'][0].permute(1, 2, 0).detach().cpu().numpy()
                 render_segment = (render_segment * 255).astype(np.uint8)
                 render_segment = cv2.resize(render_segment, (image.shape[0], image.shape[1]))
                 images.append(wandb.Image(render_segment, caption="rendered_segment"))
 
-                # append segment[2]
-                images.append(wandb.Image(segment_vis[...,2], caption="hair mask"))
+                # # append segment[2]
+                # images.append(wandb.Image(segment_vis[...,2], caption="hair mask"))
+
+                hair_mask = data['hair_masks'][0] 
+
+                orientation = data['orient_angle'][0]
+                # orientation = (orientation * 255).astype(np.uint8)
+                # orientation = cv2.resize(orientation, (image.shape[0], image.shape[1]))
+                images.append(wandb.Image(vis_orient(orientation, hair_mask), caption="gt_orientation"))
+
+                render_orientation = data['render_orient'][0]
+                # render_orientation = (render_orientation * 255).astype(np.uint8)
+                # render_orientation = cv2.resize(render_orientation, (image.shape[0], image.shape[1]))
+                images.append(wandb.Image(vis_orient(render_orientation, hair_mask), caption="rendered_orientation"))
 
                 wandb.log({"Images": images})
 
             else:
                 cv2.imwrite('%s/%s/%06d.jpg' % (self.result_path, self.name, log_data['iter']), result)
-
-
 
 
 

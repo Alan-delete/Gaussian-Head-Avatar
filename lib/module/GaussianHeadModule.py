@@ -85,6 +85,13 @@ class GaussianHeadModule(GaussianBaseModule):
         return self.label_activation(self.label_body)
 
 
+    def update_learning_rate(self, iter):
+        ''' Learning rate scheduling per step '''
+        for param_group in self.optimizer.param_groups:
+            if param_group["name"] == "xyz" or param_group["name"] == "feature":
+                lr = self.scheduler_args(iter)
+                param_group['lr'] = lr
+
     def generate(self, data):
         B = data['exp_coeff'].shape[0]
 

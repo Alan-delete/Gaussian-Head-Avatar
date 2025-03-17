@@ -9,6 +9,7 @@ import os
 import random
 import cv2
 from skimage import io
+from PIL import Image
 from pytorch3d.renderer.cameras import look_at_view_transform
 from pytorch3d.transforms import so3_exponential_map
 
@@ -177,11 +178,16 @@ class MeshDataset(Dataset):
 # TODO: use same model to predict mask and hair mask, and put them in unified folder.
 class GaussianDataset(Dataset):
 
-    def __init__(self, cfg):
+    def __init__(self, cfg, train=True):
         super(GaussianDataset, self).__init__()
 
         self.dataroot = cfg.dataroot
-        self.camera_ids = cfg.camera_ids
+        
+        if train:
+            self.camera_ids =[camera_id for camera_id in cfg.camera_ids if camera_id not in cfg.test_camera_ids]
+        else:
+            self.camera_ids = cfg.test_camera_ids
+
         self.original_resolution = cfg.original_resolution
         self.resolution = cfg.resolution
 
@@ -191,11 +197,15 @@ class GaussianDataset(Dataset):
         param_folder = os.path.join(self.dataroot, 'params')
         camera_folder = os.path.join(self.dataroot, 'cameras')
         hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
+        flame_param_folder = os.path.join(self.dataroot, 'FLAME_params')
         optical_flow_folder = os.path.join(self.dataroot, 'optical_flow')
+        orientation_folder = os.path.join(self.dataroot, 'orientation_maps')
+        orientation_confidence_folder = os.path.join(self.dataroot, 'orientation_confidence_maps')
         frames = os.listdir(image_folder)
         
         self.num_exp_id = 0
         pre_two_frames_params_path = [ os.path.join(param_folder, '0000', 'params.npz'), os.path.join(param_folder, '0000', 'params.npz')]
+        self.flame_mesh_path = os.path.join(flame_param_folder, '0000', 'mesh_0.obj')
         for frame in frames:
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
@@ -206,8 +216,14 @@ class GaussianDataset(Dataset):
             param_path = os.path.join(param_folder, frame, 'params.npz')
             landmarks_3d_path = os.path.join(param_folder, frame, 'lmk_3d.npy')
             vertices_path = os.path.join(param_folder, frame, 'vertices.npy')
+            orientation_path = [os.path.join(orientation_folder, frame, 'image_%s.png' % camera_id) for camera_id in self.camera_ids]
+            orientation_confidence_path = [os.path.join(orientation_confidence_folder, frame, 'image_%s.npy' % camera_id) for camera_id in self.camera_ids]
 
-            sample = (image_paths, mask_paths, visible_paths, camera_paths, param_path, landmarks_3d_path, vertices_path, self.num_exp_id, pre_two_frames_params_path, hair_mask_path, optical_flow_path)
+            # TODO: use dict instead of tuple
+            sample = (image_paths, mask_paths, visible_paths, camera_paths, 
+                      param_path, landmarks_3d_path, vertices_path, self.num_exp_id, 
+                      pre_two_frames_params_path, hair_mask_path, optical_flow_path, orientation_path, orientation_confidence_path)
+            
             self.samples.append(sample)
             pre_two_frames_params_path[0], pre_two_frames_params_path[1] = pre_two_frames_params_path[1], param_path
             self.num_exp_id += 1
@@ -310,10 +326,32 @@ class GaussianDataset(Dataset):
 
         optical_flow_path = sample[10][view]
         if os.path.exists(optical_flow_path):
-            x= np.load(optical_flow_path, allow_pickle=True)
+            data = np.load(optical_flow_path, allow_pickle=True)
+        # last frame
         else:
             pass
             # optical_flow = torch.zeros(2, self.resolution, self.resolution)
+
+
+        orientation_path = sample[11][view]
+        orientation_confidence_path = sample[12][view]
+        
+        if os.path.exists(orientation_path):
+            resized_orient_angle = cv2.resize(io.imread(orientation_path), (self.resolution, self.resolution)) 
+            resized_orient_angle = torch.from_numpy(resized_orient_angle).float() / 180.0
+            resized_orient_angle = resized_orient_angle.view(self.resolution, self.resolution, 1).permute(2, 0, 1)
+            orient_angle = resized_orient_angle[:1, ...] * hair_mask
+        else:
+            orient_angle = torch.zeros(1, self.resolution, self.resolution)
+
+        if os.path.exists(orientation_confidence_path):
+            resized_orient_var = F.interpolate(torch.from_numpy(np.load(orientation_confidence_path)).float()[None, None], size=(self.resolution, self.resolution), mode='bilinear')[0] / math.pi**2
+            resized_orient_conf = 1 / (resized_orient_var ** 2 + 1e-7)
+
+            # TODO: conf, as printed, is too large?
+            orient_conf = resized_orient_conf[:1, ...] * hair_mask
+        else:
+            orient_conf = torch.ones(1, self.resolution, self.resolution)
 
         return {
                 'images': image,
@@ -324,6 +362,8 @@ class GaussianDataset(Dataset):
                 'masks_coarse': mask_coarse,
                 'hair_masks_coarse': hair_mask_coarse,
                 'visibles_coarse': visible_coarse,
+                'orient_angle': orient_angle,
+                'orient_conf': orient_conf,
                 'pose': pose,
                 'scale': scale,
                 'exp_coeff': exp_coeff,
