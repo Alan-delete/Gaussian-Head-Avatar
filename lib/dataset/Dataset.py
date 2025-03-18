@@ -204,16 +204,19 @@ class GaussianDataset(Dataset):
         frames = os.listdir(image_folder)
         
         self.num_exp_id = 0
-        pre_two_frames_params_path = [ os.path.join(param_folder, '0000', 'params.npz'), os.path.join(param_folder, '0000', 'params.npz')]
+        params_path_history = []
         self.flame_mesh_path = os.path.join(flame_param_folder, '0000', 'mesh_0.obj')
+        optical_flow_path = ['void_path' for _ in self.camera_ids]
         for frame in frames:
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
+            # for subject 100, lowers hair mask is more accurate than hair mask for some reason
             hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_%s.png' % camera_id) for camera_id in self.camera_ids]
-            optical_flow_path = [os.path.join(optical_flow_folder, frame, 'image_%s.npy' % camera_id) for camera_id in self.camera_ids]
+            # hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_lowers_%s.png' % camera_id) for camera_id in self.camera_ids]
             visible_paths = [os.path.join(image_folder, frame, 'visible_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             camera_paths = [os.path.join(camera_folder, frame, 'camera_%s.npz' % camera_id) for camera_id in self.camera_ids]
             param_path = os.path.join(param_folder, frame, 'params.npz')
+            flame_param_path = os.path.join(flame_param_folder, frame, 'params.npz')
             landmarks_3d_path = os.path.join(param_folder, frame, 'lmk_3d.npy')
             vertices_path = os.path.join(param_folder, frame, 'vertices.npy')
             orientation_path = [os.path.join(orientation_folder, frame, 'image_%s.png' % camera_id) for camera_id in self.camera_ids]
@@ -222,10 +225,13 @@ class GaussianDataset(Dataset):
             # TODO: use dict instead of tuple
             sample = (image_paths, mask_paths, visible_paths, camera_paths, 
                       param_path, landmarks_3d_path, vertices_path, self.num_exp_id, 
-                      pre_two_frames_params_path, hair_mask_path, optical_flow_path, orientation_path, orientation_confidence_path)
+                      params_path_history, hair_mask_path, optical_flow_path, orientation_path, orientation_confidence_path, flame_param_path)
+            
+            # the optical flow of t_1 is (position_1 - position_0), which is stored in the folder of t_0
+            optical_flow_path = [os.path.join(optical_flow_folder, frame, 'image_%s.npy' % camera_id) for camera_id in self.camera_ids]
             
             self.samples.append(sample)
-            pre_two_frames_params_path[0], pre_two_frames_params_path[1] = pre_two_frames_params_path[1], param_path
+            params_path_history.append(param_path)
             self.num_exp_id += 1
 
         # FLAME_param_folder = os.path.join(self.dataroot, 'FLAME_params')
@@ -318,11 +324,19 @@ class GaussianDataset(Dataset):
         
         exp_id = torch.tensor(sample[7]).long()
 
-        pre_two_frames_poses = []
-        for pre_two_frames_param_path in sample[8]:
-            pre_two_frames_param = np.load(pre_two_frames_param_path)
-            pre_two_frames_pose = torch.from_numpy(pre_two_frames_param['pose'][0]).float()
-            pre_two_frames_poses.append(pre_two_frames_pose)
+        params_path_history = sample[8]
+        pre_frames_poses = []
+        for pre_idx in range(index):
+            pre_param_path = params_path_history[pre_idx]
+            pre_param = np.load(pre_param_path)
+            pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
+            pre_frames_poses.append(pre_pose)
+        if len(pre_frames_poses) == 0:
+            pre_frames_poses = torch.zeros(1, 6)
+        else:
+            pre_frames_poses = torch.stack(pre_frames_poses)
+
+
 
         optical_flow_path = sample[10][view]
         if os.path.exists(optical_flow_path):
@@ -353,6 +367,12 @@ class GaussianDataset(Dataset):
         else:
             orient_conf = torch.ones(1, self.resolution, self.resolution)
 
+        flame_param_path = sample[13]
+        flame_param = np.load(flame_param_path)
+        flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
+        flame_scale = torch.from_numpy(flame_param['scale']).float()
+        flame_scale = flame_scale.view(-1)
+
         return {
                 'images': image,
                 'masks': mask,
@@ -377,7 +397,9 @@ class GaussianDataset(Dataset):
                 'projection_matrix': projection_matrix,
                 'full_proj_transform': full_proj_transform,
                 'camera_center': camera_center,
-                'pre_two_frames_poses': pre_two_frames_poses}
+                'pre_frames_poses': pre_frames_poses,
+                'flame_pose': flame_pose,
+                'flame_scale': flame_scale}
 
     def __len__(self):
         return len(self.samples)

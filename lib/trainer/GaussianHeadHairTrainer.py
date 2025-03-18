@@ -90,6 +90,7 @@ class GaussianHeadHairTrainer():
 
     def train(self, start_epoch=0, epochs=1):
         for epoch in range(start_epoch, epochs):
+            self.gaussianhair.epoch_start()
             # TODO: set time decay for frame at the begining of each epoch to learning more about the first frame
             for idx, data in tqdm(enumerate(self.dataloader)):
                 
@@ -97,7 +98,7 @@ class GaussianHeadHairTrainer():
                 # prepare data
                 to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
-                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle']
+                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','pre_frames_poses']
                 for data_item in to_cuda:
                     data[data_item] = data[data_item].to(device=self.device)
 
@@ -117,14 +118,24 @@ class GaussianHeadHairTrainer():
                 
                 if iteration == self.cfg.gaussianhairmodule.strands_reset_from_iter: 
                     self.gaussianhair.reset_strands()
+
+
+                if  4000 <= iteration <= 20000:
+                    if iteration % 2000 == 0: 
+                        self.gaussianhair.random_set_transparent(ratio=0.05)
+                
                 # before 4000, backprop into prior
                 backprop_into_prior = iteration <= self.cfg.gaussianhairmodule.strands_reset_from_iter
-                # self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, backprop_into_prior=backprop_into_prior)
+               
                 self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, 
                                                           backprop_into_prior=backprop_into_prior, 
-                                                          pose_params= data['pose'][0] if iteration > 0 else None)
+                                                          pose_params= data['pose'][0],
+                                                          pre_pose_params = data['pre_frames_poses'][0]) 
                 self.gaussianhair.update_learning_rate(iteration)
                 # self.gaussianhead.update_learning_rate(iteration)
+
+                # sharpness loss
+                loss_opacity_reg = 0.01 * (self.gaussianhair.get_opacity * (1 - self.gaussianhair.get_opacity) ).mean()
 
                 # if iteration >= 2000:
                 #     if iteration % 2000 == 0: 
@@ -231,7 +242,8 @@ class GaussianHeadHairTrainer():
                         loss_dir * self.cfg.loss_weights.dir + 
                         loss_mesh_dist * self.cfg.loss_weights.mesh_dist + 
                         loss_knn_feature * self.cfg.loss_weights.knn_feature + 
-                        loss_orient * self.cfg.loss_weights.orient
+                        loss_orient * self.cfg.loss_weights.orient + 
+                        loss_opacity_reg
                     )
 
                 self.optimizer.zero_grad()

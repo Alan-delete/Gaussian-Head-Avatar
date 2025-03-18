@@ -27,7 +27,10 @@ if __name__ == '__main__':
     cfg = cfg.get_cfg()
 
     dataset = GaussianDataset(cfg.dataset)
-    dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
+    dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True) 
+
+    # test_dataset = GaussianDataset(cfg.dataset, train=False) 
+    # test_dataloader = DataLoaderX(test_dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True)
 
     device = torch.device('cuda:%d' % cfg.gpu_id)
     torch.cuda.set_device(cfg.gpu_id)
@@ -88,9 +91,16 @@ if __name__ == '__main__':
                             {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 0.3, 'name' : 'scales'},
                             {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.1, 'name' : 'rotation'},
                             {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net, 'name' : 'opacity'},
+                            # {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 3, 'name' : 'scales'},
+                            # {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.5, 'name' : 'rotation'},
+                            # {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net * 10, 'name' : 'opacity'},
                             {'params' : gaussianhead.seg_label, 'lr' : cfg.lr_net , 'name' : 'seg_label'},]
 
     gaussianhead.optimizer = torch.optim.Adam(gaussianhead_optimized_parameters)
+    # gaussianhead.scheduler_args = get_expon_lr_func(lr_init=cfg.position_lr_init*0.1*self.spatial_lr_scale,
+    #                                                 lr_final=cfg.position_lr_final*self.spatial_lr_scale,
+    #                                                 lr_delay_mult=cfg.position_lr_delay_mult,
+    #                                                 max_steps=cfg.position_lr_max_steps)
 
     if os.path.exists(cfg.load_delta_poses_checkpoint):
         delta_poses = torch.load(cfg.load_delta_poses_checkpoint)
@@ -106,5 +116,5 @@ if __name__ == '__main__':
     optimizer = torch.optim.Adam(optimized_parameters)
 
     trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
-    trainer.train(0, 200)
+    trainer.train(0, 300)
 

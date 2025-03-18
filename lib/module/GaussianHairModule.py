@@ -217,12 +217,17 @@ class GaussianHairModule(GaussianBaseModule):
         # for dynamic hair, points deformation should be used only when directly training point_raw
         self.points_deform_accumulate = torch.empty(0)
         self.points_velocity = torch.empty(0)
-
+        
         self.pose_color_mlp = MLP(cfg.pose_color_mlp, last_op=None)
         self.pose_attributes_mlp = MLP(cfg.pose_attributes_mlp, last_op=None)
         self.pose_deform_mlp = MLP(cfg.pose_deform_mlp, last_op=nn.Tanh())
         self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
         self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
+        
+        self.pose_query_mlp = MLP([54, 128, 128], last_op=None)
+        self.pose_key_mlp = MLP([54, 128, 128], last_op=None)
+        self.pose_value_mlp = MLP([54, 128, 128], last_op=None)
+        self.pose_deform_attention = torch.nn.MultiheadAttention(128, 8, dropout=0.1)
     
         # pose [6] -> pose embedding [54]
         self.pos_embedding, _ = get_embedder(cfg.pos_freq)
@@ -240,7 +245,10 @@ class GaussianHairModule(GaussianBaseModule):
         l_struct = [
             {'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"},
             {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-4, "name": "pose_prior"},
-            {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
+            {'params': self.pose_query_mlp.parameters(), 'lr': 1e-4, "name": "pose_query"},
+            {'params': self.pose_key_mlp.parameters(), 'lr': 1e-4, "name": "pose_key"},
+            {'params': self.pose_value_mlp.parameters(), 'lr': 1e-4, "name": "pose_value"},
+            {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
         ]
         if self.train_directions:
             l_struct.append({'params': [self.dir_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
@@ -294,8 +302,9 @@ class GaussianHairModule(GaussianBaseModule):
         return torch.ones_like(self.opacity)
 
     def epoch_start(self):
-        self.points_deform_accumulate = torch.zeros_like(self.points_origins)
-        self.points_velocity = torch.zeros_like(self.points_origins)
+        self.points_deform_accumulate = torch.zeros_like(self.points_raw)
+        self.points_velocity = torch.zeros_like(self.points_raw)
+        self.pre_pose_deform = torch.zeros_like(self.points_raw)
 
     def update_learning_rate(self, iter):
         ''' Learning rate scheduling per step '''
@@ -319,14 +328,6 @@ class GaussianHairModule(GaussianBaseModule):
     # TODO: data should provide image_height and image_width and world_view_transform
     def get_direction_2d(self, fovx, fovy, height, width, viewmatrix, xyz = None, dir = None):
         mean = self.get_xyz if xyz is None else xyz
-        
-        # fovx = viewpoint_camera['fovx']
-        # fovy = viewpoint_camera['fovy']
-
-        # resolution = viewpoint_camera['image'].shape[2]
-
-        # height = int(resolution)
-        # width = int(resolution)
     
         tan_fovx = torch.tan(fovx * 0.5)
         tan_fovy = torch.tan(fovy * 0.5)
@@ -370,40 +371,6 @@ class GaussianHairModule(GaussianBaseModule):
 
         return dir2D
     
-    def solve_rigid_transform(self, X, y, allow_scaling=True):
-        # Compute centroids
-        X_mean = X.mean(dim=0, keepdim=True)  # (1, 3)
-        y_mean = y.mean(dim=0, keepdim=True)  # (1, 3)
-
-        # Center the points
-        X_centered = X - X_mean
-        y_centered = y - y_mean
-
-        # Compute cross-covariance matrix
-        H = X_centered.T @ y_centered  # (3, 3)
-
-        # SVD of H
-        U, S, Vt = torch.svd(H)
-
-        # Compute optimal rotation
-        R = Vt @ U.T
-
-        # Ensure a proper rotation (det(R) = 1)
-        if torch.det(R) < 0:
-            Vt[:, -1] *= -1
-            R = Vt @ U.T
-
-        # Compute scaling (optional)
-        if allow_scaling:
-            s = (S.sum() / (X_centered**2).sum()).item()
-        else:
-            s = 1.0
-
-        # Compute translation
-        t = y_mean - s * X_mean @ R
-
-        return R, s, t
-
     def mesh_distance_loss(self):
         # strand_num, 3
         roots = self.origins.view(-1, 3)
@@ -427,6 +394,25 @@ class GaussianHairModule(GaussianBaseModule):
         feature_diff = (feature_dc - feature_dc[indices]) ** 2
         
         return feature_diff.mean()
+
+    def random_set_transparent(self, ratio = 0.2):
+        if self.train_opacity:
+            reset_strand_num = int(self.num_strands * ratio)
+            indices = torch.randperm(self.num_strands)[:reset_strand_num]
+            opacity_raw = self.opacity_raw.view(self.num_strands, self.strand_length - 1).detach().clone()
+            opacity_raw[indices] = self.inverse_opacity_activation(torch.zeros_like(opacity_raw[indices]) + 1e-5)
+            opacity_raw = opacity_raw.view(-1, 1)
+            optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, opacity_raw, "opacity")
+            self.opacity_raw = optimizable_tensors["opacity"]
+        
+
+    # should better be called when training the raw data, instead of prior
+    def remove_transparent(self):
+
+        # Option 1, remove the whole strand according to mean opacity or root opacity
+
+        # Option 2, from root to top, remove the transparent part and keep the rest while making the last point root
+        pass
 
 
     # TODO: dirpath and flame_mesh_dir should be provided instead of hardcoded
@@ -643,7 +629,7 @@ class GaussianHairModule(GaussianBaseModule):
 
 
     # set gaussian representation from hair strands
-    def generate_hair_gaussians(self, num_strands = -1, skip_color = False, skip_smpl = False, backprop_into_prior = False, pose_params = None):
+    def generate_hair_gaussians(self, num_strands = -1, skip_color = False, skip_smpl = False, backprop_into_prior = False, pose_params = None, pre_pose_params = None):
         if num_strands < self.num_strands and num_strands != -1:
             strands_idx = torch.randperm(self.num_strands)[:num_strands]
         else:
@@ -670,17 +656,60 @@ class GaussianHairModule(GaussianBaseModule):
         # Add dynamics to the hair strands
         # Points shift
         if pose_params is not None:
-            # try only change the points
-            pose_embedding = self.pos_embedding(pose_params)
-            # [strand_num, strand_length-1, 3] -> [strand_num * (strand_length-1), 3]
+            # # try only change the points
+            # pose_embedding = self.pos_embedding(pose_params)
+            # # [strand_num, strand_length-1, 3] -> [strand_num * (strand_length-1), 3]
+            # points = self.points.contiguous().view(-1, 3)
+            # pose_deform_input = torch.cat([self.pos_embedding(points).t(),
+            #                                 pose_embedding.unsqueeze(-1).repeat(1, points.shape[0])], 0)[None]
+            # pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
+
+            # self.points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
+            # self.points_origins = torch.cat([self.origins, self.points], dim=1)
+            # self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+
+            # # pose deformation corresponds to the accumulated shift of the xyz, also strand length should be the same
+            # pose_embedding = self.pos_embedding(pose_params)
+            # points = self.points + self.points_deform_accumulate.view(num_strands, self.strand_length - 1, 3)
+            
+            # points = points.contiguous().view(-1, 3)
+            # pose_deform_input = torch.cat([self.pos_embedding(points).t(), 
+            #                                pose_embedding.unsqueeze(-1).repeat(1, points.shape[0])], 0)[None]
+            # acceleration = self.pose_point_mlp(pose_deform_input)[0].t()
+            # self.points_velocity = self.points_velocity.detach() + acceleration.view(num_strands, self.strand_length - 1, 3)
+            # self.points_deform_accumulate = self.points_deform_accumulate.detach() + self.points_velocity.view(num_strands, self.strand_length - 1, 3)
+            
+            # self.points_origins = torch.cat([self.origins, self.points], dim=1)
+            # self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+
+            # use attention to get the deformation base on all previous pose
+            all_pose = torch.cat([pre_pose_params, pose_params[None]], dim=0)
+            # 1, 54
+            pose_embedding = self.pos_embedding(pose_params[None])
+            # L, 54
+            all_pose_embedding = self.pos_embedding(all_pose)
+
+            # L, 54 -> L, 54, 1 -> L, 128 , 1 -> L, 128 
+            pose_query = self.pose_query_mlp(pose_embedding[..., None])[..., 0]
+            pose_key = self.pose_key_mlp(all_pose_embedding[..., None])[..., 0]
+            pose_value = self.pose_value_mlp(all_pose_embedding[...,None])[..., 0]
+            # 1, 128 
+            pose_deform_embedding, _ = self.pose_deform_attention(pose_query, pose_key, pose_value)
+            # 1, 128 -> 128 -> 54
+            pose_deform_embedding = pose_deform_embedding[0, :54] 
+
+            # # [strand_num, strand_length-1, 3] -> [strand_num * (strand_length-1), 3]
             points = self.points.contiguous().view(-1, 3)
+            # [27, point_num] + [54, point_num] -> [81, point_num]
             pose_deform_input = torch.cat([self.pos_embedding(points).t(),
-                                            pose_embedding.unsqueeze(-1).repeat(1, points.shape[0])], 0)[None]
+                                            pose_deform_embedding.unsqueeze(-1).repeat(1, points.shape[0])], 0)[None]
             pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
-            # pose deformation corresponds to the optical flow(velocity) of the xyz
-            # self.pose_deform = pose_deform
-            self.points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
-            self.points_origins = torch.cat([self.origins, self.points], dim=1)
+
+            points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
+
+            # optical_flow_3D = pose_deform - self.pre_pose_deform
+            # self.pre_pose_deform = pose_deform
+            self.points_origins = torch.cat([self.origins, points], dim=1)
             self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
         
         self.width = self.width_raw[strands_idx]
@@ -818,7 +847,10 @@ class GaussianHairModule(GaussianBaseModule):
             self.points_raw = nn.Parameter(points_struct_raw.contiguous().requires_grad_(True))
         self.width_raw = nn.Parameter(torch.ones(self.num_strands, 1).cuda().contiguous().requires_grad_(True))
         self.width_raw.data *= scaling_factor
-        self.opacity_raw = nn.Parameter(inverse_sigmoid(1.0 * torch.ones(self.num_strands * (self.strand_length - 1), 1, dtype=torch.float, device="cuda")))
+        if self.train_opacity:
+            self.opacity_raw = nn.Parameter(inverse_sigmoid(0.5 * torch.ones(self.num_strands * (self.strand_length - 1), 1, dtype=torch.float, device="cuda")).contiguous().requires_grad_(True))
+        else:
+            self.opacity_raw = nn.Parameter(inverse_sigmoid(1.0 * torch.ones(self.num_strands * (self.strand_length - 1), 1, dtype=torch.float, device="cuda")))
         self.generate_hair_gaussians(skip_color=True, skip_smpl=True)
 
         # closest_idx = []
@@ -867,7 +899,7 @@ class GaussianHairModule(GaussianBaseModule):
         if 'pose' in data:
             R = so3_exponential_map(data['pose'][:, :3])
             T = data['pose'][:, None, 3:]
-            S = data['scale'][:, :, None]
+            S = data['scale'].view(1)
             xyz = torch.bmm(xyz * S, R.permute(0, 2, 1)) + T
 
             dir = torch.bmm(dir, R.permute(0, 2, 1))

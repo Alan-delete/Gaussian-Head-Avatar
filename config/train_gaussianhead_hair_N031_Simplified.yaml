@@ -4,7 +4,7 @@ load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble031/meshhead_latest'
 # load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
 # load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
 lr_net: 1e-4
-lr_pose: 1e-5
+lr_pose: 1e-6
 batch_size: 1
 optimize_pose: True
 use_supres: False
@@ -14,6 +14,7 @@ dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
   camera_ids: ['220700191', '221501007', '222200036', '222200037', '222200038', '222200039', '222200040', '222200041',
                '222200042', '222200043', '222200044', '222200045', '222200046', '222200047', '222200048', '222200049']
+  test_camera_ids: []
   original_resolution: 2048
   resolution: 2048
 
@@ -21,10 +22,14 @@ dataset:
 loss_weights:
   rgb_hr: 1.0
   rgb_lr: 1.0
+  dssim: 2e-1
   vgg: 1e-1
   segment: 1e1
   transform_reg: 1e-1
   dir: 1e1
+  mesh_dist: 1e-3
+  knn_feature: 1.0
+  orient: 1e-1
 
 meshheadmodule:
   geo_mlp: [27, 256, 256, 256, 256, 256, 132]
@@ -70,7 +75,7 @@ gaussianheadmodule:
   densify_from_iter: 500
   densify_until_iter: 15_000
   # densify_grad_threshold: 0.0002
-  densify_grad_threshold: 0.001
+  densify_grad_threshold: 0.0004
   opacity_reg_from_iter: 30_000
   gaussian_pruning_threshold: 0.5
 
@@ -83,21 +88,21 @@ gaussianhairmodule:
   deform_scale: 0.3
   attributes_scale: 0.2
   num_strands: 10_140
-  strand_length: 30
+  strand_length: 100
   simplify_strands: False
   aspect_ratio: 1
   quantile: 1
   train_directions: False
   train_features_rest: False
   train_width: False
-  train_opacity: False
+  train_opacity: True
   strand_scale : 0.001
   sh_degree : 3
 
   # strands_reset_from_iter: 4_000
   # just reset strands once at 15000, just [0, 15000] train the prior and [15000, ] train the strands
-  strands_reset_from_iter: 15_000
-  strands_reset_until_iter: 15_000
+  strands_reset_from_iter: 5_000
+  strands_reset_until_iter: 5_000
   strands_reset_interval: 1_000
 
 
@@ -117,8 +122,8 @@ gaussianhairmodule:
       "G_res": [1_000, 15_000],
   }
 
-  position_lr_init: 0.00016
-  position_lr_final: 0.0000016
+  position_lr_init: 1.6e-4 
+  position_lr_final: 1.6e-6 
   position_lr_delay_mult: 0.01
   position_lr_max_steps: 30_000
   # feature_lr: 0.0025
@@ -138,4 +143,4 @@ recorder:
   checkpoint_path: 'checkpoints'
   result_path: 'results'
   save_freq: 5000
-  show_freq: 100
+  show_freq: 500
