@@ -146,6 +146,7 @@ class CameraModule():
         render_images = []
         render_segments = []
         render_orient = []
+        render_velocity  = []
         radii = []
         for b in range(B):
 
@@ -199,21 +200,34 @@ class CameraModule():
             rendered_image= render_images_b[:3]
             rendered_segment = render_images_b[3:6]
             rendered_cov2D = render_images_b[6:9]
+            rendered_velocity = render_images_b[9:12]
             
             rendered_dir2D = F.normalize(rendered_cov2D[:2], dim=0)
             to_mirror = torch.ones_like(rendered_dir2D[[0]])
             to_mirror[rendered_dir2D[[0]] < 0] *= -1
             rendered_orient_angle = torch.acos(rendered_dir2D[[1]].clamp(-1 + 1e-3, 1 - 1e-3) * to_mirror) / math.pi
 
+            # 3, resolution, resolution -> 2, resolution, resolution
+            # render_velocity = rendered_velocity[:2]
+
+            # 3, resolution, resolution -> 1, resolution, resolution
+            rendered_velocity = F.normalize(rendered_velocity[:2], dim=0)
+            to_mirror = torch.ones_like(rendered_velocity[[0]])
+            to_mirror[rendered_velocity[[0]] < 0] *= -1
+            rendered_velocity_angle = torch.acos(rendered_velocity[[1]].clamp(-1 + 1e-3, 1 - 1e-3) * to_mirror) / math.pi
+
             # render_images.append(render_images_b)
             render_images.append(rendered_image)
             render_segments.append(rendered_segment)
             render_orient.append(rendered_orient_angle)
+            # TODO: should also consider maginitude of the velocity
+            render_velocity.append(rendered_velocity_angle)
             radii.append(radii_b)
 
         render_images = torch.stack(render_images)
         render_segments = torch.stack(render_segments)
         render_orient = torch.stack(render_orient)
+        render_velocity = torch.stack(render_velocity)
         radii = torch.stack(radii)
         data['render_images'] = render_images
         data['viewspace_points'] =  screenspace_points
@@ -221,4 +235,5 @@ class CameraModule():
         data['radii'] = radii
         data['render_segments'] = render_segments
         data['render_orient'] = render_orient
+        data['render_velocity'] = render_velocity
         return data

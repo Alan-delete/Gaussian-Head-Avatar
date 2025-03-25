@@ -218,9 +218,9 @@ class GaussianHairModule(GaussianBaseModule):
         self.points_deform_accumulate = torch.empty(0)
         self.points_velocity = torch.empty(0)
         
-        self.pose_color_mlp = MLP(cfg.pose_color_mlp, last_op=None)
-        self.pose_attributes_mlp = MLP(cfg.pose_attributes_mlp, last_op=None)
-        self.pose_deform_mlp = MLP(cfg.pose_deform_mlp, last_op=nn.Tanh())
+        # self.pose_color_mlp = MLP(cfg.pose_color_mlp, last_op=None)
+        # self.pose_attributes_mlp = MLP(cfg.pose_attributes_mlp, last_op=None)
+        # self.pose_deform_mlp = MLP(cfg.pose_deform_mlp, last_op=nn.Tanh())
         self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
         self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
         
@@ -304,7 +304,7 @@ class GaussianHairModule(GaussianBaseModule):
     def epoch_start(self):
         self.points_deform_accumulate = torch.zeros_like(self.points_raw)
         self.points_velocity = torch.zeros_like(self.points_raw)
-        self.pre_pose_deform = torch.zeros_like(self.points_raw)
+        self.pre_pose_deform = None
 
     def update_learning_rate(self, iter):
         ''' Learning rate scheduling per step '''
@@ -707,8 +707,9 @@ class GaussianHairModule(GaussianBaseModule):
 
             points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
 
-            # optical_flow_3D = pose_deform - self.pre_pose_deform
-            # self.pre_pose_deform = pose_deform
+            self.optical_flow_3D = torch.zeros_like(points) if self.pre_pose_deform is None else pose_deform - self.pre_pose_deform
+            self.pre_pose_deform = pose_deform.detach()
+
             self.points_origins = torch.cat([self.origins, points], dim=1)
             self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
         
@@ -889,20 +890,24 @@ class GaussianHairModule(GaussianBaseModule):
             sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
             color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
 
-        # debug, let all have same color
-        # color[:,:,:3] = color[0,0,:3]
         
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
         opacity = self.get_opacity.unsqueeze(0).repeat(B, 1, 1)
+
+        velocity = self.optical_flow_3D.view(1, -1, 3).repeat(B, 1, 1)
 
         # from canonical space to world space, uses in orginal codes.
         if 'pose' in data:
             R = so3_exponential_map(data['pose'][:, :3])
             T = data['pose'][:, None, 3:]
             S = data['scale'].view(1)
+            # R = so3_exponential_map(data['flame_pose'][:, :3])
+            # T = data['flame_pose'][:, None, 3:]
+            # S = data['flame_scale'].view(1)
             xyz = torch.bmm(xyz * S, R.permute(0, 2, 1)) + T
 
             dir = torch.bmm(dir, R.permute(0, 2, 1))
+            velocity = torch.bmm(velocity, R.permute(0, 2, 1))
 
 
             rotation_matrix = quaternion_to_matrix(rotation)
@@ -911,11 +916,11 @@ class GaussianHairModule(GaussianBaseModule):
             rotation_matrix = rearrange(torch.bmm(R, rotation_matrix), '(b n) x y -> b n x y', b=B)
             rotation = matrix_to_quaternion(rotation_matrix)
 
-
             scales = scales * S
         
         # TODO: get direction 2d from xyz and direction
         dir2D = []
+        velocity2D = []
         for b in range(B):
             image_height = data['images'].shape[2]
             image_width = data['images'].shape[3]
@@ -923,8 +928,16 @@ class GaussianHairModule(GaussianBaseModule):
                                                image_height, image_width,
                                                data['world_view_transform'][b], 
                                                xyz[b], dir[b]))
+            # TODO, velocity should not be normalized
+            velocity2D.append(self.get_direction_2d(data['fovx'][b], data['fovy'][b], 
+                                                    image_height, image_width,
+                                                    data['world_view_transform'][b], 
+                                                    xyz[b], velocity[b]))
         dir2D = torch.stack(dir2D, dim=0)
         color[..., 6:9] = dir2D
+
+        velocity2D = torch.stack(velocity2D, dim=0)
+        color[..., 9:12] = velocity2D
 
         hair_data['xyz'] = xyz
         hair_data['color'] = color

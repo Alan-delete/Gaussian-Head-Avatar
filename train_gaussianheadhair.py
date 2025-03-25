@@ -20,11 +20,17 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s2_N031.yaml')
+    parser.add_argument('--dataroot', type=str, default='')
     arg = parser.parse_args()
 
     cfg = config_train()
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
+    # cfg_name = os.path.basename(arg.config).split('.')[0]
+    # cfg.recorder.name = cfg_name
+    if arg.dataroot != '':
+        arg_cfg = ['dataroot', arg.dataroot]
+        cfg.dataset.merge_from_list(arg_cfg)
 
     dataset = GaussianDataset(cfg.dataset)
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True) 
@@ -67,7 +73,7 @@ if __name__ == '__main__':
     
     # create hair gaussian, 
     gaussianhair = GaussianHairModule(cfg.gaussianhairmodule).to(device)
-    gaussianhair.update_mesh_alignment_transform(dataset.R, dataset.T, dataset.S)
+    gaussianhair.update_mesh_alignment_transform(dataset.R, dataset.T, dataset.S, flame_mesh_path = dataset.flame_mesh_path)
     gaussianhair.reset_strands()
 
     supres = SuperResolutionModule(cfg.supresmodule).to(device)

@@ -98,7 +98,7 @@ class GaussianHeadHairTrainer():
                 # prepare data
                 to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
-                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','pre_frames_poses']
+                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','pre_frames_poses', 'optical_flow']
                 for data_item in to_cuda:
                     data[data_item] = data[data_item].to(device=self.device)
 
@@ -120,9 +120,9 @@ class GaussianHeadHairTrainer():
                     self.gaussianhair.reset_strands()
 
 
-                if  4000 <= iteration <= 20000:
-                    if iteration % 2000 == 0: 
-                        self.gaussianhair.random_set_transparent(ratio=0.05)
+                # if  4000 <= iteration <= 20000:
+                #     if iteration % 2000 == 0: 
+                #         self.gaussianhair.random_set_transparent(ratio=0.05)
                 
                 # before 4000, backprop into prior
                 backprop_into_prior = iteration <= self.cfg.gaussianhairmodule.strands_reset_from_iter
@@ -135,7 +135,7 @@ class GaussianHeadHairTrainer():
                 # self.gaussianhead.update_learning_rate(iteration)
 
                 # sharpness loss
-                loss_opacity_reg = 0.01 * (self.gaussianhair.get_opacity * (1 - self.gaussianhair.get_opacity) ).mean()
+                loss_opacity_reg = 0.005 * (self.gaussianhair.get_opacity * (1 - self.gaussianhair.get_opacity) ).mean()
 
                 # if iteration >= 2000:
                 #     if iteration % 2000 == 0: 
@@ -153,6 +153,9 @@ class GaussianHeadHairTrainer():
                 for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
                     # first dimension is batch size, concat along the second dimension
                     data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
+
+                    # DEBUG: only use head data
+                    # data[key] = head_data[key] 
 
                 data = self.camera.render_gaussian(data, resolution_coarse)
                 
@@ -236,13 +239,13 @@ class GaussianHeadHairTrainer():
                         loss_rgb_hr * self.cfg.loss_weights.rgb_hr +
                         loss_rgb_lr * self.cfg.loss_weights.rgb_lr +
                         loss_ssim * self.cfg.loss_weights.dssim +
-                        loss_vgg * self.cfg.loss_weights.vgg +
+                        loss_vgg * self.cfg.loss_weights.vgg + 
                         loss_segment * self.cfg.loss_weights.segment + 
                         loss_transform_reg * self.cfg.loss_weights.transform_reg +
                         loss_dir * self.cfg.loss_weights.dir + 
                         loss_mesh_dist * self.cfg.loss_weights.mesh_dist + 
                         loss_knn_feature * self.cfg.loss_weights.knn_feature + 
-                        loss_orient * self.cfg.loss_weights.orient + 
+                        # loss_orient * self.cfg.loss_weights.orient + 
                         loss_opacity_reg
                     )
 

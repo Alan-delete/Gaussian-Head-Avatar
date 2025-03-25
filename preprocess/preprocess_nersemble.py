@@ -110,6 +110,7 @@ def extract_frames(id_list):
                     
 
 if __name__ == "__main__":
+    # TODO: left up should be ajusted
     LEFT_UP = [-200, 304]
     CROP_SIZE = [2600, 2600]
     SIZE = [2048, 2048]

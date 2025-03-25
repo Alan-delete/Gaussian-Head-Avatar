@@ -20,19 +20,21 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/NeRSemble_031.yaml')
+    parser.add_argument('--gpu_id', type=int, default=0)
+    parser.add_argument('--image_folder', type=str, default='datasets/NeRSemble/031/images')
+    parser.add_argument('--landmark_folder', type=str, default='datasets/NeRSemble/031/landmarks')
+    parser.add_argument('--camera_ids', type=list, default=[], help='if not set, all cameras will be processed')
+    parser.add_argument('--image_size', type=int, default=2048)
     arg = parser.parse_args()
 
-    cfg = config()
-    cfg.load(arg.config)
-    cfg = cfg.get_cfg()
 
-    device = torch.device('cuda:%d' % cfg.gpu_id)
-    torch.cuda.set_device(cfg.gpu_id)
+    device = torch.device('cuda:%d' % arg.gpu_id)
+    torch.cuda.set_device(arg.gpu_id)
 
-    fa = face_alignment.FaceAlignment(face_alignment.LandmarksType.THREE_D, flip_input=False, face_detector='blazeface', device='cuda:%d' % cfg.gpu_id)
+    fa = face_alignment.FaceAlignment(face_alignment.LandmarksType.THREE_D, flip_input=False, face_detector='blazeface', device='cuda:%d' % arg.gpu_id)
 
-    source_folder = cfg.image_folder
-    output_folder = cfg.landmark_folder
+    source_folder = arg.image_folder
+    output_folder = arg.landmark_folder
 
     frames = sorted(os.listdir(source_folder))
     for frame in tqdm.tqdm(frames):
@@ -42,12 +44,12 @@ if __name__ == '__main__':
         output_frame_folder = os.path.join(output_folder, frame)
         os.makedirs(output_frame_folder, exist_ok=True)
 
-        if len(cfg.camera_ids) > 0:
-            image_paths = [source_frame_folder + '/image_%s.jpg' % camera_id for camera_id in cfg.camera_ids]
+        if len(arg.camera_ids) > 0:
+            image_paths = [source_frame_folder + '/image_%s.jpg' % camera_id for camera_id in arg.camera_ids]
         else:
-            image_paths = sorted(glob.glob(source_frame_folder + '/image_*.jpg'))
+            image_paths = sorted(glob.glob(source_frame_folder + '/image_[0-9]*.jpg'))
 
-        images = np.stack([cv2.resize(cv2.imread(image_path)[:, :, ::-1], (cfg.image_size, cfg.image_size)) for image_path in image_paths])
+        images = np.stack([cv2.resize(cv2.imread(image_path)[:, :, ::-1], (arg.image_size, arg.image_size)) for image_path in image_paths])
         images = torch.from_numpy(images).float().permute(0, 3, 1, 2).to(device)
 
         results = fa.get_landmarks_from_batch(images, return_landmark_score=True)
@@ -69,3 +71,10 @@ if __name__ == '__main__':
         for i, image_path in enumerate(image_paths):
             landmarks_path = os.path.join(output_frame_folder, image_path.split('/')[-1].replace('image_', 'lmk_').replace('.jpg', '.npy'))
             np.save(landmarks_path, landmarks[i])
+            
+            # add landmarks visualization
+            image = cv2.imread(image_path)
+            for j in range(68):
+                if landmarks[i][j, 2] > 0.5:
+                    cv2.circle(image, (int(landmarks[i][j, 0]), int(landmarks[i][j, 1])), 2, (0, 255, 0), -1)
+            cv2.imwrite(landmarks_path.replace('.npy', '.jpg'), image)

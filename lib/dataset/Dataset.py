@@ -61,10 +61,12 @@ class MeshDataset(Dataset):
 
         self.dataroot = cfg.dataroot
         self.camera_ids = cfg.camera_ids
+        if len(self.camera_ids) == 0:
+            image_paths = sorted(glob.glob(os.path.join(self.dataroot, 'images', '*', 'image_[0-9]*.jpg')))
+            self.camera_ids = set([os.path.basename(image_path).split('_')[1].split('.')[0] for image_path in image_paths])
         self.original_resolution = cfg.original_resolution
         self.resolution = cfg.resolution
         self.num_sample_view = cfg.num_sample_view
-
         self.samples = []
 
         image_folder = os.path.join(self.dataroot, 'images')
@@ -182,9 +184,13 @@ class GaussianDataset(Dataset):
         super(GaussianDataset, self).__init__()
 
         self.dataroot = cfg.dataroot
+        self.camera_ids = cfg.camera_ids
         
+        if len(self.camera_ids) == 0:
+            image_paths = sorted(glob.glob(os.path.join(self.dataroot, 'images', '*', 'image_[0-9]*.jpg')))
+            self.camera_ids = set([os.path.basename(image_path).split('_')[1].split('.')[0] for image_path in image_paths])
         if train:
-            self.camera_ids =[camera_id for camera_id in cfg.camera_ids if camera_id not in cfg.test_camera_ids]
+            self.camera_ids =[camera_id for camera_id in self.camera_ids if camera_id not in cfg.test_camera_ids]
         else:
             self.camera_ids = cfg.test_camera_ids
 
@@ -212,7 +218,7 @@ class GaussianDataset(Dataset):
             mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             # for subject 100, lowers hair mask is more accurate than hair mask for some reason
             hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_%s.png' % camera_id) for camera_id in self.camera_ids]
-            # hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_lowers_%s.png' % camera_id) for camera_id in self.camera_ids]
+            # hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_lowres_%s.png' % camera_id) for camera_id in self.camera_ids]
             visible_paths = [os.path.join(image_folder, frame, 'visible_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             camera_paths = [os.path.join(camera_folder, frame, 'camera_%s.npz' % camera_id) for camera_id in self.camera_ids]
             param_path = os.path.join(param_folder, frame, 'params.npz')
@@ -260,7 +266,7 @@ class GaussianDataset(Dataset):
         if os.path.exists(hair_mask_path):
             hair_mask = cv2.resize(io.imread(hair_mask_path), (self.original_resolution, self.original_resolution))[:, :, None] / 255
         else:
-            hair_mask = np.zeros_like(mask)
+            raise ValueError('Hair mask not found')
 
         visible_path = sample[2][view]
         if os.path.exists(visible_path):
@@ -332,19 +338,37 @@ class GaussianDataset(Dataset):
             pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
             pre_frames_poses.append(pre_pose)
         if len(pre_frames_poses) == 0:
-            pre_frames_poses = torch.zeros(1, 6)
+            # pre_frames_poses = torch.zeros(1, 6)
+            pre_frames_poses = torch.empty(0, 6)
         else:
             pre_frames_poses = torch.stack(pre_frames_poses)
 
 
 
         optical_flow_path = sample[10][view]
+        optical_flow = torch.zeros(2, self.resolution, self.resolution)
         if os.path.exists(optical_flow_path):
             data = np.load(optical_flow_path, allow_pickle=True)
-        # last frame
-        else:
-            pass
-            # optical_flow = torch.zeros(2, self.resolution, self.resolution)
+            if data.dtype == object:
+                data_dict = data.item()
+                # N, 2
+                coord = torch.from_numpy(data_dict['coord'])
+                # N, 2
+                flow = torch.from_numpy(data_dict['flow'])
+                # N
+                visibility = torch.from_numpy(data_dict['visibility']).bool()
+                coord = coord[visibility]
+                flow = flow[visibility]
+                x = coord[:, 0]
+                y = coord[:, 1]
+                optical_flow[0, y, x] = flow[:,0]
+                optical_flow[1, y, x] = flow[:,1]
+            elif data.dtype == np.float32:
+                optical_flow = torch.from_numpy(data).permute(2, 0, 1)
+                # TODO: numpy's orgin at top left, now should invert y axis of optical flow? 
+            else:
+                raise ValueError('Unknown optical flow data type')
+
 
 
         orientation_path = sample[11][view]
@@ -356,6 +380,7 @@ class GaussianDataset(Dataset):
             resized_orient_angle = resized_orient_angle.view(self.resolution, self.resolution, 1).permute(2, 0, 1)
             orient_angle = resized_orient_angle[:1, ...] * hair_mask
         else:
+            # raise ValueError('Orientation map not found')
             orient_angle = torch.zeros(1, self.resolution, self.resolution)
 
         if os.path.exists(orientation_confidence_path):
@@ -399,7 +424,8 @@ class GaussianDataset(Dataset):
                 'camera_center': camera_center,
                 'pre_frames_poses': pre_frames_poses,
                 'flame_pose': flame_pose,
-                'flame_scale': flame_scale}
+                'flame_scale': flame_scale,
+                'optical_flow': optical_flow}
 
     def __len__(self):
         return len(self.samples)

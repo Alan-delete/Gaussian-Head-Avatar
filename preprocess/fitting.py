@@ -50,14 +50,15 @@ class Recorder():
             faces = log_data['face_model'].faces.cpu().numpy()
             mesh_trimesh = trimesh.Trimesh(vertices=vertices[n].cpu().numpy(), faces=faces)
             # save the trimesh
-            mesh_trimesh.export('%s/mesh_%d.obj' % (os.path.join(self.save_folder, frame), 0))
-            
+            mesh_trimesh.export('%s/mesh_%d.obj' % (os.path.join(self.save_folder, frame), n))
+            # valid_cameras = [28, 56, 22, 31, 25, 57, 27, 34, 35, 55, 32, 18, 19, 21]
             if self.visualize:
-                img_paths = sorted(glob.glob(os.path.join(self.img_folder, frame, 'image_*.jpg')))
+                # img_paths = sorted(glob.glob(os.path.join(self.img_folder, frame, 'image_*.jpg')))
 
-                for v in range(intrinsics.shape[1]):
+                for v, camera_id in enumerate(log_data['valid_cameras']):
+                    img_paths = os.path.join(self.img_folder, frame, 'image_%s.jpg' % camera_id)
                     
-                    origin_image = cv2.imread(img_paths[v])[:,:,::-1]
+                    origin_image = cv2.imread(img_paths)[:,:,::-1]
                     origin_image = cv2.resize(origin_image, (self.camera.image_size, self.camera.image_size))
                     
                     mesh = pyrender.Mesh.from_trimesh(mesh_trimesh)
@@ -105,19 +106,31 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/sample_video.yaml')
+    parser.add_argument('--image_folder', type=str, default='datasets/NeRSemble/031/images')
+    parser.add_argument('--landmark_folder', type=str, default='datasets/NeRSemble/031/landmarks')
+    parser.add_argument('--param_folder', type=str, default='datasets/NeRSemble/031/params')
+    parser.add_argument('--camera_folder', type=str, default='datasets/NeRSemble/031/cameras')
+    parser.add_argument('--visualize', type=bool, default=True)
+    parser.add_argument('--save_vertices', type=bool, default=True)
+    parser.add_argument('--gpu_id', type=int, default=0)
+    parser.add_argument('--camera_ids', type=list, default=[], help='if not set, all cameras will be processed')
+    parser.add_argument('--image_size', type=int, default=2048)
     arg = parser.parse_args()
 
     cfg = config()
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
 
-    device = torch.device('cuda:%d' % cfg.gpu_id)
-    torch.cuda.set_device(cfg.gpu_id)
+    device = torch.device('cuda:%d' % arg.gpu_id)
+    torch.cuda.set_device(arg.gpu_id)
 
-    dataset = LandmarkDataset(landmark_folder=cfg.landmark_folder, camera_folder=cfg.camera_folder)
+    dataset = LandmarkDataset(landmark_folder=arg.landmark_folder, camera_folder=arg.camera_folder)
+    print("dataset done")
     face_model = get_face_model(cfg.face_model, batch_size=len(dataset), device=device)
-    camera = Camera(image_size=cfg.image_size)
-    recorder = Recorder(save_folder=cfg.param_folder, camera=camera, visualize=cfg.visualize, save_vertices=cfg.save_vertices, img_folder=cfg.image_folder)
-
+    print("face model done")
+    camera = Camera(image_size=arg.image_size)
+    recorder = Recorder(save_folder=arg.param_folder, camera=camera, visualize=arg.visualize, save_vertices=arg.save_vertices, img_folder=arg.image_folder)
+    print("recorder done")
     fitter = Fitter(cfg, dataset, face_model, camera, recorder, device)
+    print("fitter done")
     fitter.run()
