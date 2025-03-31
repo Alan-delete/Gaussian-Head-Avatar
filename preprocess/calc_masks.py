@@ -281,9 +281,9 @@ if __name__ == '__main__':
                 mask_face = mask_face.resize(orig_img_size, Image.BICUBIC)
                 mask_body = mask_body.resize(orig_img_size, Image.BICUBIC)
 
-            mask_hair.save(filename.replace(f'images', f'masks{args.postfix}/hair').replace(args.image_format, 'png'))
-            mask_face.save(filename.replace(f'images', f'masks{args.postfix}/face').replace(args.image_format, 'png'))
-            mask_body.save(filename.replace(f'images', f'masks{args.postfix}/body').replace(args.image_format, 'png'))
+            mask_hair.save(filename.replace(f'images', f'masks{args.postfix}/hair').replace(args.image_format, 'jpg'))
+            mask_face.save(filename.replace(f'images', f'masks{args.postfix}/face').replace(args.image_format, 'jpg'))
+            mask_body.save(filename.replace(f'images', f'masks{args.postfix}/body').replace(args.image_format, 'jpg'))
             
             # HAVATAR way of data storage
             mask_body.save(filename.replace(f'image_', f'mask_'))

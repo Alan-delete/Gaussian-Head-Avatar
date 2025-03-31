@@ -202,7 +202,13 @@ class GaussianDataset(Dataset):
         image_folder = os.path.join(self.dataroot, 'images')
         param_folder = os.path.join(self.dataroot, 'params')
         camera_folder = os.path.join(self.dataroot, 'cameras')
-        hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
+        
+        # as tested, face_parsing is more robust than matte anything
+        if os.path.exists(os.path.join(self.dataroot, 'face-parsing', 'hair')):
+            hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
+        else:
+            hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
+
         flame_param_folder = os.path.join(self.dataroot, 'FLAME_params')
         optical_flow_folder = os.path.join(self.dataroot, 'optical_flow')
         orientation_folder = os.path.join(self.dataroot, 'orientation_maps')
@@ -217,7 +223,7 @@ class GaussianDataset(Dataset):
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             # for subject 100, lowers hair mask is more accurate than hair mask for some reason
-            hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_%s.png' % camera_id) for camera_id in self.camera_ids]
+            hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             # hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_lowres_%s.png' % camera_id) for camera_id in self.camera_ids]
             visible_paths = [os.path.join(image_folder, frame, 'visible_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             camera_paths = [os.path.join(camera_folder, frame, 'camera_%s.npz' % camera_id) for camera_id in self.camera_ids]
@@ -368,7 +374,6 @@ class GaussianDataset(Dataset):
                 # TODO: numpy's orgin at top left, now should invert y axis of optical flow? 
             else:
                 raise ValueError('Unknown optical flow data type')
-
 
 
         orientation_path = sample[11][view]

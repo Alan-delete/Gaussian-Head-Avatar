@@ -250,20 +250,27 @@ class GaussianHeadTrainRecorder():
                 render_segment = cv2.resize(render_segment, (image.shape[0], image.shape[1]))
                 images.append(wandb.Image(render_segment, caption="rendered_segment"))
 
-                # # append segment[2]
-                # images.append(wandb.Image(segment_vis[...,2], caption="hair mask"))
 
                 hair_mask = data['hair_masks'][0] 
 
                 orientation = data['orient_angle'][0]
-                # orientation = (orientation * 255).astype(np.uint8)
-                # orientation = cv2.resize(orientation, (image.shape[0], image.shape[1]))
                 images.append(wandb.Image(vis_orient(orientation, hair_mask), caption="gt_orientation"))
 
                 render_orientation = data['render_orient'][0]
-                # render_orientation = (render_orientation * 255).astype(np.uint8)
-                # render_orientation = cv2.resize(render_orientation, (image.shape[0], image.shape[1]))
                 images.append(wandb.Image(vis_orient(render_orientation, hair_mask), caption="rendered_orientation"))
+
+                # [2, resolution, resolution]
+                optical_flow = data['optical_flow'][0]
+                angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
+                images.append(wandb.Image(vis_orient(angle, hair_mask), caption="optical_flow"))
+
+                # render_velocity = data['render_velocity'][0].permute(1, 2, 0).detach().cpu().numpy() 
+                # render_velocity = (render_velocity * 255).astype(np.uint8)
+                # render_velocity = cv2.resize(render_velocity, (image.shape[0], image.shape[1]))
+                # images.append(wandb.Image(render_velocity, caption="rendered_velocity"))
+                render_velocity = data['render_velocity'][0]
+                images.append(wandb.Image(vis_orient(render_velocity, hair_mask), caption="rendered_velocity"))
+
 
                 wandb.log({"Images": images})
 

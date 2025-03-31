@@ -79,17 +79,23 @@ def vis_parsing_maps(image, segmentation_mask, save_image=False, save_path="resu
     # hair mask
     hair_mask = np.zeros_like(segmentation_mask)
     hair_mask[segmentation_mask ==  ATTRIBUTES.index('hair')] = 1
-    hair_mask_path = save_path.replace('.', '_hair.')
+    hair_mask_path = save_path.replace('face-parsing', 'face-parsing/hair')
+    if not os.path.exists(os.path.dirname(hair_mask_path)):
+        os.makedirs(os.path.dirname(hair_mask_path))
     cv2.imwrite(hair_mask_path, hair_mask * 255)
 
     # head mask
     head_mask = np.ones_like(segmentation_mask)
     head_mask[segmentation_mask ==  ATTRIBUTES.index('background')] = 0
+    # maybe add cloth back
     head_mask[segmentation_mask ==  ATTRIBUTES.index('cloth')] = 0
     head_mask[segmentation_mask ==  ATTRIBUTES.index('hair')] = 0
     head_mask[segmentation_mask ==  ATTRIBUTES.index('hat')] = 0
-    head_mask_path = save_path.replace('.', '_head.')
-    head_mask_path = save_path.replace('face-parsing', 'masks/face')
+    # head_mask_path = save_path.replace('.', '_head.')
+    # head_mask_path = save_path.replace('face-parsing', 'masks/face')
+    head_mask_path = save_path.replace('face-parsing', 'face-parsing/head')
+    if not os.path.exists(os.path.dirname(head_mask_path)):
+        os.makedirs(os.path.dirname(head_mask_path))
     cv2.imwrite(head_mask_path, head_mask * 255)
 
 
@@ -233,6 +239,12 @@ def inference(params: argparse.Namespace) -> None:
             try:
                 # Load and process the image
                 image = Image.open(file_path).convert("RGB")
+                mask_path = file_path.replace("image_", "mask_")
+                if os.path.exists(mask_path):
+                    mask = Image.open(mask_path).convert("L")
+                    # image = Image.composite(0, image, mask)
+                    image = Image.composite(image, Image.new("RGB", image.size, (0, 0, 0)), mask)
+
 
                 # Store original image resolution
                 original_size = image.size  # (width, height)

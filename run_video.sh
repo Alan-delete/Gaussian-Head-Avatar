@@ -1,4 +1,4 @@
-export GPU="2"
+export GPU="6"
 export CAMERA="PINHOLE"
 export EXP_NAME_1="stage1"
 export EXP_NAME_2="stage2"
@@ -6,9 +6,16 @@ export EXP_NAME_3="stage3"
 export EXP_PATH_1=$DATA_PATH/3d_gaussian_splatting/$EXP_NAME_1
 
 # Manual steps for now:
-SUBJECT="031"
-DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
 PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
+# SUBJECT="031"
+# DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
+# renderme
+# SUBJECT="0018_e0_raw"
+# SUBJECT="0094_e0_raw"
+# SUBJECT="0094_h1_7bk_raw"
+# SUBJECT="0094_h0_raw"
+SUBJECT="0094_h1_6bn_raw-007"
+DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/RenderMe/$SUBJECT"
 
 #
 # Ensure that the following environment variables are accessible to the script:
@@ -25,18 +32,64 @@ eval "$(conda shell.bash hook)"
 # Donwload NeRsemble dataset
 # nersemble-data download datasets/NeRSemble/ --participant 17,18 --sequence 'HAIR','EXP-1-head'
 
-# landmark detection and FLAME fitting
-cd $PROJECT_DIR/preprocess
-conda deactivate && conda activate mv-3dmm-fitting
-# CUDA_VISIBLE_DEVICES="$GPU" python detect_landmarks.py \
-#     --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml
+# conda deactivate && conda activate gha2
+# cd $PROJECT_DIR/preprocess
+# python preprocess_renderme.py --smc_path ../datasets/RenderMe/raw/$SUBJECT.smc --output_dir ../datasets/RenderMe/
 
-# CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
-#     --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml
+# # Run Matte-Anything
+# # Error: bbox_annotator = sv.BoxAnnotator(color_lookup=sv.ColorLookup.INDEX)
+# # Error: TypeError: __init__() got an unexpected keyword argument 'color_lookup'
+# # Sol: change sv.BoxAnnotator to sv.BoundingBoxAnnotator
+# conda deactivate && conda activate matte_anything
+# cd $PROJECT_DIR/preprocess
+# # img_size 256 and kernel_size 5 tested good
+# CUDA_VISIBLE_DEVICES="$GPU" python calc_masks.py \
+#     --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --img_size 512 \
+#     --kernel_size 5
 
+# # Run background matting
+# conda deactivate && conda activate gha2
+# cp $PROJECT_DIR/preprocess/remove_background_nersemble.py $PROJECT_DIR/ext/BackgroundMattingV2/
+# cd $PROJECT_DIR/ext/BackgroundMattingV2
+# CUDA_VISIBLE_DEVICES="$GPU" python remove_background_nersemble.py --data_path $DATA_PATH --dataset renderme
+
+# # face parsing
+# cd $PROJECT_DIR/preprocess
+# conda deactivate && conda activate gha2
+# CUDA_VISIBLE_DEVICES="$GPU" python face_parse.py --model resnet34 --weight $PROJECT_DIR/ext/face-parsing/weights/resnet34.pt --input $DATA_PATH/images  --output $DATA_PATH/face-parsing
+
+# # # landmark detection and FLAME fitting
+# cd $PROJECT_DIR/preprocess
+# conda deactivate && conda activate mv-3dmm-fitting
+# # CUDA_VISIBLE_DEVICES="$GPU" python detect_landmarks.py \
+# #     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks --image_size 2048
 # CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
-#     --config $PROJECT_DIR/config/BFM_fitting_NeRSemble_031.yaml
-conda deactivate 
+#     --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml \
+#     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
+#     --param_folder $DATA_PATH/FLAME_params --camera_folder $DATA_PATH/cameras --image_size 2048
+    
+# # CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
+# #     --config $PROJECT_DIR/config/BFM_fitting_NeRSemble_031.yaml \
+# #     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
+# #     --param_folder $DATA_PATH/params --camera_folder $DATA_PATH/cameras --image_size 2048
+
+
+
+# conda deactivate 
+
+# # optical flow
+# cd $PROJECT_DIR/preprocess
+# conda deactivate && conda activate gha2
+# CUDA_VISIBLE_DEVICES="$GPU" python calc_optical_flow.py \
+#     --img_dir $DATA_PATH/images --optical_flow_dir $DATA_PATH/optical_flow --grid_size 200 \
+
+# CUDA_VISIBLE_DEVICES="$GPU" python cal_optical_flow.py --visualization_modes overlay --video_path $DATA_PATH/images --height 2048 --width 2048
+
+
+# cd $PROJECT_DIR/ext/DenseMatching
+# conda activate dense_matching_env
+# CUDA_VISIBLE_DEVICES="$GPU" python calc_optical_flow.py --model GLUNet_GOCor --pre_trained_model dynamic --img_dir $DATA_PATH/images --optical_flow_dir $DATA_PATH/optical_flow
+
 
 # conda activate sapiens_lite 
 # cd $PROJECT_DIR/src/preprocessing && ./depth.sh
@@ -58,15 +111,6 @@ conda deactivate
 # CUDA_VISIBLE_DEVICES="$GPU" python convert.py -s $DATA_PATH \
 #     --camera $CAMERA --max_size 1024
 
-# # Run Matte-Anything
-# # Error: bbox_annotator = sv.BoxAnnotator(color_lookup=sv.ColorLookup.INDEX)
-# # Error: TypeError: __init__() got an unexpected keyword argument 'color_lookup'
-# # Sol: change sv.BoxAnnotator to sv.BoundingBoxAnnotator
-# conda deactivate && conda activate matte_anything
-# cd $PROJECT_DIR/preprocess
-# CUDA_VISIBLE_DEVICES="$GPU" python calc_masks.py \
-#     --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --max_size 2048 \
-#     --kernel_size 15
 
 # # Filter images using their IQA scores
 # conda deactivate && conda activate gaussian_splatting_hair
@@ -79,6 +123,7 @@ conda deactivate
 # cd $PROJECT_DIR/src/preprocessing
 # CUDA_VISIBLE_DEVICES="$GPU" python resize_images.py --data_path $DATA_PATH
 
+
 # # Calculate orientation maps
 # conda deactivate && conda activate gaussian_splatting_hair
 # cd $PROJECT_DIR/src/preprocessing
@@ -89,6 +134,12 @@ conda deactivate
 #     --conf_dir $DATA_PATH/orientations_2/vars \
 #     --filtered_img_dir $DATA_PATH/orientations_2/filtered_imgs \
 #     --vis_img_dir $DATA_PATH/orientation_2/vis_imgs
+
+# cd $PROJECT_DIR/preprocess 
+# conda deactivate && conda activate gha2
+# CUDA_VISIBLE_DEVICES="$GPU" python calc_orientation_maps.py \
+#     --img_dir $DATA_PATH/images --mask_dir $DATA_PATH/masks/hair --orient_dir $DATA_PATH/orientation_maps \
+#     --conf_dir $DATA_PATH/orientation_confidence_maps --filtered_img_dir $DATA_PATH/orientation_filtered_imgs --vis_img_dir $DATA_PATH/orientation_vis_imgs
 
 # # Run OpenPose
 # conda deactivate && cd $PROJECT_DIR/ext/openpose
@@ -159,12 +210,14 @@ conda deactivate
 # # RECONSTRUCTION #
 # ##################
 
-cd $PROJECT_DIR
+# cd $PROJECT_DIR
 conda activate gha2 
-# CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_N031.yaml
+# CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_N$SUBJECT.yaml --dataroot $DATA_PATH
+# CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_renderme.yaml --dataroot $DATA_PATH
 # CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_N031.yaml
-# CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N031.yaml
-CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N031_Simplified.yaml
+
+# CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N$SUBJECT\_Simplified.yaml
+CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH
 
 
 # Run 3D Gaussian Splatting reconstruction

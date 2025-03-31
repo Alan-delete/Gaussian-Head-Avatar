@@ -68,9 +68,12 @@ class Recorder():
                     # merge the original image and the render image
                     render_image = cv2.resize(render_image, (self.camera.image_size, self.camera.image_size))
 
-                    dark_mask = render_image < 50
-                    # add background from orginal image to rendered image
-                    render_image[dark_mask] = origin_image[dark_mask]
+                    # dark_mask = render_image < 50
+                    # # add background from orginal image to rendered image
+                    # render_image[dark_mask] = origin_image[dark_mask]
+                    # alpha blending
+                    alpha = 0.65
+                    render_image = cv2.addWeighted(render_image, alpha, origin_image, 1 - alpha, 0)
 
                     N = landmarks[n].shape[0]
 
@@ -121,6 +124,12 @@ if __name__ == '__main__':
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
 
+
+    arg_cfg = ['image_folder', arg.image_folder, 'landmark_folder', arg.landmark_folder, 'camera_folder', arg.camera_folder,
+               'visualize', arg.visualize, 'save_vertices', arg.save_vertices, 'gpu_id', arg.gpu_id, 'image_size', arg.image_size]
+    cfg.merge_from_list(arg_cfg)
+
+    
     device = torch.device('cuda:%d' % arg.gpu_id)
     torch.cuda.set_device(arg.gpu_id)
 
