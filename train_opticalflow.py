@@ -15,6 +15,7 @@ from lib.module.CameraModule import CameraModule
 from lib.recorder.Recorder import GaussianHeadTrainRecorder
 from lib.trainer.GaussianHeadTrainer import GaussianHeadTrainer
 from lib.trainer.GaussianHeadHairTrainer import GaussianHeadHairTrainer
+from lib.trainer.OpticalFlowTrainer import OpticalFlowTrainer
 from lib.face_models.FLAMEModule import FLAMEModule
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -34,6 +35,9 @@ if __name__ == '__main__':
         arg_cfg = ['dataroot', arg.dataroot]
         cfg.dataset.merge_from_list(arg_cfg)
     
+    torch.cuda.set_per_process_memory_fraction(1.0)  # optional but can help keep memory in check
+    torch.cuda.memory.set_per_process_memory_fraction(1.0, device=torch.device("cuda:0"))
+
     # debug select frames is to only load a few frames for debugging
     dataset = GaussianDataset(cfg.dataset)
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True) 
@@ -95,12 +99,12 @@ if __name__ == '__main__':
     if cfg.resume_training:
         # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
         # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest' % (recorder.checkpoint_path, recorder.name)
-        gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_390' % (recorder.checkpoint_path, recorder.name)
-        gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_390' % (recorder.checkpoint_path, recorder.name)
+        gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_781' % (recorder.checkpoint_path, recorder.name)
+        gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_781' % (recorder.checkpoint_path, recorder.name)
         gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
         gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
         # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
-        start_epoch = 391
+        start_epoch = 782
     else:
         # only reset points_raw if not resume training, otherwise gaussianhair.transform will be backpropagated wrongly
         gaussianhair.reset_strands()
@@ -148,5 +152,5 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adam(optimized_parameters)
 
-    trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
+    trainer = OpticalFlowTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
     trainer.train(start_epoch, start_epoch + cfg.num_epochs)

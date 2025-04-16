@@ -1,0 +1,148 @@
+gpu_id: 0
+load_meshhead_checkpoint: 'checkpoints/meshhead_renderme/meshhead_latest'
+# load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
+# load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
+# load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
+lr_net: 1e-4
+lr_pose: 1e-6
+batch_size: 1
+optimize_pose: False
+use_supres: False
+train_segment: True
+
+dataset:
+  dataroot: 'datasets/mini_demo_dataset/031'
+  camera_ids: []
+  test_camera_ids: []
+  selected_frames: ['0000']
+  original_resolution: 2048
+  resolution: 2048
+
+
+loss_weights:
+  dir: 10.
+  dssim: 0.2
+  knn_feature: 10.
+  mesh_dist: 0.001
+  orient: 1.
+  rgb_hr: 1.
+  rgb_lr: 1.
+  segment: 2.
+  sign_distance: 0.01
+  strand_feature: 0.01
+  transform_reg: 10.
+  vgg: 0.1
+
+meshheadmodule:
+  geo_mlp: [27, 256, 256, 256, 256, 256, 132]
+  exp_color_mlp: [192, 256, 256, 32]
+  # exp_color_mlp: [187, 256, 256, 32]
+  pose_color_mlp: [182, 128, 32]
+  exp_deform_mlp: [91, 256, 256, 256, 256, 256, 3]
+  # exp_deform_mlp: [86, 256, 256, 256, 256, 256, 3]
+  pose_deform_mlp: [81, 256, 256, 3]
+  pos_freq: 4
+  model_bbox: [[-1.6, 1.6], [-1.7, 1.8], [-2.5, 1.0]]
+  dist_threshold_near: 0.1
+  dist_threshold_far: 0.25
+  deform_scale: 0.3
+  subdivide: False
+
+supresmodule:
+  input_dim: 32
+  output_dim: 3
+  network_capacity: 4
+
+gaussianheadmodule:
+  num_add_mouth_points: 3000
+  exp_color_mlp: [192, 256, 256, 32]
+  # exp_color_mlp: [187, 256, 256, 32]
+  pose_color_mlp: [182, 128, 32]
+  exp_deform_mlp: [91, 256, 256, 256, 3]
+  # exp_deform_mlp: [86, 256, 256, 256, 3]
+  pose_deform_mlp: [81, 256, 256, 3]
+  exp_attributes_mlp: [192, 256, 256, 256, 8]
+  # exp_attributes_mlp: [187, 256, 256, 256, 8]
+  pose_attributes_mlp: [182, 128, 128, 8]
+  exp_coeffs_dim: 64
+  pos_freq: 4
+  dist_threshold_near: 0.1
+  dist_threshold_far: 0.25
+  deform_scale: 0.3
+  attributes_scale: 0.2
+
+  densify: True
+  densification_interval: 100
+  opacity_reset_interval: 3_000
+  densify_from_iter: 500
+  densify_until_iter: 15_000
+  # densify_grad_threshold: 0.0002
+  densify_grad_threshold: 0.0004
+  opacity_reg_from_iter: 30_000
+  gaussian_pruning_threshold: 0.5
+
+gaussianhairmodule:
+  pose_point_mlp: [81, 256, 3]
+  pose_prior_mlp: [54, 54] 
+  pos_freq: 4
+  dist_threshold_near: 0.1
+  dist_threshold_far: 0.25
+  deform_scale: 0.3
+  attributes_scale: 0.2
+  num_strands: 10_140
+  strand_length: 100
+  simplify_strands: False
+  aspect_ratio: 1
+  quantile: 1
+  train_directions: False
+  train_features_rest: False
+  train_width: False
+  train_opacity: True
+  strand_scale : 0.001
+  sh_degree : 3
+
+  # strands_reset_from_iter: 4_000
+  # just reset strands once at 15000, just [0, 15000] train the prior and [15000, ] train the strands
+  strands_reset_from_iter: 5_000
+  strands_reset_until_iter: 5_000
+  strands_reset_interval: 1_000
+
+
+  lrs : {
+      "theta": 0.005,
+      "beta":  0.01,
+      "G_raw": 0.001,
+      "G_superres": 0.001,
+      "G_res": 0.001,
+  }
+
+  milestones : {
+      "theta": [0, 15_000],
+      "G_raw": [0, 15_000],
+      "G_superres": [0, 15_000],
+      "beta":  [1_000, 15_000],
+      "G_res": [1_000, 15_000],
+  }
+
+  position_lr_init: 1.6e-4 
+  position_lr_final: 1.6e-6 
+  position_lr_delay_mult: 0.01
+  position_lr_max_steps: 30_000
+  # feature_lr: 0.0025
+  feature_lr: 0.01
+  opacity_lr: 0.05
+  label_lr: 0.05
+  orient_conf_lr: 0.05
+  scaling_lr: 0.005
+  rotation_lr: 0.001
+
+  
+
+recorder:
+  debug_tool: 'wandb' # 'tensorboard' or 'wandb'
+  name: 'gaussianhead_renderme_single'
+  logdir: 'log/gaussianhead_NeRSemble031_Simplified'
+  checkpoint_path: 'checkpoints'
+  result_path: 'results'
+  save_freq: 5000
+  show_freq: 500

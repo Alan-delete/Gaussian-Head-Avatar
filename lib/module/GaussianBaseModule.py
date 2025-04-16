@@ -39,6 +39,9 @@ class GaussianBaseModule(nn.Module):
 
         # mlp
         self.feature = torch.empty(0)
+        # by default, only use diffuse color
+        self.max_sh_degree = 0
+        self.active_sh_degree = 0
         # sh
         self.features_dc = torch.empty(0)
         self.features_rest = torch.empty(0)
@@ -210,6 +213,25 @@ class GaussianBaseModule(nn.Module):
         elements[:] = list(map(tuple, attributes))
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)      
+
+    def load_ply(self, path):
+        plydata = PlyData.read(path)
+        plydata = plydata['vertex']
+
+        xyz = torch.tensor(np.array([plydata[attribute] for attribute in ['x', 'y', 'z']]).T, device=self.xyz.device)
+        normals = torch.tensor(np.array([plydata[attribute] for attribute in ['nx', 'ny', 'nz']]).T, device=self.xyz.device)
+        f_dc = torch.tensor(np.array([plydata[attribute] for attribute in plydata.data.dtype.names if 'f_dc' in attribute]).T, device=self.xyz.device)
+        f_rest = torch.tensor(np.array([plydata[attribute] for attribute in plydata.data.dtype.names if 'f_rest' in attribute]).T, device=self.xyz.device)
+        opacities = torch.tensor(plydata['opacity'], device=self.xyz.device).unsqueeze(1)
+        scale = torch.tensor(np.array([plydata[attribute] for attribute in plydata.data.dtype.names if 'scale' in attribute]).T, device=self.xyz.device)
+        rotation = torch.tensor(np.array([plydata[attribute] for attribute in plydata.data.dtype.names if 'rot' in attribute]).T, device=self.xyz.device)
+
+        self.xyz = xyz
+        self.features_dc = f_dc
+        self.features_rest = f_rest
+        self.opacity = opacities
+        self.scales = scale
+        self.rotation = rotation
 
     def save_ply(self, path):
         dir = os.path.dirname(path)
@@ -404,4 +426,3 @@ class GaussianBaseModule(nn.Module):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
  
-

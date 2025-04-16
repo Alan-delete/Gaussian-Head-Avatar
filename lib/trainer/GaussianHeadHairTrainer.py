@@ -89,16 +89,19 @@ class GaussianHeadHairTrainer():
         self.cfg = cfg
 
     def train(self, start_epoch=0, epochs=1):
+        iteration = -1
         for epoch in range(start_epoch, epochs):
             self.gaussianhair.epoch_start()
             # TODO: set time decay for frame at the begining of each epoch to learning more about the first frame
             for idx, data in tqdm(enumerate(self.dataloader)):
-                
+
+                iteration += 1
                 iteration = idx + epoch * len(self.dataloader)
+
                 # prepare data
                 to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
-                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','pre_frames_poses', 'optical_flow']
+                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','poses_history', 'optical_flow']
                 for data_item in to_cuda:
                     data[data_item] = data[data_item].to(device=self.device)
 
@@ -127,20 +130,8 @@ class GaussianHeadHairTrainer():
                 # before 4000, backprop into prior
                 backprop_into_prior = iteration <= self.cfg.gaussianhairmodule.strands_reset_from_iter
                
-                self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, 
-                                                          backprop_into_prior=backprop_into_prior, 
-                                                          pose_params= data['pose'][0],
-                                                          pre_pose_params = data['pre_frames_poses'][0]) 
                 self.gaussianhair.update_learning_rate(iteration)
                 # self.gaussianhead.update_learning_rate(iteration)
-
-                # sharpness loss
-                loss_opacity_reg = 0.005 * (self.gaussianhair.get_opacity * (1 - self.gaussianhair.get_opacity) ).mean()
-
-                # if iteration >= 2000:
-                #     if iteration % 2000 == 0: 
-                #         self.groups = self.gaussianhair.split_strands(40)
-                #     self.gaussianhair.shorten_strands(self.groups)
 
                 # Every 1000 its we increase the levels of SH up to a maximum degree
                 # if iteration % 1000 == 0:
@@ -148,6 +139,11 @@ class GaussianHeadHairTrainer():
 
                 # render coarse images
                 head_data = self.gaussianhead.generate(data)
+                self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, 
+                                                          backprop_into_prior=backprop_into_prior, 
+                                                          poses_history = data['poses_history'][0], 
+                                                          pose = data['pose'][0],
+                                                          scale = data['scale'][0])
                 hair_data = self.gaussianhair.generate(data)
                 # combine head and hair data
                 for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
@@ -174,12 +170,18 @@ class GaussianHeadHairTrainer():
                 # TODO: don't forget to change dim if removing batch dimension
                 gt_segment = torch.cat([ 1 - gt_mask, gt_mask, gt_hair_mask], dim=1) 
                 data['gt_segment'] = gt_segment
+                gt_segment[:, 1] = torch.clamp(gt_segment[:, 1] - gt_segment[:, 2] , 0, 1)
+                # gt_segment[:, 2] = torch.clamp(gt_segment[:, 2] - gt_segment[:, 1] , 0, 1)
 
                 gt_orientation = data['orient_angle']
                 pred_orientation = data['render_orient']
+                # TODO: use pred_mask instead of gt_mask
                 # orient_weight = torch.ones_like(gt_mask[:1]) * gt_orient_conf
                 loss_orient = or_loss(pred_orientation , gt_orientation, mask=gt_hair_mask) #orient_conf, ) #, weight=orient_weight
                 if torch.isnan(loss_orient).any(): loss_orient = 0.0
+
+                # sharpness loss
+                loss_opacity_reg = 0.005 * (self.gaussianhair.get_opacity * (1 - self.gaussianhair.get_opacity) ).mean()
 
                 # B, C, H, W 
                 render_segments = data["render_segments"]
@@ -199,8 +201,15 @@ class GaussianHeadHairTrainer():
                 # loss_segment =  10 * l1_loss(segment_clone[:,2], gt_segment[:,2]) if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
                 
                 # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
-                loss_segment =(relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+                loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+                # loss_segment = (relax_recall_loss(gt_segment * visibles_coarse, segment_clone * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
                 
+                # step decay for segment loss
+                if iteration > 5000:
+                    decay_rate = 0.4 ** ( iteration // 5000)
+                    decay_rate = max(decay_rate, 0.1)
+                    loss_segment = loss_segment * decay_rate
+
 
                 loss_transform_reg =  F.mse_loss(self.gaussianhair.init_transform, self.gaussianhair.transform) 
 
@@ -209,6 +218,10 @@ class GaussianHeadHairTrainer():
                 loss_mesh_dist = self.gaussianhair.mesh_distance_loss()
 
                 loss_knn_feature = self.gaussianhair.knn_feature_loss()
+
+                loss_sign_distance = self.gaussianhair.sign_distance_loss()
+
+                loss_strand_feature = self.gaussianhair.strand_feature_loss()
                 
                 gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
                 loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
@@ -234,36 +247,65 @@ class GaussianHeadHairTrainer():
                 left_up = (random.randint(0, supres_images.shape[2] - 512), random.randint(0, supres_images.shape[3] - 512))
                 loss_vgg = self.fn_lpips((supres_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], 
                                             (cropped_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], normalize=True).mean()
-                # loss = loss_rgb_hr + loss_rgb_lr + loss_vgg * 1e-1 + loss_segment * 12.5
-                loss = (
-                        loss_rgb_hr * self.cfg.loss_weights.rgb_hr +
-                        loss_rgb_lr * self.cfg.loss_weights.rgb_lr +
-                        loss_ssim * self.cfg.loss_weights.dssim +
-                        loss_vgg * self.cfg.loss_weights.vgg + 
-                        loss_segment * self.cfg.loss_weights.segment + 
-                        loss_transform_reg * self.cfg.loss_weights.transform_reg +
-                        loss_dir * self.cfg.loss_weights.dir + 
-                        loss_mesh_dist * self.cfg.loss_weights.mesh_dist + 
-                        loss_knn_feature * self.cfg.loss_weights.knn_feature + 
-                        # loss_orient * self.cfg.loss_weights.orient + 
-                        loss_opacity_reg
-                    )
 
-                self.optimizer.zero_grad()
+
+                #  to better see the real magnitude of the loss
+                loss_rgb_hr = loss_rgb_hr * self.cfg.loss_weights.rgb_hr
+                loss_rgb_lr = loss_rgb_lr * self.cfg.loss_weights.rgb_lr
+                loss_ssim = loss_ssim * self.cfg.loss_weights.dssim
+                loss_vgg = loss_vgg * self.cfg.loss_weights.vgg
+                loss_segment = loss_segment * self.cfg.loss_weights.segment
+                loss_transform_reg = loss_transform_reg * self.cfg.loss_weights.transform_reg
+                loss_dir = loss_dir * self.cfg.loss_weights.dir
+                loss_mesh_dist = loss_mesh_dist * self.cfg.loss_weights.mesh_dist
+                loss_knn_feature = loss_knn_feature * self.cfg.loss_weights.knn_feature
+                loss_strand_feature = loss_strand_feature * self.cfg.loss_weights.strand_feature
+                loss_sign_distance = loss_sign_distance * self.cfg.loss_weights.sign_distance
+                loss = ( 
+                        loss_rgb_hr +
+                        loss_rgb_lr +
+                        loss_ssim +
+                        loss_vgg +
+                        loss_segment +
+                        loss_transform_reg +
+                        loss_dir +
+                        loss_mesh_dist +
+                        loss_knn_feature +
+                        loss_strand_feature +
+                        loss_opacity_reg +   
+                        loss_sign_distance
+                )
+
+                # breakpoint()
+                # # draw renderimage
+                # import cv2
+                # img = render_images[0].cpu().detach().numpy()
+                # img = img.transpose(1, 2, 0) * 255
+                # img = img.astype('uint8')
+                # cv2.imwrite(f'./debug_renderimage_{iteration}.png', img)
+
                 loss.backward()
                 # Optimizer step, for super
-                for param in self.optimizer.param_groups[0]['params']:
-                    if param.grad is not None and param.grad.isnan().any():
-                        self.optimizer.zero_grad()
-                        print(f'NaN during backprop in {iteration} was found, skipping iteration...')
+                # for param in self.optimizer.param_groups[0]['params']:
+                #     if param.grad is not None and param.grad.isnan().any():
+                #         self.optimizer.zero_grad()
+                #         print(f'NaN during backprop in superres was found, skipping iteration...')
+                # self.optimizer.step()
+
+                for group in self.optimizer.param_groups:
+                    for param in group['params']:
+                        if param.grad is not None and param.grad.isnan().any():
+                            self.optimizer.zero_grad()
+                            print(f'NaN during backprop in {group.get("name", "Unnamed")} was found, skipping iteration...')
                 self.optimizer.step()
+                self.optimizer.zero_grad(set_to_none = True)
 
                 # Optimizer step, for hair prior
                 for k, optimizer in self.gaussianhair.prior_optimizers.items():
                     for param in optimizer.param_groups[0]['params']:
                         if param.grad is not None and param.grad.isnan().any():
                             optimizer.zero_grad()
-                            print(f'NaN during backprop in {k} was found, skipping iteration...')
+                            print(f'NaN in prior during backprop was found, skipping iteration...')
                     optimizer.step()
                     optimizer.zero_grad(set_to_none = True)
 
@@ -296,42 +338,68 @@ class GaussianHeadHairTrainer():
 
                     # Optimizer step, for gaussians
                     # unstrctured
+                    # nan_grad = False
+                    # params = [self.gaussianhead.xyz, 
+                    #         self.gaussianhead.feature,
+                    #         self.gaussianhead.features_dc, 
+                    #         self.gaussianhead.features_rest, 
+                    #         self.gaussianhead.opacity, 
+                    #         self.gaussianhead.label_hair, 
+                    #         self.gaussianhead.label_body, 
+                    #         self.gaussianhead.scales, 
+                    #         self.gaussianhead.rotation]
+                    # labels = ['xyz', 'feature','features_dc', 'features_rest', 'opacity', 'label_hair', 'label_body', 'scaling', 'rotation']
+                    # for param, label in zip(params, labels):
+                    #     if param.grad is not None and param.grad.isnan().any():
+                    #         nan_grad = True
+                    #         print(f'NaN during backprop in {label} unstruct was found, skipping iteration')
+                    
                     nan_grad = False
-                    params = [self.gaussianhead.xyz, 
-                            self.gaussianhead.features_dc, 
-                            self.gaussianhead.features_rest, 
-                            self.gaussianhead.opacity, 
-                            self.gaussianhead.label_hair, 
-                            self.gaussianhead.label_body, 
-                            self.gaussianhead.scales, 
-                            self.gaussianhead.rotation]
-                    labels = ['xyz', 'features_dc', 'features_rest', 'opacity', 'label_hair', 'label_body', 'scaling', 'rotation']
-                    for param, label in zip(params, labels):
-                        if param.grad is not None and param.grad.isnan().any():
-                            nan_grad = True
-                            print(f'NaN during backprop in {label} unstruct was found, skipping iteration')
+                    for group in self.gaussianhead.optimizer.param_groups:
+                        for param in group['params']:
+                            if param.grad is not None and param.grad.isnan().any():
+                                nan_grad = True
+                                print(f"[NaN Detected in Gradients] → Unstruct Param group: {group.get('name', 'Unnamed')}")
+                            # if torch.isnan(param).any():
+                            #     print(f"[NaN Detected in Weights] → Param group: {group.get('name', 'Unnamed')}") 
+                    
                     if not nan_grad:
                         self.gaussianhead.optimizer.step()
                     self.gaussianhead.optimizer.zero_grad(set_to_none = True)
                         
                     # strctured
                     nan_grad = False
-                    params = [self.gaussianhair.points_raw, 
-                            self.gaussianhair.features_dc_raw]
-                    labels = ['point', 'features_dc']
-                    if self.gaussianhair.train_features_rest:
-                        params.append(self.gaussianhair.features_rest_raw)
-                        labels.append('features_rest')
-                    if self.gaussianhair.train_opacity:
-                        params.append(self.gaussianhair.opacity_raw)
-                        labels.append('opacity')
-                    if self.gaussianhair.train_width:
-                        params.append(self.gaussianhair.width_raw)
-                        labels.append('width')
-                    for param, label in zip(params, labels):
-                        if param.grad is not None and param.grad.isnan().any():
-                            nan_grad = True
-                            print(f'NaN during backprop in {label} struct was found, skipping iteration')
+                    # params = [self.gaussianhair.points_raw, 
+                    #         self.gaussianhair.features_dc_raw]
+                    # labels = ['point', 'features_dc']
+                    # if self.gaussianhair.train_features_rest:
+                    #     params.append(self.gaussianhair.features_rest_raw)
+                    #     labels.append('features_rest')
+                    # if self.gaussianhair.train_opacity:
+                    #     params.append(self.gaussianhair.opacity_raw)
+                    #     labels.append('opacity')
+                    # if self.gaussianhair.train_width:
+                    #     params.append(self.gaussianhair.width_raw)
+                    #     labels.append('width')
+
+                    # for param in self.gaussianhair.optimizer.param_groups[0]['params']:
+                    #     if param.grad is not None and param.grad.isnan().any():
+                    #         optimizer.zero_grad()
+                    #         print(f'NaN during backprop in {k} was found, skipping iteration...')
+                    # optimizer.step()
+                    # optimizer.zero_grad(set_to_none = True)
+                    for group in self.gaussianhair.optimizer.param_groups:
+                        for param in group['params']:
+                            if param.grad is not None and param.grad.isnan().any():
+                                nan_grad = True
+                                print(f"[NaN Detected in Gradients] → Struct Param group: {group.get('name', 'Unnamed')}")
+                            # if torch.isnan(param).any():
+                            #     print(f"[NaN Detected in Weights] → Param group: {group.get('name', 'Unnamed')}")
+
+                    # for param, label in zip(params, labels):
+                    #     if param.grad is not None and param.grad.isnan().any():
+                    #         nan_grad = True
+                    #         print(f'NaN during backprop in {label} struct was found, skipping iteration')
                     if not nan_grad:
                         self.gaussianhair.optimizer.step()
                     self.gaussianhair.optimizer.zero_grad(set_to_none = True)
@@ -355,8 +423,11 @@ class GaussianHeadHairTrainer():
                     'loss_orient' : loss_orient,
                     'psnr_train' : psnr_train,
                     'ssim_train' : ssim_train,
+                    'loss_strand_feature' : loss_strand_feature,
+                    'loss_sign_distance' : loss_sign_distance,
                     'epoch' : epoch,
-                    'iter' : idx + epoch * len(self.dataloader)
+                    # 'iter' : idx + epoch * len(self.dataloader)
+                    'iter' : iteration
                 }
                 with torch.no_grad():
                     self.recorder.log(log)

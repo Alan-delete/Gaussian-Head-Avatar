@@ -586,13 +586,15 @@ def main(smc_path, output_dir):
             scanmask = anno_rd.get_scanmask()
             print(f"scanmask.shape all: {scanmask.shape}")    
 
+    frame_step = 3
+    selected_frames = range(0, num_frame, frame_step)
     
-    for i in range(num_frame):
+    for i in selected_frames:
         os.makedirs(os.path.join(output_dir, actor_part, 'images', f'{i:04d}'), exist_ok=True)
         os.makedirs(os.path.join(output_dir, actor_part, 'cameras', f'{i:04d}'), exist_ok=True)
 
     
-    for camera_id in range(num_camera):
+    for camera_id in selected_frames:
         images = rd.get_img(camera_id, 'color', disable_tqdm=False)
         for image, frame_id in zip(images, range(num_frame)):
             visible = (np.ones_like(image) * 255).astype(np.uint8)
@@ -606,7 +608,10 @@ def main(smc_path, output_dir):
             cv2.imwrite(os.path.join(output_dir, actor_part, 'images', f'{frame_id:04d}', f'visible_{camera_id:02d}.jpg'), visible)
             cv2.imwrite(os.path.join(output_dir, actor_part, 'images', f'{frame_id:04d}', f'image_lowres_{camera_id:02d}.jpg'), image_lowres)
             cv2.imwrite(os.path.join(output_dir, actor_part, 'images', f'{frame_id:04d}', f'visible_lowres_{camera_id:02d}.jpg'), visible_lowres)
-            camera = rd.get_Calibration(camera_id)
+            if anno_rd is not None:
+                camera = anno_rd.get_Calibration(camera_id)
+            else:
+                camera = rd.get_Calibration(camera_id)
             extrinsic = camera['RT']
             R = extrinsic[:3, :3].T
             t = - R @ extrinsic[:3, 3]

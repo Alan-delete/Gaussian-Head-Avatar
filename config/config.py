@@ -33,6 +33,9 @@ class config_train(config_base):
         self.cfg.optimize_pose = False                          # optimize delta_poses or not
         self.cfg.use_supres = True                              # use super resolution network or not, if not, directly use first 3 channels of the 32 channels 
         self.cfg.train_segment = False                          # train the segmentation or not
+        self.cfg.resume_training = False                        # resume training or not
+        self.cfg.start_epoch = 0
+        self.cfg.num_epochs = 300                            # number of epochs for training
    
         self.cfg.loss_weights = CN()
         self.cfg.loss_weights.rgb_hr = 1.0                      # loss for high resolution image
@@ -45,6 +48,8 @@ class config_train(config_base):
         self.cfg.loss_weights.mesh_dist = 1e-4                  # loss for mesh distance
         self.cfg.loss_weights.knn_feature = 1e-4                # loss for knn feature loss
         self.cfg.loss_weights.orient = 1e-1                     # loss for orientation
+        self.cfg.loss_weights.strand_feature = 1e-2              # loss for strand feature
+        self.cfg.loss_weights.sign_distance = 1e-2           # loss for sign distance
 
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset
@@ -53,6 +58,7 @@ class config_train(config_base):
         self.cfg.dataset.original_resolution = 2048             # original image resolution, should match the intrinsic
         self.cfg.dataset.resolution = 512                       # image resolution for rendering
         self.cfg.dataset.num_sample_view = 8                    # number of sampled images from different views during mesh head training
+        self.cfg.dataset.selected_frames = []                           # selected frames for training, if not set, all frames will be used
         
         self.cfg.meshheadmodule = CN()
         self.cfg.meshheadmodule.geo_mlp = []                    # dimensions of geometry MLP

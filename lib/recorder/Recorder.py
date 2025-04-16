@@ -110,6 +110,15 @@ class GaussianHeadTrainRecorder():
             config= full_cfg ,
             settings=wandb.Settings(start_method='fork'),
         )
+        wandb.save('lib/module/*.py', policy='now')
+        wandb.save('lib/dataset/*.py', policy='now')
+        wandb.save('lib/recorder/*.py', policy='now')
+        wandb.save('lib/trainer/*.py', policy='now')
+        wandb.save('config/*.py', policy='now')
+        wandb.save('preprocess/*.py', policy='now')
+        wandb.save('lib/face_models/*.py', policy='now')
+        wandb.save('train*.py', policy='now')
+        wandb.save('run_video.sh', policy='now')
 
         self.name = cfg.name
         self.checkpoint_path = cfg.checkpoint_path
@@ -131,45 +140,49 @@ class GaussianHeadTrainRecorder():
             self.logger.add_scalar('loss_rgb_lr', log_data['loss_rgb_lr'], log_data['iter'])
             self.logger.add_scalar('loss_vgg', log_data['loss_vgg'], log_data['iter'])
         else:
-            wandb.log({"loss_rgb_hr": log_data['loss_rgb_hr'], 
-                       "loss_rgb_lr": log_data['loss_rgb_lr'], 
-                       "loss_vgg": log_data['loss_vgg'],
-                       "loss_segment": log_data['loss_segment'],
-                       "loss_transform_reg": log_data['loss_transform_reg'],
-                       "loss_dir": log_data['loss_dir'],
-                       "loss_mesh_dist": log_data['loss_mesh_dist'],
-                       "loss_knn_feature": log_data['loss_knn_feature'],
-                       "loss_ssim": log_data['loss_ssim'],
-                       "loss_orient": log_data['loss_orient'],
-                       "psnr_train": log_data['psnr_train'],
-                       "ssim_train": log_data['ssim_train'],
-                       "points_num": log_data['gaussianhead'].xyz.shape[0] })
+            log_record = {key: log_data[key] for key in log_data if key.startswith('loss_')}
+            log_record['psnr_train'] = log_data['psnr_train'] if "psnr_train" in log_data else 0
+            log_record['ssim_train'] = log_data['ssim_train'] if "ssim_train" in log_data else 0
+            log_record['points_num'] = log_data['gaussianhead'].xyz.shape[0]
+            wandb.log(log_record)
 
         if log_data['iter'] % self.save_freq == 0:
             print('saving checkpoint.')
             torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_latest' % (self.checkpoint_path, self.name))
             torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+            torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_latest' % (self.checkpoint_path, self.name))
+            torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             torch.save(log_data['supres'].state_dict(), '%s/%s/supres_latest' % (self.checkpoint_path, self.name))
             torch.save(log_data['supres'].state_dict(), '%s/%s/supres_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest' % (self.checkpoint_path, self.name))
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
 
             # too memory consuming, only used when reuiqring SIBR viewer
-            log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
             # log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
 
-            xyz = log_data['gaussianhair'].xyz.detach().cpu().numpy()
-            hairmesh = o3d.geometry.TriangleMesh()
-            hairmesh.vertices = o3d.utility.Vector3dVector(xyz)
-            hairmesh.compute_vertex_normals() 
-            o3d.io.write_triangle_mesh('%s/%s/%06d_hair.ply' % (self.result_path, self.name, log_data['iter']), hairmesh)
+            if 'gaussianhair' in log_data:
+                log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
+                
+                xyz = log_data['gaussianhair'].xyz.detach().cpu().numpy()
+                hairmesh = o3d.geometry.TriangleMesh()
+                hairmesh.vertices = o3d.utility.Vector3dVector(xyz)
+                hairmesh.compute_vertex_normals() 
+                o3d.io.write_triangle_mesh('%s/%s/%06d_hair.ply' % (self.result_path, self.name, log_data['iter']), hairmesh)
 
-            xyz = log_data['gaussianhead'].xyz.detach().cpu().numpy()
-            headmesh = o3d.geometry.TriangleMesh()
-            headmesh.vertices = o3d.utility.Vector3dVector(xyz)
-            headmesh.compute_vertex_normals()
-            o3d.io.write_triangle_mesh('%s/%s/%06d_head.ply' % (self.result_path, self.name, log_data['iter']), headmesh)
+            if 'gaussianhead' in log_data:
+                xyz = log_data['gaussianhead'].xyz.detach().cpu().numpy()
+                headmesh = o3d.geometry.TriangleMesh()
+                headmesh.vertices = o3d.utility.Vector3dVector(xyz)
+                headmesh.compute_vertex_normals()
+                o3d.io.write_triangle_mesh('%s/%s/%06d_head.ply' % (self.result_path, self.name, log_data['iter']), headmesh)
         
+        # save more frequently for debugging
+        if log_data['iter'] % 500 == 0 and 'pre_shift_head' in log_data:    
+            torch.save({'epoch': log_data['epoch'], 
+                        'pre_shift_head': log_data['pre_shift_head'],
+                        'pre_shift_hair': log_data['pre_shift_hair']},
+                        '%s/%s/pre_shift_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                
         if log_data['iter'] % self.show_freq == 0:
 
             data = log_data['data']
@@ -238,38 +251,46 @@ class GaussianHeadTrainRecorder():
                 render_image = cv2.resize(render_image, (render_image.shape[0], render_image.shape[1]))
                 images.append(wandb.Image(render_image, caption="rendered_image"))
 
-                segment_vis = data['gt_segment'][0]
-                segment_vis[1] = torch.clamp(segment_vis[1] - segment_vis[2] , 0, 1)
-                segment_vis = segment_vis.permute(1, 2, 0).detach().cpu().numpy()
-                segment_vis = (segment_vis * 255).astype(np.uint8)
-                segment_vis = cv2.resize(segment_vis, (image.shape[0], image.shape[1]))
-                images.append(wandb.Image(segment_vis, caption="Segmentation"))
+                if 'gt_segment' in data:
+                    segment_vis = data['gt_segment'][0]
+                    segment_vis[1] = torch.clamp(segment_vis[1] - segment_vis[2] , 0, 1)
+                    segment_vis = segment_vis.permute(1, 2, 0).detach().cpu().numpy()
+                    segment_vis = (segment_vis * 255).astype(np.uint8)
+                    segment_vis = cv2.resize(segment_vis, (image.shape[0], image.shape[1]))
+                    images.append(wandb.Image(segment_vis, caption="Segmentation"))
 
-                render_segment = data['render_segments'][0].permute(1, 2, 0).detach().cpu().numpy()
-                render_segment = (render_segment * 255).astype(np.uint8)
-                render_segment = cv2.resize(render_segment, (image.shape[0], image.shape[1]))
-                images.append(wandb.Image(render_segment, caption="rendered_segment"))
+                    render_segment = data['render_segments'][0].permute(1, 2, 0).detach().cpu().numpy()
+                    render_segment = (render_segment * 255).astype(np.uint8)
+                    render_segment = cv2.resize(render_segment, (image.shape[0], image.shape[1]))
+                    images.append(wandb.Image(render_segment, caption="rendered_segment"))
+
+                if 'hair_masks' in data:
+                    mask = data['masks'][0]
+                    hair_mask = data['hair_masks'][0] 
+                    images.append(wandb.Image(hair_mask.permute(1, 2, 0).detach().cpu().numpy(), caption="hair_mask"))
 
 
-                hair_mask = data['hair_masks'][0] 
+                    if 'orient_angle' in data:
+                        orientation = data['orient_angle'][0]
+                        images.append(wandb.Image(vis_orient(orientation, hair_mask), caption="gt_orientation"))
 
-                orientation = data['orient_angle'][0]
-                images.append(wandb.Image(vis_orient(orientation, hair_mask), caption="gt_orientation"))
+                        render_orientation = data['render_orient'][0]
+                        images.append(wandb.Image(vis_orient(render_orientation, hair_mask), caption="rendered_orientation"))
 
-                render_orientation = data['render_orient'][0]
-                images.append(wandb.Image(vis_orient(render_orientation, hair_mask), caption="rendered_orientation"))
+                    if 'optical_flow' in data:
+                        # [2, resolution, resolution]
+                        optical_flow = data['optical_flow'][0]
+                        angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
+                        images.append(wandb.Image(vis_orient(angle, mask), caption="optical_flow"))
 
-                # [2, resolution, resolution]
-                optical_flow = data['optical_flow'][0]
-                angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
-                images.append(wandb.Image(vis_orient(angle, hair_mask), caption="optical_flow"))
-
-                # render_velocity = data['render_velocity'][0].permute(1, 2, 0).detach().cpu().numpy() 
-                # render_velocity = (render_velocity * 255).astype(np.uint8)
-                # render_velocity = cv2.resize(render_velocity, (image.shape[0], image.shape[1]))
-                # images.append(wandb.Image(render_velocity, caption="rendered_velocity"))
-                render_velocity = data['render_velocity'][0]
-                images.append(wandb.Image(vis_orient(render_velocity, hair_mask), caption="rendered_velocity"))
+                    if 'render_velocity' in data:
+                        # render_velocity = data['render_velocity'][0].permute(1, 2, 0).detach().cpu().numpy() 
+                        # render_velocity = (render_velocity * 255).astype(np.uint8)
+                        # render_velocity = cv2.resize(render_velocity, (image.shape[0], image.shape[1]))
+                        # images.append(wandb.Image(render_velocity, caption="rendered_velocity"))
+                        render_velocity = data['render_velocity'][0]
+                        angle = torch.atan2(render_velocity[1], render_velocity[0]) * 180 / np.pi
+                        images.append(wandb.Image(vis_orient(angle, mask), caption="rendered_velocity"))
 
 
                 wandb.log({"Images": images})

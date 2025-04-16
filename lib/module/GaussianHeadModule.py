@@ -14,11 +14,11 @@ from lib.module.GaussianBaseModule import GaussianBaseModule
 from lib.module.GaussianHairModule import GaussianHairModule
 from lib.network.MLP import MLP
 from lib.network.PositionalEmbedding import get_embedder
-from lib.utils.general_utils import inverse_sigmoid
+from lib.utils.general_utils import inverse_sigmoid, eval_sh
 
 
 class GaussianHeadModule(GaussianBaseModule):
-    def __init__(self, cfg, xyz, feature, landmarks_3d_neutral, add_mouth_points=False, optimizer=None, GS_parameter_names = ["xyz", "feature", "scales", "rotation", "opacity", "seg_label"]):
+    def __init__(self, cfg, xyz, feature, landmarks_3d_neutral, add_mouth_points=False, optimizer=None, GS_parameter_names = ["xyz", "feature", "features_dc", "features_rest", "scales", "rotation", "opacity", "seg_label"]):
         super(GaussianHeadModule, self).__init__(optimizer)
 
         self.cfg = cfg
@@ -38,6 +38,11 @@ class GaussianHeadModule(GaussianBaseModule):
 
         self.xyz = nn.Parameter(xyz)
         self.feature = nn.Parameter(feature)
+
+        features = torch.zeros((xyz.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
+        self.features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
+        self.features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
+        
         self.register_buffer('landmarks_3d_neutral', landmarks_3d_neutral)
 
         dist2 = torch.clamp_min(distCUDA2(self.xyz.cuda()), 0.0000001).cpu()
@@ -105,6 +110,16 @@ class GaussianHeadModule(GaussianBaseModule):
         pose_controlled = (dists > self.dist_threshold_near).squeeze(-1)
 
         color = torch.zeros([B, xyz.shape[1], self.exp_color_mlp.dims[-1]], device=xyz.device)
+        # TODO: If we decide that hair only has diffuse color, then the following direction staff is not needed
+        for b in range(B):
+            # view dependent/independent color
+            shs_view = self.get_features.transpose(1, 2).view(-1, 3, (self.max_sh_degree+1)**2)
+            dir_pp = (self.get_xyz - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
+            dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
+            sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
+            color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
+
+
         # dir2d + depth + seg = 1 + 1 + 3
         extra_feature = torch.zeros([B, xyz.shape[1], 5], device=xyz.device)
         delta_xyz = torch.zeros_like(xyz, device=xyz.device)
@@ -115,8 +130,8 @@ class GaussianHeadModule(GaussianBaseModule):
                 feature_exp_controlled = feature[b, exp_controlled[b], :]
                 exp_color_input = torch.cat([feature_exp_controlled.t(), 
                                             data['exp_coeff'][b].unsqueeze(-1).repeat(1, feature_exp_controlled.shape[0])], 0)[None]
-                exp_color = self.exp_color_mlp(exp_color_input)[0].t()
-                color[b, exp_controlled[b], :] += exp_color * exp_weights[b, exp_controlled[b], :]
+                # exp_color = self.exp_color_mlp(exp_color_input)[0].t()
+                # color[b, exp_controlled[b], :] += exp_color * exp_weights[b, exp_controlled[b], :]
 
                 # attributes: scales, rotation, opacity, [features + exp_coeff] -> [attributes]
                 exp_attributes_input = exp_color_input
@@ -135,8 +150,8 @@ class GaussianHeadModule(GaussianBaseModule):
                 feature_pose_controlled = feature[b, pose_controlled[b], :]
                 pose_color_input = torch.cat([feature_pose_controlled.t(), 
                                                 self.pos_embedding(data['pose'][b]).unsqueeze(-1).repeat(1, feature_pose_controlled.shape[0])], 0)[None]
-                pose_color = self.pose_color_mlp(pose_color_input)[0].t()
-                color[b, pose_controlled[b], :] += pose_color * pose_weights[b, pose_controlled[b], :]
+                # pose_color = self.pose_color_mlp(pose_color_input)[0].t()
+                # color[b, pose_controlled[b], :] += pose_color * pose_weights[b, pose_controlled[b], :]
 
                 # attributes: scales, rotation, opacity, [features + pose_embedding] -> [attributes]
                 pose_attributes_input = pose_color_input
@@ -177,9 +192,16 @@ class GaussianHeadModule(GaussianBaseModule):
             rotation = matrix_to_quaternion(rotation_matrix)
 
             scales = scales * S
-        # color = torch.cat([color, extra_feature], dim=-1)
+
         # data['exp_deform'] = exp_deform
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
+
+        # # dir2D = torch.stack(dir2D, dim=0)
+        # dir2D = torch.ones_like(xyz) 
+        # color[..., 6:9] = dir2D
+
+        # velocity2D = torch.ones_like(xyz) 
+        # color[..., 9:12] = velocity2D
 
         # TODO: use delta_xyz after pose as the 3D optical flow property sent to differentiable renderer 
 
@@ -282,4 +304,3 @@ class GaussianModule(GaussianBaseModule):
 
         self.xyz_gradient_accum[update_filter] += torch.norm(grad[update_filter], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
-

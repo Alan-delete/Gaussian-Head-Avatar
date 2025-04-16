@@ -7,8 +7,9 @@ from torch.nn import functional as F
 class CameraModule():
     def __init__(self):
         # TODO: Currently it's fine, but don't forget to add extra bg_color if using segmentation or depth
-        self.bg_color = torch.tensor([1.0] * 32).float()
+        self.bg_color = torch.tensor([0.0] * 32).float()
         # segment -- [1,0,0]
+        self.bg_color[3] = 1
         self.bg_color[4] = 0
         self.bg_color[5] = 0
         self.scale_modifier = 1.0
@@ -183,38 +184,26 @@ class CameraModule():
                 scales = scales[b],
                 rotations = rotations[b])
             
-            # renders, _radii = rasterizer(
-            #     means3D = means3D,
-            #     means2D = means2D_precomp,
-            #     shs = None,
-            #     colors_precomp = colors_precomp,
-            #     opacities = opacity,
-            #     scales = None,
-            #     rotations = None,
-            #     cov3D_precomp = cov3D_precomp,
-            #     conic_precomp = conic_precomp)
-            # rendered_image, rendered_mask, rendered_cov2D, rendered_orient_conf, rendered_depth = renders.split([3, 2, 3, 1, 1], dim=0)
-            # seg + dir2d + depth +  = 3 + 1 + 1
-            
             # rendered_image, rendered_segment_map, rendered_orient_conf, rendered_depth = render_images_b.split([32, 3, 1, 1], dim=0)
             rendered_image= render_images_b[:3]
             rendered_segment = render_images_b[3:6]
             rendered_cov2D = render_images_b[6:9]
             rendered_velocity = render_images_b[9:12]
             
+            # sometimes error occurs here: CUDA error: an illegal memory access was encountered
             rendered_dir2D = F.normalize(rendered_cov2D[:2], dim=0)
             to_mirror = torch.ones_like(rendered_dir2D[[0]])
             to_mirror[rendered_dir2D[[0]] < 0] *= -1
             rendered_orient_angle = torch.acos(rendered_dir2D[[1]].clamp(-1 + 1e-3, 1 - 1e-3) * to_mirror) / math.pi
 
             # 3, resolution, resolution -> 2, resolution, resolution
-            # render_velocity = rendered_velocity[:2]
+            rendered_velocity_angle = rendered_velocity[:2]
 
-            # 3, resolution, resolution -> 1, resolution, resolution
-            rendered_velocity = F.normalize(rendered_velocity[:2], dim=0)
-            to_mirror = torch.ones_like(rendered_velocity[[0]])
-            to_mirror[rendered_velocity[[0]] < 0] *= -1
-            rendered_velocity_angle = torch.acos(rendered_velocity[[1]].clamp(-1 + 1e-3, 1 - 1e-3) * to_mirror) / math.pi
+            # # 3, resolution, resolution -> 1, resolution, resolution
+            # rendered_velocity = F.normalize(rendered_velocity[:2], dim=0)
+            # to_mirror = torch.ones_like(rendered_velocity[[0]])
+            # to_mirror[rendered_velocity[[0]] < 0] *= -1
+            # rendered_velocity_angle = torch.acos(rendered_velocity[[1]].clamp(-1 + 1e-3, 1 - 1e-3) * to_mirror) / math.pi
 
             # render_images.append(render_images_b)
             render_images.append(rendered_image)

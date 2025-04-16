@@ -61,6 +61,8 @@ class MeshDataset(Dataset):
 
         self.dataroot = cfg.dataroot
         self.camera_ids = cfg.camera_ids
+        self.selected_frames = cfg.selected_frames
+
         if len(self.camera_ids) == 0:
             image_paths = sorted(glob.glob(os.path.join(self.dataroot, 'images', '*', 'image_[0-9]*.jpg')))
             self.camera_ids = set([os.path.basename(image_path).split('_')[1].split('.')[0] for image_path in image_paths])
@@ -72,7 +74,8 @@ class MeshDataset(Dataset):
         image_folder = os.path.join(self.dataroot, 'images')
         param_folder = os.path.join(self.dataroot, 'params')
         camera_folder = os.path.join(self.dataroot, 'cameras')
-        frames = os.listdir(image_folder)
+        # frames = os.listdir(image_folder)
+        frames = os.listdir(image_folder) if len(self.selected_frames) == 0 else self.selected_frames
         
         self.num_exp_id = 0
         for frame in frames:
@@ -105,6 +108,7 @@ class MeshDataset(Dataset):
         return data
     
     def __getitem__(self, index):
+        index = index % len(self.samples)
         sample = self.samples[index]
         
         images = []
@@ -173,18 +177,20 @@ class MeshDataset(Dataset):
                 'exp_id': exp_id}
 
     def __len__(self):
-        return len(self.samples)
+        # return len(self.samples)
+        return max(len(self.samples), 128)
 
 
 
 # TODO: use same model to predict mask and hair mask, and put them in unified folder.
 class GaussianDataset(Dataset):
 
-    def __init__(self, cfg, train=True):
+    def __init__(self, cfg, train=True, debug_select_frames = []):
         super(GaussianDataset, self).__init__()
 
         self.dataroot = cfg.dataroot
         self.camera_ids = cfg.camera_ids
+        self.selected_frames = cfg.selected_frames
         
         if len(self.camera_ids) == 0:
             image_paths = sorted(glob.glob(os.path.join(self.dataroot, 'images', '*', 'image_[0-9]*.jpg')))
@@ -203,17 +209,21 @@ class GaussianDataset(Dataset):
         param_folder = os.path.join(self.dataroot, 'params')
         camera_folder = os.path.join(self.dataroot, 'cameras')
         
-        # as tested, face_parsing is more robust than matte anything
-        if os.path.exists(os.path.join(self.dataroot, 'face-parsing', 'hair')):
-            hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
-        else:
-            hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
+
+        mask_folder = os.path.join(self.dataroot, 'masks')
+        # as tested, face_parsing is more robust than matte anything, but less accurate
+        # if os.path.exists(os.path.join(self.dataroot, 'face-parsing', 'hair')):
+        #     hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
+        # else:
+        #     hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
+        hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
+        hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
 
         flame_param_folder = os.path.join(self.dataroot, 'FLAME_params')
         optical_flow_folder = os.path.join(self.dataroot, 'optical_flow')
         orientation_folder = os.path.join(self.dataroot, 'orientation_maps')
         orientation_confidence_folder = os.path.join(self.dataroot, 'orientation_confidence_maps')
-        frames = os.listdir(image_folder)
+        frames = sorted(os.listdir(image_folder)) if len(self.selected_frames) == 0 else self.selected_frames
         
         self.num_exp_id = 0
         params_path_history = []
@@ -221,10 +231,19 @@ class GaussianDataset(Dataset):
         optical_flow_path = ['void_path' for _ in self.camera_ids]
         for frame in frames:
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
-            mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
-            # for subject 100, lowers hair mask is more accurate than hair mask for some reason
-            hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
-            # hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_lowres_%s.png' % camera_id) for camera_id in self.camera_ids]
+            
+            # mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
+            if os.path.exists(os.path.join(mask_folder, 'body', frame, 'image_%s.jpg' % self.camera_ids[0])):
+                mask_format = 'jpg'
+            else:
+                mask_format = 'png'
+            # mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
+            mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
+
+            hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
+            # hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
+            
+            
             visible_paths = [os.path.join(image_folder, frame, 'visible_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             camera_paths = [os.path.join(camera_folder, frame, 'camera_%s.npz' % camera_id) for camera_id in self.camera_ids]
             param_path = os.path.join(param_folder, frame, 'params.npz')
@@ -257,17 +276,20 @@ class GaussianDataset(Dataset):
         data = self.__getitem__(index)
         return data
     
-    def __getitem__(self, index):
+    def __getitem__(self, index, view=None):
+        index = index % len(self.samples)
+
         sample = self.samples[index]
         # randomly pick a view
-        view = random.sample(range(len(self.camera_ids)), 1)[0]
+        view = random.sample(range(len(self.camera_ids)), 1)[0] if view is None else view
 
         image_path = sample[0][view]
         image = cv2.resize(io.imread(image_path), (self.original_resolution, self.original_resolution)) / 255
         mask_path = sample[1][view]
         mask = cv2.resize(io.imread(mask_path), (self.original_resolution, self.original_resolution)) / 255
         mask = mask[:, :, 0:1] if len(mask.shape) == 3 else mask[:, :, None]
-        image = image * mask + (1 - mask)
+        # image = image * mask + (1 - mask)
+        image = image * mask 
         hair_mask_path = sample[9][view]
         if os.path.exists(hair_mask_path):
             hair_mask = cv2.resize(io.imread(hair_mask_path), (self.original_resolution, self.original_resolution))[:, :, None] / 255
@@ -286,14 +308,15 @@ class GaussianDataset(Dataset):
         T = extrinsic[:3, 3]
 
         intrinsic = camera['intrinsic']
-        if np.abs(intrinsic[0, 2] - self.original_resolution / 2) > 1 or np.abs(intrinsic[1, 2] - self.original_resolution / 2) > 1:
-            left_up = np.around(intrinsic[0:2, 2] - np.array([self.original_resolution / 2, self.original_resolution / 2])).astype(np.int32)
-            _, intrinsic = CropImage(left_up, (self.original_resolution, self.original_resolution), K=intrinsic)
-            image, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=image)
-            mask, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=mask)
-            visible, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=visible)
-            hair_mask, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=hair_mask)
 
+        # # TODO: why do we need to align intrinsic to the center of the image? In experiemnt it causes some error
+        # if np.abs(intrinsic[0, 2] - self.original_resolution / 2) > 1 or np.abs(intrinsic[1, 2] - self.original_resolution / 2) > 1:
+        #     left_up = np.around(intrinsic[0:2, 2] - np.array([self.original_resolution / 2, self.original_resolution / 2])).astype(np.int32)
+        #     _, intrinsic = CropImage(left_up, (self.original_resolution, self.original_resolution), K=intrinsic)
+        #     image, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=image)
+        #     mask, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=mask)
+        #     visible, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=visible)
+        #     hair_mask, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=hair_mask)
 
         intrinsic[0, 0] = intrinsic[0, 0] * 2 / self.original_resolution
         intrinsic[0, 2] = intrinsic[0, 2] * 2 / self.original_resolution - 1
@@ -337,22 +360,23 @@ class GaussianDataset(Dataset):
         exp_id = torch.tensor(sample[7]).long()
 
         params_path_history = sample[8]
-        pre_frames_poses = []
-        for pre_idx in range(index):
+        poses_history = []
+        for pre_idx in range(index + 1):
             pre_param_path = params_path_history[pre_idx]
             pre_param = np.load(pre_param_path)
             pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
-            pre_frames_poses.append(pre_pose)
-        if len(pre_frames_poses) == 0:
-            # pre_frames_poses = torch.zeros(1, 6)
-            pre_frames_poses = torch.empty(0, 6)
+            poses_history.append(pre_pose)
+        if len(poses_history) == 0:
+            # poses_history = torch.zeros(1, 6)
+            poses_history = torch.empty(0, 6)
         else:
-            pre_frames_poses = torch.stack(pre_frames_poses)
+            poses_history = torch.stack(poses_history)
 
 
 
         optical_flow_path = sample[10][view]
         optical_flow = torch.zeros(2, self.resolution, self.resolution)
+
         if os.path.exists(optical_flow_path):
             data = np.load(optical_flow_path, allow_pickle=True)
             if data.dtype == object:
@@ -370,6 +394,7 @@ class GaussianDataset(Dataset):
                 optical_flow[0, y, x] = flow[:,0]
                 optical_flow[1, y, x] = flow[:,1]
             elif data.dtype == np.float32:
+                # (2, H, W)
                 optical_flow = torch.from_numpy(data).permute(2, 0, 1)
                 # TODO: numpy's orgin at top left, now should invert y axis of optical flow? 
             else:
@@ -398,10 +423,19 @@ class GaussianDataset(Dataset):
             orient_conf = torch.ones(1, self.resolution, self.resolution)
 
         flame_param_path = sample[13]
+        # self.id_coeff = nn.Parameter(torch.zeros(1, self.shape_dims, dtype=torch.float32))
+        # self.exp_coeff = nn.Parameter(torch.zeros(self.batch_size, self.exp_dims + 9, dtype=torch.float32)) # include expression_params, jaw_pose, eye_pose
+        # self.pose = nn.Parameter(torch.zeros(batch_size, 6, dtype=torch.float32))
+        # self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32))
+        # ['id_coeff', 'exp_coeff', 'scale', 'pose']
+        # for key in flame_param.files:
         flame_param = np.load(flame_param_path)
         flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
         flame_scale = torch.from_numpy(flame_param['scale']).float()
         flame_scale = flame_scale.view(-1)
+        # from lib.face_models.FLAMEModule import FLAMEModule
+        # breakpoint()
+        # flame_model = FLAMEModule(batch_size=1)
 
         return {
                 'images': image,
@@ -427,13 +461,13 @@ class GaussianDataset(Dataset):
                 'projection_matrix': projection_matrix,
                 'full_proj_transform': full_proj_transform,
                 'camera_center': camera_center,
-                'pre_frames_poses': pre_frames_poses,
+                'poses_history': poses_history,
                 'flame_pose': flame_pose,
                 'flame_scale': flame_scale,
                 'optical_flow': optical_flow}
 
     def __len__(self):
-        return len(self.samples)
+        return max(len(self.samples), 128)
     
 
 

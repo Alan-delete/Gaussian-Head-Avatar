@@ -166,16 +166,10 @@ def main(args):
 
         vis_img = np.clip(rgb / norm[..., None], a_min=0, a_max=1) * mask[..., None] * 255.
 
-        # cv2.imwrite(f'{args.orient_dir}/{basename}.png', orientation_map.astype('uint8'))
         cv2.imwrite( os.path.join(args.orient_dir, flame, f'{basename}.png'), orientation_map.astype('uint8'))
-        # np.save(f'{args.conf_dir}/{basename}.npy', confidence_map.astype('float16'))
         np.save( os.path.join(args.conf_dir, flame, f'{basename}.npy'), confidence_map.astype('float16'))
-        # cv2.imwrite(f'{args.filtered_img_dir}/{basename}.png', filtered_img.astype('uint8'))
-        cv2.imwrite(os.path.join(args.filtered_img_dir, flame, f'{basename}.png'), filtered_img.astype('uint8'))
-        # cv2.imwrite(img_name.replace('images', 'filtered_imgs').replace('jpg', 'png') , filtered_img.astype('uint8'))
-        # cv2.imwrite(f'{args.vis_img_dir}/{basename}.png', vis_img.astype('uint8'))
-        cv2.imwrite(os.path.join(args.vis_img_dir, flame, f'{basename}.png'), vis_img.astype('uint8'))
-        # cv2.imwrite(img_name.replace('images', 'vis_imgs').replace('jpg', 'png') , vis_img.astype('uint8'))
+        # cv2.imwrite(os.path.join(args.filtered_img_dir, flame, f'{basename}.png'), filtered_img.astype('uint8'))
+        # cv2.imwrite(os.path.join(args.vis_img_dir, flame, f'{basename}.png'), vis_img.astype('uint8'))
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(conflict_handler='resolve')
