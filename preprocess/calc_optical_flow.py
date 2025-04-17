@@ -370,17 +370,61 @@ class Visualizer:
 
 
 
+import os
+import torch
+import argparse
+import imageio
+import cv2
+import numpy as np
+from matplotlib import pyplot as plt
 
+from utils_flow.pixel_wise_mapping import remap_using_flow_fields
+from model_selection import select_model
+from utils_flow.util_optical_flow import flow_to_image
+from utils_flow.visualization_utils import overlay_semantic_mask
+from validation.test_parser import define_model_parser
+
+
+def pad_to_same_shape(im1, im2):
+    # pad to same shape both images with zero
+    if im1.shape[0] <= im2.shape[0]:
+        pad_y_1 = im2.shape[0] - im1.shape[0]
+        pad_y_2 = 0
+    else:
+        pad_y_1 = 0
+        pad_y_2 = im1.shape[0] - im2.shape[0]
+    if im1.shape[1] <= im2.shape[1]:
+        pad_x_1 = im2.shape[1] - im1.shape[1]
+        pad_x_2 = 0
+    else:
+        pad_x_1 = 0
+        pad_x_2 = im1.shape[1] - im2.shape[1]
+    im1 = cv2.copyMakeBorder(im1, 0, pad_y_1, 0, pad_x_1, cv2.BORDER_CONSTANT)
+    im2 = cv2.copyMakeBorder(im2, 0, pad_y_2, 0, pad_x_2, cv2.BORDER_CONSTANT)
+
+    return im1, im2
+
+
+# Argument parsing
+def boolean_string(s):
+    if s not in {'False', 'True'}:
+        raise ValueError('Not a valid boolean string')
+    return s == 'True'
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(conflict_handler='resolve')
-    # 
+    define_model_parser(parser) 
     parser.add_argument('--img_dir',default='../datasets/mini_demo_dataset/031/images', type=str)
     parser.add_argument('--optical_flow_dir', default='../datasets/mini_demo_dataset/031/optical_flow', type=str)
+    parser.add_argument('--model', default='GLUNet_GOCor', type=str)
+    parser.add_argument('--pre_trained_model', default='dynamic', type=str)
+
 
     args, _ = parser.parse_known_args()
     args = parser.parse_args()
+    
+    local_optim_iter = args.optim_iter if not args.local_optim_iter else int(args.local_optim_iter)
 
 
     os.makedirs(args.optical_flow_dir, exist_ok=True)
@@ -391,38 +435,159 @@ if __name__ == "__main__":
 
     img_list = glob.glob(os.path.join(args.img_dir, '*', 'image_[0-9]*' ))
     # get the sequence of images of the camera
-    camera_set = set([os.path.basename(img_path) for img_path in img_list])
+    camera_set = sorted(list(set([os.path.basename(img_path) for img_path in img_list])))
     camera_sequence = []
     for camera in camera_set:
         single_camera_sequence = [img_path for img_path in img_list if camera in img_path]
         single_camera_sequence.sort()
         camera_sequence.append(single_camera_sequence)
 
-    device = 'cuda'
-    grid_size = 50
-    # Run Offline CoTracker:
-    cotracker = torch.hub.load("facebookresearch/co-tracker", "cotracker3_offline").to(device)
+    # device = 'cuda'
+    # grid_size = 50
+    # # Run Offline CoTracker:
+    # cotracker = torch.hub.load("facebookresearch/co-tracker", "cotracker3_offline").to(device)
     
-    for camera in camera_sequence:
+    for camera_id, camera in enumerate(camera_sequence):
+
+        warped_images = []
+        init_frame = cv2.imread(camera[0])
+        mask_init_frame = cv2.imread(camera[0].replace('image_', 'mask_')) / 255.
+        mask_init_frame = mask_init_frame.round().astype(np.uint8)
+        init_frame = init_frame * mask_init_frame 
+        warped_images.append(init_frame)
 
         for idx in tqdm.tqdm(range(len(camera) - 1)):
             frame_0 = cv2.imread(camera[idx])
+            mask_0 = cv2.imread(camera[idx].replace('image_', 'mask_')) / 255.
+            mask_0 = mask_0.round().astype(np.uint8)
             frame_1 = cv2.imread(camera[idx + 1])
-            video = torch.from_numpy(np.stack([frame_0, frame_1])).to(device).permute(0, 3, 1, 2)[None].float()
-            pred_tracks, pred_visibility = cotracker(video, grid_size=grid_size)
+            mask_1 = cv2.imread(camera[idx + 1].replace('image_', 'mask_')) / 255.
+            mask_1 = mask_1.round().astype(np.uint8)
+            frame_0 = frame_0 * mask_0
+            frame_1 = frame_1 * mask_1
+            # video = torch.from_numpy(np.stack([frame_0, frame_1])).to(device).permute(0, 3, 1, 2)[None].float()
+            # pred_tracks, pred_visibility = cotracker(video, grid_size=grid_size)
 
-            # vis = Visualizer(save_dir = os.path.dirname(camera[idx].replace('images', 'optical_flow')), pad_value=120, linewidth=3)
-            # vis.visualize(video, pred_tracks, pred_visibility)
+            query_image = frame_0
+            reference_image = frame_1
+            with torch.no_grad():
+                network, estimate_uncertainty = select_model(
+                    args.model, args.pre_trained_model, args, args.optim_iter, local_optim_iter,
+                    path_to_pre_trained_models=args.path_to_pre_trained_models)
 
-            # save the optical flow
-            coord = pred_tracks[0][0].detach().cpu().round().long().numpy()
-            flow = pred_tracks[0][1].detach().cpu().numpy() - pred_tracks[0][0].detach().cpu().numpy()
-            # draw the optical flow on the image
-            for i in range(coord.shape[0]):
-                frame_0 = cv2.arrowedLine(frame_0, tuple(coord[i]), tuple(coord[i] + flow[i].astype(int)), (0, 0, 255), 2)
-            cv2.imwrite(camera[idx].replace('images', 'optical_flow'), frame_0)
-            # save the optical flow
-            data = {'coord': coord, 'flow': flow, 'visibility': pred_visibility[0][0].detach().cpu().numpy()}   
-            np.save(camera[idx].replace('images', 'optical_flow').replace('.jpg', '.npy'), data)         
+                # save original ref image shape
+                ref_image_shape = reference_image.shape[:2]
+
+                # pad both images to the same size, to be processed by network
+                query_image_, reference_image_ = pad_to_same_shape(query_image, reference_image)
+                # convert numpy to torch tensor and put it in right format
+                query_image_ = torch.from_numpy(query_image_).permute(2, 0, 1).unsqueeze(0)
+                reference_image_ = torch.from_numpy(reference_image_).permute(2, 0, 1).unsqueeze(0)
+
+                # ATTENTION, here source and target images are Torch tensors of size 1x3xHxW, without further pre-processing
+                # specific pre-processing (/255 and rescaling) are done within the function.
+
+                # pass both images to the network, it will pre-process the images and ouput the estimated flow
+                # in dimension 1x2xHxW
+                if estimate_uncertainty:
+                    if args.flipping_condition:
+                        raise NotImplementedError('No flipping condition with PDC-Net for now')
+
+                    estimated_flow, uncertainty_components = network.estimate_flow_and_confidence_map(query_image_,
+                                                                                                    reference_image_,
+                                                                                                    mode='channel_first')
+                    confidence_map = uncertainty_components['p_r'].squeeze().detach().cpu().numpy()
+                    confidence_map = confidence_map[:ref_image_shape[0], :ref_image_shape[1]]
+                else:
+                    if args.flipping_condition and 'GLUNet' in args.model:
+                        estimated_flow = network.estimate_flow_with_flipping_condition(query_image_, reference_image_,
+                                                                                    mode='channel_first')
+                    else:
+                        estimated_flow = network.estimate_flow(query_image_, reference_image_, mode='channel_first')
+                estimated_flow_numpy = estimated_flow.squeeze().permute(1, 2, 0).cpu().numpy()
+                estimated_flow_numpy = estimated_flow_numpy[:ref_image_shape[0], :ref_image_shape[1]]
+                # removes the padding
+
+                warped_query_image = remap_using_flow_fields(query_image, estimated_flow_numpy[:, :, 0],
+                                                            estimated_flow_numpy[:, :, 1]).astype(np.uint8)
+                warped_images.append(warped_query_image)
+                # save the optical flow
+                flow = estimated_flow.detach().cpu().numpy()
+                np.save(camera[idx].replace('images', 'optical_flow').replace('.jpg', '.npy'), flow)
+
+                # save the confidence map
+                if estimate_uncertainty:
+                    # confidence_map = (confidence_map * 255).astype(np.uint8)
+                    np.save(camera[idx].replace('images', 'optical_flow').replace('.jpg', '_confidence_map.npy'), confidence_map)
+
+                # # save images
+                # if args.save_ind_images:
+                #     imageio.imwrite(os.path.join(args.save_dir, 'query.png'), query_image)
+                #     imageio.imwrite(os.path.join(args.save_dir, 'reference.png'), reference_image)
+                #     imageio.imwrite(os.path.join(args.save_dir, 'warped_query_{}_{}.png'.format(args.model, args.pre_trained_model)),
+                #                     warped_query_image)
+
+                query_image =  cv2.cvtColor(query_image, cv2.COLOR_BGR2RGB)
+                reference_image = cv2.cvtColor(reference_image, cv2.COLOR_BGR2RGB)
+                warped_query_image = cv2.cvtColor(warped_query_image, cv2.COLOR_BGR2RGB)
+
+                if estimate_uncertainty:
+                    color = [255, 102, 51]
+                    fig, axis = plt.subplots(1, 5, figsize=(30, 30))
+
+                    confident_mask = (confidence_map > 0.50).astype(np.uint8)
+                    confident_warped = overlay_semantic_mask(warped_query_image, ann=255 - confident_mask*255, color=color)
+                    axis[2].imshow(confident_warped)
+                    axis[2].set_title('Confident warped query image according to \n estimated flow by {}_{}'
+                                    .format(args.model, args.pre_trained_model))
+                    axis[4].imshow(confidence_map, vmin=0.0, vmax=1.0)
+                    axis[4].set_title('Confident regions')
+                else:
+                    fig, axis = plt.subplots(1, 4, figsize=(30, 30))
+                    axis[2].imshow(warped_query_image)
+                    axis[2].set_title(
+                        'Warped query image according to estimated flow by {}_{}'.format(args.model, args.pre_trained_model))
+                axis[0].imshow(query_image)
+                axis[0].set_title('Query image')
+                axis[1].imshow(reference_image)
+                axis[1].set_title('Reference image')
+
+                axis[3].imshow(flow_to_image(estimated_flow_numpy))
+                axis[3].set_title('Estimated flow {}_{}'.format(args.model, args.pre_trained_model))
+                fig.savefig(
+                    camera[idx].replace('images', 'optical_flow').replace('.jpg', '.png'),
+                    bbox_inches='tight')
+                plt.close(fig)
+                print('Saved image!')
+        # # save the video as avi
+        # video = np.stack(warped_images)
+        # video = torch.from_numpy(video).permute(0, 3, 1, 2)[None].byte()
+        # video = video[0].permute(0, 2, 3, 1).byte().detach().cpu().numpy()  # S, H, W, C
+        # video = video.astype(np.uint8)
+
+        # save ground truth video
+        output_path = os.path.join(args.optical_flow_dir, 'wrapped_video_{}.avi'.format(camera_id))
+        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'avc1'), 30, (warped_images[0].shape[1], warped_images[0].shape[0]))
+        for i in range(len(camera)):
+            frame = cv2.cvtColor(warped_images[i], cv2.COLOR_BGR2RGB)
+            out.write(frame)
+        out.release()
+        print('Saved video!')
+
+
+
+            # # vis = Visualizer(save_dir = os.path.dirname(camera[idx].replace('images', 'optical_flow')), pad_value=120, linewidth=3)
+            # # vis.visualize(video, pred_tracks, pred_visibility)
+
+            # # save the optical flow
+            # coord = pred_tracks[0][0].detach().cpu().round().long().numpy()
+            # flow = pred_tracks[0][1].detach().cpu().numpy() - pred_tracks[0][0].detach().cpu().numpy()
+            # # draw the optical flow on the image
+            # for i in range(coord.shape[0]):
+            #     frame_0 = cv2.arrowedLine(frame_0, tuple(coord[i]), tuple(coord[i] + flow[i].astype(int)), (0, 0, 255), 2)
+            # cv2.imwrite(camera[idx].replace('images', 'optical_flow'), frame_0)
+            # # save the optical flow
+            # data = {'coord': coord, 'flow': flow, 'visibility': pred_visibility[0][0].detach().cpu().numpy()}   
+            # np.save(camera[idx].replace('images', 'optical_flow').replace('.jpg', '.npy'), data)         
 
 

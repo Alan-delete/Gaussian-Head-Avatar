@@ -329,7 +329,7 @@ class GaussianHairModule(GaussianBaseModule):
                     param_group['opt'] = 'disabled'
 
     # TODO: data should provide image_height and image_width and world_view_transform
-    def get_direction_2d(self, fovx, fovy, height, width, viewmatrix, xyz = None, dir = None):
+    def get_direction_2d(self, fovx, fovy, height, width, viewmatrix, xyz = None, dir = None, normalize = True):
         mean = self.get_xyz if xyz is None else xyz
     
         tan_fovx = torch.tan(fovx * 0.5)
@@ -354,6 +354,7 @@ class GaussianHairModule(GaussianBaseModule):
 
         zeros = torch.zeros_like(tz)
 
+        # remove z here 
         J = torch.stack(
             [
                 torch.stack([focal_x / tz,        zeros, -(focal_x * tx) / (tz * tz)], dim=-1), # 1st column
@@ -370,7 +371,9 @@ class GaussianHairModule(GaussianBaseModule):
         #dir3D = F.normalize(self.dir, dim=-1)
         dir = self.dir if dir is None else dir
         dir2D = (dir[:, None, :] @ T)[:, 0]
-        dir2D = torch.nn.functional.normalize(dir2D, dim=-1)
+
+        if normalize:
+            dir2D = torch.nn.functional.normalize(dir2D, dim=-1)
 
         return dir2D
     
