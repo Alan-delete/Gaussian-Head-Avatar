@@ -150,8 +150,6 @@ class GaussianHeadHairTrainer():
                     # first dimension is batch size, concat along the second dimension
                     data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
 
-                    # DEBUG: only use head data
-                    # data[key] = head_data[key] 
 
                 data = self.camera.render_gaussian(data, resolution_coarse)
                 
@@ -173,12 +171,6 @@ class GaussianHeadHairTrainer():
                 gt_segment[:, 1] = torch.clamp(gt_segment[:, 1] - gt_segment[:, 2] , 0, 1)
                 # gt_segment[:, 2] = torch.clamp(gt_segment[:, 2] - gt_segment[:, 1] , 0, 1)
 
-                gt_orientation = data['orient_angle']
-                pred_orientation = data['render_orient']
-                # TODO: use pred_mask instead of gt_mask
-                # orient_weight = torch.ones_like(gt_mask[:1]) * gt_orient_conf
-                loss_orient = or_loss(pred_orientation , gt_orientation, mask=gt_hair_mask) #orient_conf, ) #, weight=orient_weight
-                if torch.isnan(loss_orient).any(): loss_orient = 0.0
 
                 # sharpness loss
                 loss_opacity_reg = 0.005 * (self.gaussianhair.get_opacity * (1 - self.gaussianhair.get_opacity) ).mean()
@@ -209,6 +201,17 @@ class GaussianHeadHairTrainer():
                     decay_rate = 0.4 ** ( iteration // 5000)
                     decay_rate = max(decay_rate, 0.1)
                     loss_segment = loss_segment * decay_rate
+
+                intersect_body_mask = gt_mask * segment_clone[:, 1].detach()
+                intersect_hair_mask = gt_hair_mask * segment_clone[:, 2].detach()
+
+                gt_orientation = data['orient_angle']
+                pred_orientation = data['render_orient']
+                # TODO: use pred_mask instead of gt_mask
+                # orient_weight = torch.ones_like(gt_mask[:1]) * gt_orient_conf
+                loss_orient = or_loss(pred_orientation , gt_orientation, mask = intersect_hair_mask) #orient_conf, ) #, weight=orient_weight
+                if torch.isnan(loss_orient).any(): loss_orient = 0.0
+
 
 
                 loss_transform_reg =  F.mse_loss(self.gaussianhair.init_transform, self.gaussianhair.transform) 
@@ -261,6 +264,7 @@ class GaussianHeadHairTrainer():
                 loss_knn_feature = loss_knn_feature * self.cfg.loss_weights.knn_feature
                 loss_strand_feature = loss_strand_feature * self.cfg.loss_weights.strand_feature
                 loss_sign_distance = loss_sign_distance * self.cfg.loss_weights.sign_distance
+                loss_orient = loss_orient * self.cfg.loss_weights.orient
                 loss = ( 
                         loss_rgb_hr +
                         loss_rgb_lr +
@@ -272,6 +276,7 @@ class GaussianHeadHairTrainer():
                         loss_mesh_dist +
                         loss_knn_feature +
                         loss_strand_feature +
+                        loss_orient +
                         loss_opacity_reg +   
                         loss_sign_distance
                 )

@@ -199,6 +199,7 @@ class GaussianDataset(Dataset):
             self.camera_ids =[camera_id for camera_id in self.camera_ids if camera_id not in cfg.test_camera_ids]
         else:
             self.camera_ids = cfg.test_camera_ids
+        self.camera_ids = sorted(self.camera_ids)
 
         self.original_resolution = cfg.original_resolution
         self.resolution = cfg.resolution
@@ -211,13 +212,15 @@ class GaussianDataset(Dataset):
         
 
         mask_folder = os.path.join(self.dataroot, 'masks')
+        mask_folder = os.path.join(self.dataroot, 'NeuralHaircut_masks')
         # as tested, face_parsing is more robust than matte anything, but less accurate
         # if os.path.exists(os.path.join(self.dataroot, 'face-parsing', 'hair')):
         #     hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
         # else:
         #     hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
-        hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
+        # hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
         hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
+        hair_mask_folder = os.path.join(self.dataroot, 'NeuralHaircut_masks', 'hair')
 
         flame_param_folder = os.path.join(self.dataroot, 'FLAME_params')
         optical_flow_folder = os.path.join(self.dataroot, 'optical_flow')
@@ -375,6 +378,7 @@ class GaussianDataset(Dataset):
 
 
         optical_flow_path = sample[10][view]
+        optical_flow_confidence_path = optical_flow_path.replace('.npy', '_confidence_map.npy')
         optical_flow = torch.zeros(2, self.resolution, self.resolution)
 
         if os.path.exists(optical_flow_path):
@@ -395,10 +399,20 @@ class GaussianDataset(Dataset):
                 optical_flow[1, y, x] = flow[:,1]
             elif data.dtype == np.float32:
                 # (2, H, W)
-                optical_flow = torch.from_numpy(data).permute(2, 0, 1)
-                # TODO: numpy's orgin at top left, now should invert y axis of optical flow? 
+                optical_flow = torch.from_numpy(data)
+                # dense matching estimate from t+1 to t, need to invert it
+                optical_flow = - optical_flow
+                # TODO: opencv/numpy's orgin at top left, now should invert y axis of optical flow? 
+                optical_flow[1, ...] = -optical_flow[1, ...]
             else:
                 raise ValueError('Unknown optical flow data type')
+        
+        if os.path.exists(optical_flow_confidence_path):
+            # (1, H, W)
+            optical_flow_confidence = torch.from_numpy(np.load(optical_flow_confidence_path)).float()
+            optical_flow_confidence = F.interpolate(optical_flow_confidence[None, None], size=(self.resolution, self.resolution), mode='bilinear')[0]
+        else:
+            optical_flow_confidence = torch.ones(1, self.resolution, self.resolution)
 
 
         orientation_path = sample[11][view]
@@ -464,7 +478,8 @@ class GaussianDataset(Dataset):
                 'poses_history': poses_history,
                 'flame_pose': flame_pose,
                 'flame_scale': flame_scale,
-                'optical_flow': optical_flow}
+                'optical_flow': optical_flow,
+                'optical_flow_confidence': optical_flow_confidence,}
 
     def __len__(self):
         return max(len(self.samples), 128)

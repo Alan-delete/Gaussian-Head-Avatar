@@ -419,6 +419,7 @@ if __name__ == "__main__":
     parser.add_argument('--optical_flow_dir', default='../datasets/mini_demo_dataset/031/optical_flow', type=str)
     parser.add_argument('--model', default='GLUNet_GOCor', type=str)
     parser.add_argument('--pre_trained_model', default='dynamic', type=str)
+    parser.add_argument('--batch_size', default=2, type=int)
 
 
     args, _ = parser.parse_known_args()
@@ -446,6 +447,12 @@ if __name__ == "__main__":
     # grid_size = 50
     # # Run Offline CoTracker:
     # cotracker = torch.hub.load("facebookresearch/co-tracker", "cotracker3_offline").to(device)
+    batch_size = args.batch_size
+    with torch.no_grad():
+        network, estimate_uncertainty = select_model(
+            args.model, args.pre_trained_model, args, args.optim_iter, local_optim_iter,
+            path_to_pre_trained_models=args.path_to_pre_trained_models)
+
     
     for camera_id, camera in enumerate(camera_sequence):
 
@@ -453,9 +460,117 @@ if __name__ == "__main__":
         init_frame = cv2.imread(camera[0])
         mask_init_frame = cv2.imread(camera[0].replace('image_', 'mask_')) / 255.
         mask_init_frame = mask_init_frame.round().astype(np.uint8)
-        init_frame = init_frame * mask_init_frame 
-        warped_images.append(init_frame)
+        warped_image = init_frame * mask_init_frame
+        warped_images.append(warped_image)
 
+        # for idx in tqdm.tqdm(range(0, len(camera) - batch_size, batch_size)):
+        #     batch_camera = camera[idx:idx + batch_size]
+        #     batch_mask = [cv2.imread(img.replace('image_', 'mask_')) / 255. for img in batch_camera]
+        #     batch_mask = [mask.round().astype(np.uint8) for mask in batch_mask]
+        #     batch_frame_0 = [cv2.imread(img) for img in batch_camera]
+        #     batch_frame_0 = [frame * mask for frame, mask in zip(batch_frame_0, batch_mask)]
+
+        #     batch_camera = camera[idx + 1:idx + 1 + batch_size]
+        #     batch_mask = [cv2.imread(img.replace('image_', 'mask_')) / 255. for img in batch_camera]
+        #     batch_mask = [mask.round().astype(np.uint8) for mask in batch_mask]
+        #     batch_frame_1 = [cv2.imread(img) for img in batch_camera]
+        #     batch_frame_1 = [frame * mask for frame, mask in zip(batch_frame_1, batch_mask)]
+
+        #     query_image = np.stack(batch_frame_0)
+        #     reference_image = np.stack(batch_frame_1)
+
+        #     with torch.no_grad():
+        #         # save original ref image shape
+        #         ref_image_shape = reference_image.shape[1:3]
+
+        #         # pad both images to the same size, to be processed by network
+        #         # query_image_, reference_image_ = pad_to_same_shape(query_image, reference_image)
+        #         query_image_ = query_image
+        #         reference_image_ = reference_image
+
+        #         # convert numpy to torch tensor and put it in right format
+        #         query_image_ = torch.from_numpy(query_image_).permute(0, 3, 1, 2)
+        #         reference_image_ = torch.from_numpy(reference_image_).permute(0, 3, 1, 2)
+
+        #         # ATTENTION, here source and target images are Torch tensors of size 1x3xHxW, without further pre-processing
+        #         # specific pre-processing (/255 and rescaling) are done within the function.
+
+        #         # pass both images to the network, it will pre-process the images and ouput the estimated flow
+        #         # in dimension 1x2xHxW
+        #         if estimate_uncertainty:
+        #             if args.flipping_condition:
+        #                 raise NotImplementedError('No flipping condition with PDC-Net for now')
+
+        #             estimated_flow, uncertainty_components = network.estimate_flow_and_confidence_map(query_image_,
+        #                                                                                             reference_image_,
+        #                                                                                             mode='channel_first')
+        #             confidence_map = uncertainty_components['p_r'].squeeze().detach().cpu().numpy()
+        #             confidence_map = confidence_map[:, :ref_image_shape[0], :ref_image_shape[1]]
+        #         else:
+        #             if args.flipping_condition and 'GLUNet' in args.model:
+        #                 estimated_flow = network.estimate_flow_with_flipping_condition(query_image_, reference_image_,
+        #                                                                             mode='channel_first')
+        #             else:
+        #                 estimated_flow = network.estimate_flow(query_image_, reference_image_, mode='channel_first')
+
+
+        #         for i in range(batch_size):
+        #             estimated_flow_numpy = estimated_flow[i].permute(1, 2, 0).cpu().numpy()
+        #             estimated_flow_numpy = estimated_flow_numpy[:ref_image_shape[0], :ref_image_shape[1]]
+        #             # removes the padding
+
+        #             warped_query_image = remap_using_flow_fields(query_image[i], estimated_flow_numpy[:, :, 0],
+        #                                                         estimated_flow_numpy[:, :, 1]).astype(np.uint8)
+
+        #             warped_image = remap_using_flow_fields(warped_image, estimated_flow_numpy[:, :, 0],
+        #                                                     estimated_flow_numpy[:, :, 1]).astype(np.uint8)
+        #             warped_images.append(warped_image)
+                    
+
+        #             cur_query_image =  cv2.cvtColor(query_image[i], cv2.COLOR_BGR2RGB)
+        #             cur_reference_image = cv2.cvtColor(reference_image[i], cv2.COLOR_BGR2RGB)
+        #             warped_query_image = cv2.cvtColor(warped_query_image, cv2.COLOR_BGR2RGB)
+
+        #             # if estimate_uncertainty:
+        #             #     color = [255, 102, 51]
+        #             #     fig, axis = plt.subplots(1, 5, figsize=(30, 30))
+
+        #             #     confident_mask = (confidence_map[i] > 0.50).astype(np.uint8)
+        #             #     confident_warped = overlay_semantic_mask(warped_query_image, ann=255 - confident_mask*255, color=color)
+        #             #     axis[2].imshow(confident_warped)
+        #             #     axis[2].set_title('Confident warped query image according to \n estimated flow by {}_{}'
+        #             #                     .format(args.model, args.pre_trained_model))
+        #             #     axis[4].imshow(confidence_map[i], vmin=0.0, vmax=1.0)
+        #             #     axis[4].set_title('Confident regions')
+        #             # else:
+        #             #     fig, axis = plt.subplots(1, 4, figsize=(30, 30))
+        #             #     axis[2].imshow(warped_query_image)
+        #             #     axis[2].set_title(
+        #             #         'Warped query image according to estimated flow by {}_{}'.format(args.model, args.pre_trained_model))
+        #             # axis[0].imshow(cur_query_image)
+        #             # axis[0].set_title('Query image')
+        #             # axis[1].imshow(cur_reference_image)
+        #             # axis[1].set_title('Reference image')
+
+        #             # axis[3].imshow(flow_to_image(estimated_flow_numpy))
+        #             # axis[3].set_title('Estimated flow {}_{}'.format(args.model, args.pre_trained_model))
+        #             # fig.savefig(
+        #             #     camera[idx+i].replace('images', 'optical_flow').replace('.jpg', '.png'),
+        #             #     bbox_inches='tight')
+        #             # plt.close(fig)
+
+
+        #             # save the optical flow
+        #             flow = estimated_flow[i].detach().cpu().numpy()
+        #             np.save(camera[idx + i].replace('images', 'optical_flow').replace('.jpg', '.npy'), flow)
+
+        #             # save the confidence map
+        #             if estimate_uncertainty:
+        #                 # confidence_map = (confidence_map * 255).astype(np.uint8)
+        #                 np.save(camera[idx + i].replace('images', 'optical_flow').replace('.jpg', '_confidence_map.npy'), confidence_map[i])
+            
+
+        # for idx in tqdm.tqdm(range(len(warped_images)- 1, len(camera) - 1)):
         for idx in tqdm.tqdm(range(len(camera) - 1)):
             frame_0 = cv2.imread(camera[idx])
             mask_0 = cv2.imread(camera[idx].replace('image_', 'mask_')) / 255.
@@ -471,9 +586,9 @@ if __name__ == "__main__":
             query_image = frame_0
             reference_image = frame_1
             with torch.no_grad():
-                network, estimate_uncertainty = select_model(
-                    args.model, args.pre_trained_model, args, args.optim_iter, local_optim_iter,
-                    path_to_pre_trained_models=args.path_to_pre_trained_models)
+                # network, estimate_uncertainty = select_model(
+                #     args.model, args.pre_trained_model, args, args.optim_iter, local_optim_iter,
+                #     path_to_pre_trained_models=args.path_to_pre_trained_models)
 
                 # save original ref image shape
                 ref_image_shape = reference_image.shape[:2]
@@ -510,7 +625,11 @@ if __name__ == "__main__":
 
                 warped_query_image = remap_using_flow_fields(query_image, estimated_flow_numpy[:, :, 0],
                                                             estimated_flow_numpy[:, :, 1]).astype(np.uint8)
-                warped_images.append(warped_query_image)
+                
+                warped_image = remap_using_flow_fields(warped_image, estimated_flow_numpy[:, :, 0],
+                                                        estimated_flow_numpy[:, :, 1]).astype(np.uint8)
+                warped_images.append(warped_image)
+
                 # save the optical flow
                 flow = estimated_flow.detach().cpu().numpy()
                 np.save(camera[idx].replace('images', 'optical_flow').replace('.jpg', '.npy'), flow)
@@ -520,56 +639,47 @@ if __name__ == "__main__":
                     # confidence_map = (confidence_map * 255).astype(np.uint8)
                     np.save(camera[idx].replace('images', 'optical_flow').replace('.jpg', '_confidence_map.npy'), confidence_map)
 
-                # # save images
-                # if args.save_ind_images:
-                #     imageio.imwrite(os.path.join(args.save_dir, 'query.png'), query_image)
-                #     imageio.imwrite(os.path.join(args.save_dir, 'reference.png'), reference_image)
-                #     imageio.imwrite(os.path.join(args.save_dir, 'warped_query_{}_{}.png'.format(args.model, args.pre_trained_model)),
-                #                     warped_query_image)
 
                 query_image =  cv2.cvtColor(query_image, cv2.COLOR_BGR2RGB)
                 reference_image = cv2.cvtColor(reference_image, cv2.COLOR_BGR2RGB)
                 warped_query_image = cv2.cvtColor(warped_query_image, cv2.COLOR_BGR2RGB)
 
-                if estimate_uncertainty:
-                    color = [255, 102, 51]
-                    fig, axis = plt.subplots(1, 5, figsize=(30, 30))
+                # if estimate_uncertainty:
+                #     color = [255, 102, 51]
+                #     fig, axis = plt.subplots(1, 5, figsize=(30, 30))
 
-                    confident_mask = (confidence_map > 0.50).astype(np.uint8)
-                    confident_warped = overlay_semantic_mask(warped_query_image, ann=255 - confident_mask*255, color=color)
-                    axis[2].imshow(confident_warped)
-                    axis[2].set_title('Confident warped query image according to \n estimated flow by {}_{}'
-                                    .format(args.model, args.pre_trained_model))
-                    axis[4].imshow(confidence_map, vmin=0.0, vmax=1.0)
-                    axis[4].set_title('Confident regions')
-                else:
-                    fig, axis = plt.subplots(1, 4, figsize=(30, 30))
-                    axis[2].imshow(warped_query_image)
-                    axis[2].set_title(
-                        'Warped query image according to estimated flow by {}_{}'.format(args.model, args.pre_trained_model))
-                axis[0].imshow(query_image)
-                axis[0].set_title('Query image')
-                axis[1].imshow(reference_image)
-                axis[1].set_title('Reference image')
+                #     confident_mask = (confidence_map > 0.50).astype(np.uint8)
+                #     confident_warped = overlay_semantic_mask(warped_query_image, ann=255 - confident_mask*255, color=color)
+                #     axis[2].imshow(confident_warped)
+                #     axis[2].set_title('Confident warped query image according to \n estimated flow by {}_{}'
+                #                     .format(args.model, args.pre_trained_model))
+                #     axis[4].imshow(confidence_map, vmin=0.0, vmax=1.0)
+                #     axis[4].set_title('Confident regions')
+                # else:
+                #     fig, axis = plt.subplots(1, 4, figsize=(30, 30))
+                #     axis[2].imshow(warped_query_image)
+                #     axis[2].set_title(
+                #         'Warped query image according to estimated flow by {}_{}'.format(args.model, args.pre_trained_model))
+                # axis[0].imshow(query_image)
+                # axis[0].set_title('Query image')
+                # axis[1].imshow(reference_image)
+                # axis[1].set_title('Reference image')
 
-                axis[3].imshow(flow_to_image(estimated_flow_numpy))
-                axis[3].set_title('Estimated flow {}_{}'.format(args.model, args.pre_trained_model))
-                fig.savefig(
-                    camera[idx].replace('images', 'optical_flow').replace('.jpg', '.png'),
-                    bbox_inches='tight')
-                plt.close(fig)
-                print('Saved image!')
-        # # save the video as avi
-        # video = np.stack(warped_images)
-        # video = torch.from_numpy(video).permute(0, 3, 1, 2)[None].byte()
-        # video = video[0].permute(0, 2, 3, 1).byte().detach().cpu().numpy()  # S, H, W, C
-        # video = video.astype(np.uint8)
+                # axis[3].imshow(flow_to_image(estimated_flow_numpy))
+                # axis[3].set_title('Estimated flow {}_{}'.format(args.model, args.pre_trained_model))
+                # fig.savefig(
+                #     camera[idx].replace('images', 'optical_flow').replace('.jpg', '.png'),
+                #     bbox_inches='tight')
+                # plt.close(fig)
+                # print('Saved image!')
+
 
         # save ground truth video
-        output_path = os.path.join(args.optical_flow_dir, 'wrapped_video_{}.avi'.format(camera_id))
-        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'avc1'), 30, (warped_images[0].shape[1], warped_images[0].shape[0]))
+        output_path = os.path.join(args.optical_flow_dir, 'wrapped_video2_{}.mp4'.format(camera_id))
+        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (warped_images[0].shape[1], warped_images[0].shape[0]))
         for i in range(len(camera)):
-            frame = cv2.cvtColor(warped_images[i], cv2.COLOR_BGR2RGB)
+            # frame = cv2.cvtColor(warped_images[i], cv2.COLOR_BGR2RGB)
+            frame = warped_images[i]
             out.write(frame)
         out.release()
         print('Saved video!')

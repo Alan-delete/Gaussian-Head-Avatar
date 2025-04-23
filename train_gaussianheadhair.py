@@ -79,7 +79,6 @@ if __name__ == '__main__':
     # create hair gaussian, 
     gaussianhair = GaussianHairModule(cfg.gaussianhairmodule).to(device)
     gaussianhair.update_mesh_alignment_transform(dataset.R, dataset.T, dataset.S, flame_mesh_path = dataset.flame_mesh_path)
-    # gaussianhair.reset_strands()
 
     supres = SuperResolutionModule(cfg.supresmodule).to(device)
     if os.path.exists(cfg.load_supres_checkpoint):
@@ -93,14 +92,15 @@ if __name__ == '__main__':
 
     # load_state_dict() does not interfere with autograd, it just overwrites the .data of parameters.
     if cfg.resume_training:
+        start_epoch = 390
         # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
         # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest' % (recorder.checkpoint_path, recorder.name)
-        gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_390' % (recorder.checkpoint_path, recorder.name)
-        gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_390' % (recorder.checkpoint_path, recorder.name)
+        gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
+        gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
         gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
         gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
         # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
-        start_epoch = 391
+        start_epoch += 1
     else:
         # only reset points_raw if not resume training, otherwise gaussianhair.transform will be backpropagated wrongly
         gaussianhair.reset_strands()
