@@ -57,14 +57,17 @@ supresmodule:
 gaussianheadmodule:
   num_add_mouth_points: 3000
   exp_color_mlp: [192, 256, 32]
-  # exp_color_mlp: [187, 256, 256, 32]
   pose_color_mlp: [182, 128, 32]
   exp_deform_mlp: [91, 256, 256, 256,256,256, 3]
-  # exp_deform_mlp: [86, 256, 256, 256, 3]
   pose_deform_mlp: [81, 256, 256, 3]
   exp_attributes_mlp: [192, 256, 256, 256, 8]
-  # exp_attributes_mlp: [187, 256, 256, 256, 8]
   pose_attributes_mlp: [182, 128, 128, 8]
+  # exp_color_mlp: [192, 256, 256, 32]
+  # pose_color_mlp: [182, 128, 32]
+  # exp_deform_mlp: [91, 256, 256, 256, 3]
+  # pose_deform_mlp: [81, 256, 256, 3]
+  # exp_attributes_mlp: [192, 256, 256, 256, 8]
+  # pose_attributes_mlp: [182, 128, 128, 8]
   exp_coeffs_dim: 64
   pos_freq: 4
   dist_threshold_near: 0.1

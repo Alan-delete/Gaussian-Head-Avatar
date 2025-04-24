@@ -483,7 +483,7 @@ class GaussianHairModule(GaussianBaseModule):
         S = S.to(torch.double)
         target = (torch.matmul(target- T, R)) / S 
         # shrink the mesh a little bit so that most hair roots are roughly on/inside the surface.
-        # target = target * 0.95
+        target = target * 0.95
 
         # pytorch3d canonical mesh
         faces = torch.from_numpy(np.asarray(target_mesh.triangles)).cuda() 

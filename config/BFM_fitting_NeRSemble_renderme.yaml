@@ -1,0 +1,12 @@
+image_folder: 'datasets/mini_demo_dataset/031/images'
+camera_folder: 'datasets/mini_demo_dataset/031/cameras'
+landmark_folder: 'datasets/mini_demo_dataset/031/landmarks'
+param_folder: 'datasets/mini_demo_dataset/031/params'
+gpu_id: 0
+camera_ids: []
+image_size: 2048
+face_model: 'BFM'
+reg_id_weight: 1e-7
+reg_exp_weight: 1e-7
+save_vertices: True
+visualize: True

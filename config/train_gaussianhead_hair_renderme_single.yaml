@@ -9,12 +9,15 @@ batch_size: 1
 optimize_pose: False
 use_supres: False
 train_segment: True
+resume_training: False
+start_epoch: 0
+num_epochs: 300   
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
   camera_ids: []
   test_camera_ids: []
-  selected_frames: ['0000']
+  selected_frames: ['0042']
   original_resolution: 2048
   resolution: 2048
 
@@ -55,14 +58,17 @@ supresmodule:
 
 gaussianheadmodule:
   num_add_mouth_points: 3000
-  exp_color_mlp: [192, 256, 256, 32]
-  # exp_color_mlp: [187, 256, 256, 32]
+  # exp_color_mlp: [192, 256, 256, 32]
+  # pose_color_mlp: [182, 128, 32]
+  # exp_deform_mlp: [91, 256, 256, 256, 3]
+  # pose_deform_mlp: [81, 256, 256, 3]
+  # exp_attributes_mlp: [192, 256, 256, 256, 8]
+  # pose_attributes_mlp: [182, 128, 128, 8]
+  exp_color_mlp: [192, 256, 32]
   pose_color_mlp: [182, 128, 32]
-  exp_deform_mlp: [91, 256, 256, 256, 3]
-  # exp_deform_mlp: [86, 256, 256, 256, 3]
+  exp_deform_mlp: [91, 256, 256, 256,256,256, 3]
   pose_deform_mlp: [81, 256, 256, 3]
   exp_attributes_mlp: [192, 256, 256, 256, 8]
-  # exp_attributes_mlp: [187, 256, 256, 256, 8]
   pose_attributes_mlp: [182, 128, 128, 8]
   exp_coeffs_dim: 64
   pos_freq: 4
@@ -71,7 +77,7 @@ gaussianheadmodule:
   deform_scale: 0.3
   attributes_scale: 0.2
 
-  densify: True
+  densify: False
   densification_interval: 100
   opacity_reset_interval: 3_000
   densify_from_iter: 500

@@ -97,8 +97,8 @@ if __name__ == '__main__':
 
     # load_state_dict() does not interfere with autograd, it just overwrites the .data of parameters.
     if cfg.resume_training:
-        # epoch for frame 42
-        # start_epoch = 234
+        # new epoch for frame 0
+        # start_epoch = 273
         # epoch for frame 0
         start_epoch = 781
         # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
@@ -108,6 +108,8 @@ if __name__ == '__main__':
         gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
         gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
         # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
+        # breakpoint()
+        # gaussianhead.save_ply('/local/home/haonchen/Gaussian-Head-Avatar/checkpoints/gaussianhead_renderme_single/head_latest.ply')
         start_epoch += 1
     else:
         # only reset points_raw if not resume training, otherwise gaussianhair.transform will be backpropagated wrongly

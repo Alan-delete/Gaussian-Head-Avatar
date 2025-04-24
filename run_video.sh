@@ -5,16 +5,24 @@ export EXP_NAME_2="stage2"
 export EXP_NAME_3="stage3"
 export EXP_PATH_1=$DATA_PATH/3d_gaussian_splatting/$EXP_NAME_1
 
+# exp: one without sign distance, one without pose learning, one with both but added grad nan check
+
+
 # Manual steps for now:
 PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
-# SUBJECT="031"
+# SUBJECT="100"
 # DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
 # renderme
+# /local/home/haonchen/Gaussian-Head-Avatar/datasets/RenderMe/raw/0322_h1_4bn_raw.smc
 # SUBJECT="0018_e0_raw"
 # SUBJECT="0094_e0_raw"
 # SUBJECT="0094_h1_7bk_raw"
 # SUBJECT="0094_h0_raw"
-SUBJECT="0094_h1_6bn_raw-007"
+# SUBJECT="0094_h1_6bn_raw-007"
+# SUBJECT="0138_h0_raw"
+# SUBJECT="0138_h1_7bk_raw"
+# SUBJECT="0322_h1_4bn_raw"
+SUBJECT="0094_h1_3bn_raw"
 DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/RenderMe/$SUBJECT"
 
 #
@@ -58,41 +66,46 @@ eval "$(conda shell.bash hook)"
 # conda deactivate && conda activate gha2
 # CUDA_VISIBLE_DEVICES="$GPU" python face_parse.py --model resnet34 --weight $PROJECT_DIR/ext/face-parsing/weights/resnet34.pt --input $DATA_PATH/images  --output $DATA_PATH/face-parsing
 
-# # # landmark detection and FLAME fitting
+
+# # face mask from neural haircut
+# cd $PROJECT_DIR/preprocess
+# conda deactivate && conda activate matte_anything
+# # conda deactivate && conda activate gha2
+# CUDA_VISIBLE_DEVICES="$GPU" python calc_masks.py \
+#     --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --img_size 2048\
+#     --kernel_size 5 \
+#     --MODNET_ckpt $PROJECT_DIR/assets/MODNet/modnet_photographic_portrait_matting.ckpt \
+#     --CDGNET_ckpt $PROJECT_DIR/assets/CDGNet/LIP_epoch_149.pth \
+#     --ext_dir $PROJECT_DIR/ext/
+#     # --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --img_size 512 \
+
+
+
+# # landmark detection and FLAME fitting
 # cd $PROJECT_DIR/preprocess
 # conda deactivate && conda activate mv-3dmm-fitting
-# # CUDA_VISIBLE_DEVICES="$GPU" python detect_landmarks.py \
-# #     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks --image_size 2048
+# CUDA_VISIBLE_DEVICES="$GPU" python detect_landmarks.py \
+#     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks --image_size 2048
 # CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
 #     --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml \
 #     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
 #     --param_folder $DATA_PATH/FLAME_params --camera_folder $DATA_PATH/cameras --image_size 2048
     
-# # CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
-# #     --config $PROJECT_DIR/config/BFM_fitting_NeRSemble_031.yaml \
-# #     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
-# #     --param_folder $DATA_PATH/params --camera_folder $DATA_PATH/cameras --image_size 2048
+# CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
+#     --config $PROJECT_DIR/config/BFM_fitting_NeRSemble_031.yaml \
+#     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
+#     --param_folder $DATA_PATH/params --camera_folder $DATA_PATH/cameras --image_size 2048
 
 
 
 # conda deactivate 
-
-# # optical flow
-# cd $PROJECT_DIR/preprocess
-# conda deactivate && conda activate gha2
-# CUDA_VISIBLE_DEVICES="$GPU" python calc_optical_flow.py \
-#     --img_dir $DATA_PATH/images --optical_flow_dir $DATA_PATH/optical_flow --grid_size 200 \
-
-# CUDA_VISIBLE_DEVICES="$GPU" python cal_optical_flow.py --visualization_modes overlay --video_path $DATA_PATH/images --height 2048 --width 2048
-
-
 # cd $PROJECT_DIR/ext/DenseMatching
 # conda activate dense_matching_env
-# CUDA_VISIBLE_DEVICES="$GPU" python calc_optical_flow.py --model GLUNet_GOCor --pre_trained_model dynamic --img_dir $DATA_PATH/images --optical_flow_dir $DATA_PATH/optical_flow
+# python -c "from admin.environment import create_default_local_file; create_default_local_file()"
+# cp $PROJECT_DIR/preprocess/calc_optical_flow.py  $PROJECT_DIR/ext/DenseMatching/calc_optical_flow.py
+# # CUDA_VISIBLE_DEVICES="$GPU" python calc_optical_flow.py --model GLUNet_GOCor --pre_trained_model dynamic --img_dir $DATA_PATH/images --optical_flow_dir $DATA_PATH/optical_flow
+# CUDA_VISIBLE_DEVICES="$GPU" python calc_optical_flow.py --model PDCNet_plus --pre_trained_model megadepth --img_dir $DATA_PATH/images --optical_flow_dir $DATA_PATH/optical_flow
 
-
-# conda activate sapiens_lite 
-# cd $PROJECT_DIR/src/preprocessing && ./depth.sh
 
 # conda activate depth-pro 
 # cd $PROJECT_DIR/preprocess
@@ -210,15 +223,18 @@ eval "$(conda shell.bash hook)"
 # # RECONSTRUCTION #
 # ##################
 
-# cd $PROJECT_DIR
+cd $PROJECT_DIR
 conda activate gha2 
 # CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_N$SUBJECT.yaml --dataroot $DATA_PATH
 # CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_renderme.yaml --dataroot $DATA_PATH
 # CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_N031.yaml
 
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N$SUBJECT\_Simplified.yaml
-CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH
+# CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH
+# CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme_single.yaml --dataroot $DATA_PATH
+# CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH
 
+CUDA_VISIBLE_DEVICES="$GPU" python train_opticalflow.py --config config/train_gaussianhead_hair_renderme_optical_flow.yaml --dataroot $DATA_PATH
 
 # Run 3D Gaussian Splatting reconstruction
 # conda activate gaussian_splatting_hair && cd $PROJECT_DIR/src

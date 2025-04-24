@@ -173,8 +173,10 @@ class GaussianHeadHairTrainer():
 
 
                 # sharpness loss
-                loss_opacity_reg = 0.005 * (self.gaussianhair.get_opacity * (1 - self.gaussianhair.get_opacity) ).mean()
+                loss_opacity_reg = 0 #0.005 * (self.gaussianhair.get_opacity * (1 - self.gaussianhair.get_opacity) ).mean()
 
+
+                # segment loss
                 # B, C, H, W 
                 render_segments = data["render_segments"]
                 segment_clone = render_segments.clone()
@@ -202,6 +204,8 @@ class GaussianHeadHairTrainer():
                     decay_rate = max(decay_rate, 0.1)
                     loss_segment = loss_segment * decay_rate
 
+
+
                 intersect_body_mask = gt_mask * segment_clone[:, 1].detach()
                 intersect_hair_mask = gt_hair_mask * segment_clone[:, 2].detach()
 
@@ -214,17 +218,17 @@ class GaussianHeadHairTrainer():
 
 
 
-                loss_transform_reg =  F.mse_loss(self.gaussianhair.init_transform, self.gaussianhair.transform) 
+                loss_transform_reg = 0 #F.mse_loss(self.gaussianhair.init_transform, self.gaussianhair.transform) 
 
                 
                 # TODO: try mesh distance loss, also try knn color regularization
-                loss_mesh_dist = self.gaussianhair.mesh_distance_loss()
-
-                loss_knn_feature = self.gaussianhair.knn_feature_loss()
-
                 loss_sign_distance = self.gaussianhair.sign_distance_loss()
 
-                loss_strand_feature = self.gaussianhair.strand_feature_loss()
+                loss_mesh_dist = 0 #self.gaussianhair.mesh_distance_loss()
+
+                loss_knn_feature = 0 #self.gaussianhair.knn_feature_loss()
+
+                loss_strand_feature = 0 #self.gaussianhair.strand_feature_loss()
                 
                 gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
                 loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
@@ -248,9 +252,9 @@ class GaussianHeadHairTrainer():
                 loss_rgb_lr = F.l1_loss(render_images[:, 0:3, :, :] * visibles_coarse, images_coarse * visibles_coarse)
                 loss_rgb_hr = F.l1_loss(supres_images * cropped_visibles, cropped_images * cropped_visibles)
                 left_up = (random.randint(0, supres_images.shape[2] - 512), random.randint(0, supres_images.shape[3] - 512))
-                loss_vgg = self.fn_lpips((supres_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], 
-                                            (cropped_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], normalize=True).mean()
-
+                # loss_vgg = self.fn_lpips((supres_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], 
+                #                             (cropped_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], normalize=True).mean()
+                loss_vgg = 0
 
                 #  to better see the real magnitude of the loss
                 loss_rgb_hr = loss_rgb_hr * self.cfg.loss_weights.rgb_hr
@@ -281,21 +285,7 @@ class GaussianHeadHairTrainer():
                         loss_sign_distance
                 )
 
-                # breakpoint()
-                # # draw renderimage
-                # import cv2
-                # img = render_images[0].cpu().detach().numpy()
-                # img = img.transpose(1, 2, 0) * 255
-                # img = img.astype('uint8')
-                # cv2.imwrite(f'./debug_renderimage_{iteration}.png', img)
-
                 loss.backward()
-                # Optimizer step, for super
-                # for param in self.optimizer.param_groups[0]['params']:
-                #     if param.grad is not None and param.grad.isnan().any():
-                #         self.optimizer.zero_grad()
-                #         print(f'NaN during backprop in superres was found, skipping iteration...')
-                # self.optimizer.step()
 
                 for group in self.optimizer.param_groups:
                     for param in group['params']:

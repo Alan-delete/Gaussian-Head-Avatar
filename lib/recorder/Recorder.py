@@ -87,6 +87,7 @@ def vis_orient(orient_angle, mask):
 
     return rgb * mask
 
+
 class GaussianHeadTrainRecorder():
     def __init__(self, full_cfg, test_dataloader=None):
         
@@ -119,6 +120,7 @@ class GaussianHeadTrainRecorder():
         wandb.save('lib/face_models/*.py', policy='now')
         wandb.save('train*.py', policy='now')
         wandb.save('run_video.sh', policy='now')
+        wandb.save('install.sh', policy='now')
 
         self.name = cfg.name
         self.checkpoint_path = cfg.checkpoint_path
@@ -145,6 +147,14 @@ class GaussianHeadTrainRecorder():
             log_record['ssim_train'] = log_data['ssim_train'] if "ssim_train" in log_data else 0
             log_record['points_num'] = log_data['gaussianhead'].xyz.shape[0]
             wandb.log(log_record)
+        
+        # save more frequently for debugging
+        if log_data['iter'] % 500 == 0 and 'pre_shift_head' in log_data:    
+            path = '%s/%s/pre_shift_epoch_version2_%d' % (self.checkpoint_path, self.name, log_data['epoch'])
+            torch.save({'epoch': log_data['epoch'], 
+                        'pre_shift_head': log_data['pre_shift_head'],
+                        'pre_shift_hair': log_data['pre_shift_hair']}, path)
+            print('save pre_shift to path: %s' % path)
 
         if log_data['iter'] % self.save_freq == 0:
             print('saving checkpoint.')
@@ -156,6 +166,8 @@ class GaussianHeadTrainRecorder():
             torch.save(log_data['supres'].state_dict(), '%s/%s/supres_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest' % (self.checkpoint_path, self.name))
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+            
+            print('save gaussianhair and gaussianhead to path: %s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
 
             # too memory consuming, only used when reuiqring SIBR viewer
             # log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
@@ -175,13 +187,6 @@ class GaussianHeadTrainRecorder():
                 headmesh.vertices = o3d.utility.Vector3dVector(xyz)
                 headmesh.compute_vertex_normals()
                 o3d.io.write_triangle_mesh('%s/%s/%06d_head.ply' % (self.result_path, self.name, log_data['iter']), headmesh)
-        
-        # save more frequently for debugging
-        if log_data['iter'] % 500 == 0 and 'pre_shift_head' in log_data:    
-            torch.save({'epoch': log_data['epoch'], 
-                        'pre_shift_head': log_data['pre_shift_head'],
-                        'pre_shift_hair': log_data['pre_shift_hair']},
-                        '%s/%s/pre_shift_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
                 
         if log_data['iter'] % self.show_freq == 0:
 
@@ -282,6 +287,12 @@ class GaussianHeadTrainRecorder():
                         optical_flow = data['optical_flow'][0]
                         angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
                         images.append(wandb.Image(vis_orient(angle, mask), caption="optical_flow"))
+
+
+                        # estimated_flow_numpy = (data['optical_flow'][0] * mask).permute(1, 2, 0).detach().cpu().numpy()
+                        # warped_query_image = remap_using_flow_fields(image, estimated_flow_numpy[:, :, 0],
+                        #                              estimated_flow_numpy[:, :, 1]).astype(np.uint8)
+                        # images.append(wandb.Image(warped_query_image, caption="warped_image"))
 
                     if 'render_velocity' in data:
                         # render_velocity = data['render_velocity'][0].permute(1, 2, 0).detach().cpu().numpy() 
