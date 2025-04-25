@@ -6,6 +6,7 @@ from tqdm import tqdm
 class Reenactment():
     def __init__(self, dataloader, gaussianhead, supres, camera, recorder, gpu_id, freeview):
         self.dataloader = dataloader
+        self.dataset = dataloader.dataset
         self.gaussianhead = gaussianhead
         self.supres = supres
         self.camera = camera

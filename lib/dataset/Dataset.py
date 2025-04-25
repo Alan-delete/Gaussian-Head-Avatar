@@ -400,6 +400,7 @@ class GaussianDataset(Dataset):
             elif data.dtype == np.float32:
                 # (2, H, W)
                 optical_flow = torch.from_numpy(data)
+                optical_flow = optical_flow.squeeze(0)
                 # dense matching estimate from t+1 to t, need to invert it
                 optical_flow = - optical_flow
                 # TODO: opencv/numpy's orgin at top left, now should invert y axis of optical flow? 
