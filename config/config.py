@@ -103,6 +103,40 @@ class config_train(config_base):
         self.cfg.gaussianheadmodule.gaussian_pruning_threshold = 0.5
 
 
+        self.cfg.flame_gaussian_module = CN()
+        self.cfg.flame_gaussian_module.iterations = 600_000  # 30_000 (original)
+        self.cfg.flame_gaussian_module.position_lr_init = 0.005  # (scaled up according to mean triangle scale)  #0.00016 (original)
+        self.cfg.flame_gaussian_module.position_lr_final = 0.00005  # (scaled up according to mean triangle scale) # 0.0000016 (original)
+        self.cfg.flame_gaussian_module.position_lr_delay_mult = 0.01
+        self.cfg.flame_gaussian_module.position_lr_max_steps = 600_000  # 30_000 (original)
+        self.cfg.flame_gaussian_module.feature_lr = 0.0025
+        self.cfg.flame_gaussian_module.opacity_lr = 0.05
+        self.cfg.flame_gaussian_module.scaling_lr = 0.017  # (scaled up according to mean triangle scale)  # 0.005 (original)
+        self.cfg.flame_gaussian_module.rotation_lr = 0.001
+        self.cfg.flame_gaussian_module.densify = True
+        self.cfg.flame_gaussian_module.densification_interval = 2_000  # 100 (original)
+        self.cfg.flame_gaussian_module.opacity_reset_interval = 60_000 # 3000 (original)
+        self.cfg.flame_gaussian_module.densify_from_iter = 10_000  # 500 (original)
+        self.cfg.flame_gaussian_module.densify_until_iter = 600_000  # 15_000 (original)
+        self.cfg.flame_gaussian_module.densify_grad_threshold = 0.0002
+        
+        # GaussianAvatars
+        self.cfg.flame_gaussian_module.flame_expr_lr = 1e-3
+        self.cfg.flame_gaussian_module.flame_trans_lr = 1e-6
+        self.cfg.flame_gaussian_module.flame_pose_lr = 1e-5
+        self.cfg.flame_gaussian_module.percent_dense = 0.01
+        self.cfg.flame_gaussian_module.lambda_dssim = 0.2
+        self.cfg.flame_gaussian_module.lambda_xyz = 1e-2
+        self.cfg.flame_gaussian_module.threshold_xyz = 1.
+        self.cfg.flame_gaussian_module.metric_xyz = False
+        self.cfg.flame_gaussian_module.lambda_scale = 1.
+        self.cfg.flame_gaussian_module.threshold_scale = 0.6
+        self.cfg.flame_gaussian_module.metric_scale = False
+        self.cfg.flame_gaussian_module.lambda_dynamic_offset = 0.
+        self.cfg.flame_gaussian_module.lambda_laplacian = 0.
+        self.cfg.flame_gaussian_module.lambda_dynamic_offset_std = 0  #1.
+
+
         self.cfg.gaussianhairmodule = CN()
         # contain all pose related 
         self.cfg.gaussianhairmodule.pose_color_mlp = []         # dimensions of pose color MLP

@@ -104,6 +104,7 @@ class OpticalFlowTrainer():
 
 
         pre_shift_checkpoint_path = "checkpoints/gaussianhead_renderme_single/pre_shift_epoch_15"
+        # pre_shift_checkpoint_path = "checkpoints/gaussianhead_renderme_single/pre_shift_epoch_version2_12"
         if False and os.path.exists(pre_shift_checkpoint_path):
             checkpoint = torch.load(pre_shift_checkpoint_path)
             start_frame = checkpoint['epoch'] + 1
@@ -117,7 +118,7 @@ class OpticalFlowTrainer():
                 init_data[data_item] = init_data[data_item].unsqueeze(0)
             print("load pre_shift from checkpoint, start from ", start_frame)
         else:
-            start_frame = 4
+            start_frame = 10
             pre_shift_head = torch.zeros([1, self.gaussianhead.xyz.shape[0], 3], device=self.device, requires_grad=False)
             pre_shift_hair = torch.zeros([1, self.gaussianhair.num_strands * (self.gaussianhair.strand_length - 1) , 3], device=self.device, requires_grad=False)
             init_data = dataset[start_frame-1]
@@ -137,7 +138,7 @@ class OpticalFlowTrainer():
             optical_flow_hair = torch.zeros([1, self.gaussianhair.num_strands * (self.gaussianhair.strand_length - 1) , 3], device=self.device, requires_grad=True)
             optimizer = torch.optim.Adam([optical_flow_hair, optical_flow_head], lr=2e-5, betas=(0.9, 0.999), eps=1e-8)
             
-            for _ in tqdm(range(2000)):
+            for _ in tqdm(range(3000)):
                 iteration += 1
 
                 # if this iteration is to save, use predefined view
@@ -191,8 +192,8 @@ class OpticalFlowTrainer():
                 self.gaussianhair.generate_hair_gaussians(skip_smpl=True, 
                                                         backprop_into_prior=False, 
                                                         poses_history = init_data['poses_history'][0], 
-                                                        pose = init_data['pose'][0],
-                                                        scale = init_data['scale'][0],
+                                                        global_pose = init_data['pose'][0],
+                                                        global_scale = init_data['scale'][0],
                                                         given_optical_flow = optical_flow_hair[0],
                                                         accumulate_optical_flow = pre_shift_hair[0])
                 hair_data = self.gaussianhair.generate(init_data)
@@ -282,9 +283,14 @@ class OpticalFlowTrainer():
 
                 
                 # loss_optical_flow = F.mse_loss(pred_optical_flow, gt_optical_flow, reduction='mean') 
-                loss_optical_flow = ( (pred_optical_flow - gt_optical_flow) ** 2 * gt_optical_flow_confidence).mean() 
+                loss_optical_flow = ( (pred_optical_flow - gt_optical_flow) ** 2 * gt_optical_flow_confidence).mean()* 0.1 
                 # loss_optical_flow = F.l1_loss(pred_optical_flow, gt_optical_flow, reduction='mean')* 0.5 
                 # loss_optical_flow = optical_flow_loss(gt_optical_flow, pred_optical_flow)
+                
+                # TODO: use 3d optical flow or 2d optical flow projection?
+                loss_optical_flow_hair_reg = optical_flow_hair.norm(2).mean() * 0.1
+                loss_optical_flow_head_reg = optical_flow_head.norm(2).mean() * 0.1
+
 # 
                 gt_orientation = data['orient_angle']
                 pred_orientation = data['render_orient']
@@ -358,7 +364,9 @@ class OpticalFlowTrainer():
                         # loss_knn_feature +
                         # loss_strand_feature +
                         loss_orient +
-                        loss_optical_flow
+                        loss_optical_flow + 
+                        loss_optical_flow_hair_reg +
+                        loss_optical_flow_head_reg 
                 )
 
                 loss.backward()
@@ -385,8 +393,8 @@ class OpticalFlowTrainer():
                     'psnr_train' : psnr_train,
                     'ssim_train' : ssim_train,
                     'loss_strand_feature' : loss_strand_feature,
-                    'loss_optical_flow_hair_reg': optical_flow_hair.norm(2).mean(),
-                    'loss_optical_flow_head_reg': optical_flow_head.norm(2).mean(),
+                    'loss_optical_flow_hair_reg': loss_optical_flow_hair_reg,
+                    'loss_optical_flow_head_reg': loss_optical_flow_head_reg,
                     'loss_optical_flow' : loss_optical_flow,
                     'pre_shift_head' : pre_shift_head,
                     'pre_shift_hair' : pre_shift_hair,

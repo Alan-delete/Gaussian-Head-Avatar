@@ -12,6 +12,7 @@ from lib.module.GaussianHeadModule import GaussianHeadModule
 from lib.module.GaussianHairModule import GaussianHairModule
 from lib.module.SuperResolutionModule import SuperResolutionModule
 from lib.module.CameraModule import CameraModule
+from lib.module.flame_gaussian_model import FlameGaussianModel
 from lib.recorder.Recorder import GaussianHeadTrainRecorder
 from lib.trainer.GaussianHeadTrainer import GaussianHeadTrainer
 from lib.trainer.GaussianHeadHairTrainer import GaussianHeadHairTrainer
@@ -64,7 +65,8 @@ if __name__ == '__main__':
         gaussianhead = GaussianHeadModule(cfg.gaussianheadmodule, 
                                           xyz=data['verts'][select_indices].cpu(),
                                           feature=torch.atanh(data['verts_feature'][select_indices].cpu()), 
-                                          landmarks_3d_neutral=meshhead.landmarks_3d_neutral.detach().cpu(),
+                                        #   landmarks_3d_neutral=meshhead.landmarks_3d_neutral.detach().cpu(),
+                                          landmarks_3d_neutral=dataset.init_landmarks_3d_neutral,
                                           add_mouth_points=True).to(device)
         # gaussianhead.exp_color_mlp.load_state_dict(meshhead.exp_color_mlp.state_dict())
         # gaussianhead.pose_color_mlp.load_state_dict(meshhead.pose_color_mlp.state_dict())
@@ -76,6 +78,43 @@ if __name__ == '__main__':
         del meshhead
         torch.cuda.empty_cache()
     
+    gaussians = FlameGaussianModel(0, disable_flame_static_offset = True, n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
+    # process meshes
+    T = len(dataset.samples)
+
+    if gaussians.binding != None:
+        gaussians.load_meshes(train_meshes=dataset.train_meshes,
+                              test_meshes={},
+                              tgt_train_meshes = {},
+                              tgt_test_meshes = {})
+        cameras_extent = 4.907987451553345
+        gaussians.create_from_pcd(None, cameras_extent)
+
+        gaussians.training_setup(cfg.flame_gaussian_module)
+        
+    # gaussians.select_mesh_by_timestep(1)
+    # vertices = gaussians.verts.squeeze(0)
+    # # 70,3
+    # x = gaussians.landmarks
+    # # lmk_faces_idx = torch.cat([lmk_faces_idx[:, 0:48], lmk_faces_idx[:, 49:54], lmk_faces_idx[:, 55:68]], 1)
+    # x = torch.cat([x[:, 0:48], x[:, 49:54], x[:, 55:68]], 1)
+    # x = x.squeeze(0)
+    # x = x[45:55]
+    # # 66,3
+    # y = dataset[0]['landmarks_3d']
+    # y = y[45:55]
+    # import open3d as o3d
+    # generic_mesh = o3d.geometry.TriangleMesh()
+    # generic_mesh.vertices = o3d.utility.Vector3dVector(x.detach().cpu().numpy())
+    # generic_mesh.compute_vertex_normals()
+    # o3d.io.write_triangle_mesh("./landmark_partial.ply", generic_mesh)
+
+    # generic_mesh.vertices = o3d.utility.Vector3dVector(y.detach().cpu().numpy())
+    # generic_mesh.compute_vertex_normals()
+    # o3d.io.write_triangle_mesh("./landmark_partial_gt.ply", generic_mesh)
+
+    # breakpoint()
+
     # create hair gaussian, 
     gaussianhair = GaussianHairModule(cfg.gaussianhairmodule).to(device)
     gaussianhair.update_mesh_alignment_transform(dataset.R, dataset.T, dataset.S, flame_mesh_path = dataset.flame_mesh_path)
@@ -148,5 +187,5 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adam(optimized_parameters)
 
-    trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
+    trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussians, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
     trainer.train(start_epoch, start_epoch + cfg.num_epochs)

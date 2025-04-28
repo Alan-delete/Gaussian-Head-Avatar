@@ -480,7 +480,9 @@ class GaussianHairModule(GaussianBaseModule):
         # tensor double
         R = R.to(torch.double)
         T = T.to(torch.double) 
+        # TODO: hardcode scale because it will be anyway cancelled out in the training. 
         S = S.to(torch.double)
+        S = torch.clamp(S, min=0.01, max=0.1) 
         target = (torch.matmul(target- T, R)) / S 
         # shrink the mesh a little bit so that most hair roots are roughly on/inside the surface.
         target = target * 0.95
@@ -681,6 +683,7 @@ class GaussianHairModule(GaussianBaseModule):
             return 0
 
         cur_pose = all_pose[-1]
+        # 6 -> 54
         pose_embedding = self.pos_embedding(cur_pose[None])
         # L, 54
         all_pose_embedding = self.pos_embedding(all_pose)
@@ -702,7 +705,7 @@ class GaussianHairModule(GaussianBaseModule):
         return pose_deform.view(self.num_strands, self.strand_length - 1, 3)
 
     # set gaussian representation from hair strands
-    def generate_hair_gaussians(self, num_strands = -1, skip_color = False, skip_smpl = False, backprop_into_prior = False, poses_history = None, pose = None, scale = None, given_optical_flow = None, accumulate_optical_flow = None):
+    def generate_hair_gaussians(self, num_strands = -1, skip_color = False, skip_smpl = False, backprop_into_prior = False, poses_history = None, global_pose = None, global_scale = None, given_optical_flow = None, accumulate_optical_flow = None):
         # determine the number of strands to sample
         if num_strands < self.num_strands and num_strands != -1:
             strands_idx = torch.randperm(self.num_strands)[:num_strands]
@@ -730,22 +733,6 @@ class GaussianHairModule(GaussianBaseModule):
                 self.points_origins = torch.cat([self.origins, self.points], dim=1)
                 self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
         
-
-        # from canonical space to world space, used in orginal codes.
-        if pose is not None and scale is not None:
-            # add batch dimension
-            R = so3_exponential_map(pose[None, :3])
-            T = pose[None,None, 3:]
-            S = scale.view(1)
-            points = self.points.reshape(1, -1, 3)
-            origins = self.origins.reshape(1, -1, 3)
-            points = torch.bmm(points * S, R.permute(0, 2, 1)) + T
-            origins = torch.bmm(origins * S, R.permute(0, 2, 1)) + T
-            self.points = points.view(num_strands, self.strand_length - 1, 3)
-            self.origins = origins.view(num_strands, 1, 3)
-            self.points_origins = torch.cat([self.origins, self.points], dim=1)
-            self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
-
         # Add dynamics to the hair strands
         # Points shift
         if given_optical_flow is not None:
@@ -759,22 +746,36 @@ class GaussianHairModule(GaussianBaseModule):
             self.points_origins = torch.cat([self.origins, points], dim=1)
             self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
 
-        # elif poses_history is not None:
-        #     # point : (frame_num-1, 3)
+        elif poses_history is not None:
+            # point : (frame_num-1, 3)
 
-        #     pose_deform = self.get_pose_deform(poses_history)
+            pose_deform = self.get_pose_deform(poses_history)
 
-        #     points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
+            points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
 
-        #     self.optical_flow_3D = torch.zeros_like(points) if self.pre_pose_deform is None else pose_deform - self.pre_pose_deform
-        #     self.pre_pose_deform = pose_deform.detach()
+            self.points = points
+            self.points_origins = torch.cat([self.origins, points], dim=1)
+            self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
 
-        #     self.points = points
-        #     self.points_origins = torch.cat([self.origins, points], dim=1)
-        #     self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+        # from canonical space to world space, used in orginal codes.
+        if global_pose is not None and global_scale is not None:
+            # add batch dimension
+            R = so3_exponential_map(global_pose[None, :3])
+            T = global_pose[None,None, 3:]
+            S = global_scale.view(1)
+            S = torch.clamp(S, min=0.01, max=0.1) 
+            points = self.points.reshape(1, -1, 3)
+            origins = self.origins.reshape(1, -1, 3)
+            points = torch.bmm(points * S, R.permute(0, 2, 1)) + T
+            origins = torch.bmm(origins * S, R.permute(0, 2, 1)) + T
+            self.points = points.view(num_strands, self.strand_length - 1, 3)
+            self.origins = origins.view(num_strands, 1, 3)
+            self.points_origins = torch.cat([self.origins, self.points], dim=1)
+            self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+
         
         # TODO: scale is negative sometimes!
-        self.width = self.width_raw[strands_idx] if scale is None else self.width_raw[strands_idx] * max(scale, 0.4)
+        self.width = self.width_raw[strands_idx] if global_scale is None else self.width_raw[strands_idx] * torch.clamp(global_scale, min=0.01, max=0.1)
         self.opacity = self.opacity_raw.view(self.num_strands, self.strand_length - 1, 1)[strands_idx].view(-1, 1)
         if not skip_color:
             self.features_dc = self.features_dc_raw.view(self.num_strands, self.strand_length - 1, 1, 3)[strands_idx].view(-1, 1, 3)
@@ -897,24 +898,6 @@ class GaussianHairModule(GaussianBaseModule):
                 points_origins = torch.cat([origins, points], dim=1)
                 dir = (points_origins[:, 1:] - points_origins[:, :-1]).view(-1, 3)
         
-
-        # from canonical space to world space, used in orginal codes.
-        if pose is not None and scale is not None:
-            # add batch dimension
-            R = so3_exponential_map(pose[None, :3])
-            T = pose[None,None, 3:]
-            S = scale.view(1)
-            
-            points = points.reshape(1, -1, 3)
-            origins = origins.reshape(1, -1, 3)
-            points = torch.bmm(points * S, R.permute(0, 2, 1)) + T
-            origins = torch.bmm(origins * S, R.permute(0, 2, 1)) + T
-            
-            points = points.view(num_strands, self.strand_length - 1, 3)
-            origins = origins.view(num_strands, 1, 3)
-            points_origins = torch.cat([self.origins, self.points], dim=1)
-            dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
-
         # Add dynamics to the hair strands
         # Points shift
         if given_optical_flow is not None:
@@ -936,6 +919,24 @@ class GaussianHairModule(GaussianBaseModule):
 
             points_origins = torch.cat([origins, points], dim=1)
             dir = (points_origins[:, 1:] - points_origins[:, :-1]).view(-1, 3)
+
+        # from canonical space to world space, used in orginal codes.
+        if pose is not None and scale is not None:
+            # add batch dimension
+            R = so3_exponential_map(pose[None, :3])
+            T = pose[None,None, 3:]
+            S = scale.view(1)
+            
+            points = points.reshape(1, -1, 3)
+            origins = origins.reshape(1, -1, 3)
+            points = torch.bmm(points * S, R.permute(0, 2, 1)) + T
+            origins = torch.bmm(origins * S, R.permute(0, 2, 1)) + T
+            
+            points = points.view(num_strands, self.strand_length - 1, 3)
+            origins = origins.view(num_strands, 1, 3)
+            points_origins = torch.cat([self.origins, self.points], dim=1)
+            dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+
 
         return {'points': points, 'dir': dir, 'origins': origins, 'points_origins': points_origins, 'strands_idx': strands_idx}
         

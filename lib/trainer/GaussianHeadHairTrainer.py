@@ -101,7 +101,7 @@ class GaussianHeadHairTrainer():
                 # prepare data
                 to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
-                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','poses_history', 'optical_flow']
+                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','poses_history', 'optical_flow','optical_flow_confidence']
                 for data_item in to_cuda:
                     data[data_item] = data[data_item].to(device=self.device)
 
@@ -139,12 +139,53 @@ class GaussianHeadHairTrainer():
 
                 # render coarse images
                 head_data = self.gaussianhead.generate(data)
+
                 self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, 
                                                           backprop_into_prior=backprop_into_prior, 
                                                           poses_history = data['poses_history'][0], 
-                                                          pose = data['pose'][0],
-                                                          scale = data['scale'][0])
+                                                        #   pose = data['pose'][0],
+                                                        #   scale = data['scale'][0])
+                                                          global_pose = data['flame_pose'][0],
+                                                          global_scale = data['flame_scale'][0])
                 hair_data = self.gaussianhair.generate(data)
+                if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2:
+                    # TODO: get direction 2d from xyz and direction
+                    velocity2D = []
+                    pre_exp_coeff = data['exp_coeff'] 
+                    pre_pose = data['poses_history'][:, -2]
+                    pre_scale = data['scale']
+                    pre_head = self.gaussianhead.get_posed_points( exp_coeff = pre_exp_coeff, pose = pre_pose, scale = pre_scale)
+                    optical_flow_head = self.gaussianhead.xyz - pre_head['xyz']
+                    for b in range(1):
+                        image_height = data['images'].shape[2]
+                        image_width = data['images'].shape[3]
+                        # TODO, velocity should not be normalized
+                        velocity2D.append(self.gaussianhair.get_direction_2d(data['fovx'][b], data['fovy'][b], 
+                                                                image_height, image_width,
+                                                                data['world_view_transform'][b], 
+                                                                head_data['xyz'][b], optical_flow_head[b], normalize=False))
+                    velocity2D = torch.stack(velocity2D, dim=0)
+                    head_data['color'][...,  9:12] = velocity2D
+
+                    # TODO: get direction 2d from xyz and direction
+                    velocity2D = []
+                    pose_history = data['poses_history'][0][:-1]
+                    pre_pose = pose_history[-1]
+                    pre_scale = data['scale'][0]
+                    pre_strand = self.gaussianhair.get_posed_points(poses_history = pose_history, pose = pre_pose, scale = pre_scale)
+                    optical_flow_hair = self.gaussianhair.points.reshape(-1,3) - pre_strand['points'].reshape(-1, 3)
+                    optical_flow_hair = optical_flow_hair.unsqueeze(0)
+                    for b in range(1):
+                        image_height = data['images'].shape[2]
+                        image_width = data['images'].shape[3]
+                        # TODO, velocity should not be normalized
+                        velocity2D.append(self.gaussianhair.get_direction_2d(data['fovx'][b], data['fovy'][b], 
+                                                                image_height, image_width,
+                                                                data['world_view_transform'][b], 
+                                                                hair_data['xyz'][b], optical_flow_hair[b], normalize=False))
+                    velocity2D = torch.stack(velocity2D, dim=0)
+                    hair_data['color'][...,  9:12] = velocity2D
+
                 # combine head and hair data
                 for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
                     # first dimension is batch size, concat along the second dimension
@@ -217,6 +258,36 @@ class GaussianHeadHairTrainer():
                 if torch.isnan(loss_orient).any(): loss_orient = 0.0
 
 
+                intersect_body_mask = gt_mask * segment_clone[:, 1].detach()
+                intersect_hair_mask = gt_hair_mask * segment_clone[:, 2].detach()
+
+                def optical_flow_loss(gt, pred):
+                    # direction loss
+                    direction_loss = 1 - F.cosine_similarity(gt, pred, dim=1).mean()
+                    # magnitude loss
+                    magnitude_loss = F.mse_loss(gt.norm(dim=1), pred.norm(dim=1), reduction='mean') * 0.001
+                    # l1 loss
+                    l1_loss = F.l1_loss(pred_optical_flow, gt_optical_flow, reduction='mean') * 10
+
+                    return direction_loss + l1_loss
+
+
+                gt_optical_flow = data['optical_flow']
+                gt_optical_flow_confidence = data['optical_flow_confidence']
+                pred_optical_flow = data['render_velocity']
+                gt_optical_flow = gt_optical_flow * intersect_body_mask
+                pred_optical_flow = pred_optical_flow * intersect_body_mask
+
+                if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2 and iteration > 7000:
+                    loss_optical_flow = ( (pred_optical_flow - gt_optical_flow) ** 2 * gt_optical_flow_confidence).mean() * 0.01
+                    # TODO: use 3d optical flow or 2d optical flow projection?
+                    loss_optical_flow_hair_reg = optical_flow_hair.norm(2).mean() * 0.1
+                    loss_optical_flow_head_reg = optical_flow_head.norm(2).mean() * 0.1
+                else:
+                    loss_optical_flow = 0
+                    loss_optical_flow_hair_reg = 0
+                    loss_optical_flow_head_reg = 0
+
 
                 loss_transform_reg = 0 #F.mse_loss(self.gaussianhair.init_transform, self.gaussianhair.transform) 
 
@@ -230,6 +301,11 @@ class GaussianHeadHairTrainer():
 
                 loss_strand_feature = 0 #self.gaussianhair.strand_feature_loss()
                 
+                gt_landmarks_3d = data['landmarks_3d']
+                pred_landmarks_3d = self.gaussianhead.landmarks
+                pred_landmarks_3d = torch.cat([pred_landmarks_3d[:, 0:48], pred_landmarks_3d[:, 49:54], pred_landmarks_3d[:, 55:68]], 1)
+                loss_landmarks = F.mse_loss(pred_landmarks_3d, gt_landmarks_3d, reduction='mean') * 10.
+
                 gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
                 loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
 
@@ -282,7 +358,9 @@ class GaussianHeadHairTrainer():
                         loss_strand_feature +
                         loss_orient +
                         loss_opacity_reg +   
-                        loss_sign_distance
+                        loss_sign_distance + 
+                        loss_landmarks +
+                        loss_optical_flow
                 )
 
                 loss.backward()
@@ -306,49 +384,36 @@ class GaussianHeadHairTrainer():
 
 
                 with torch.no_grad():
+
                     # Densification
-                    if self.cfg.gaussianheadmodule.densify:
+                    opt = self.cfg.gaussianheadmodule
+                    opt = self.cfg.flame_gaussian_module
+                
+                    if opt.densify:
                         # TODO: By printing the value of Gaussian Hair cut. Need to get this value in this project
                         cameras_extent = 4.907987451553345
-                        if iteration <= self.cfg.gaussianheadmodule.densify_until_iter :
+                        if iteration <= opt.densify_until_iter :
                             # Keep track of max radii in image-space for pruning
-                            unstrct_gaussian_num = self.gaussianhead.xyz.shape[0]
+                            unstrct_gaussian_num = self.gaussianhead.get_xyz.shape[0]
                             # [B, total_gaussian_num] -> [unstruct_gaussian_num]
                             visibility_filter = visibility_filter[0][:unstrct_gaussian_num]
                             radii = radii[0][:unstrct_gaussian_num]
                             self.gaussianhead.max_radii2D[visibility_filter] = torch.max(self.gaussianhead.max_radii2D[visibility_filter], radii[visibility_filter])
                             self.gaussianhead.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                            if iteration >= self.cfg.gaussianheadmodule.densify_from_iter and iteration % self.cfg.gaussianheadmodule.densification_interval == 0:
-                                size_threshold = 20 if iteration > self.cfg.gaussianheadmodule.opacity_reset_interval else None
-                                self.gaussianhead.densify_and_prune(self.cfg.gaussianheadmodule.densify_grad_threshold, 0.005, cameras_extent, size_threshold)
+                            if iteration >= opt.densify_from_iter and iteration % opt.densification_interval == 0:
+                                size_threshold = 20 if iteration > opt.opacity_reset_interval else None
+                                self.gaussianhead.densify_and_prune(opt.densify_grad_threshold, 0.005, cameras_extent, size_threshold)
                             
-                            # if iteration % self.cfg.gaussianheadmodule.opacity_reset_interval == 0 :
-                            #     self.gaussianhead.reset_opacity()
+                            if iteration % opt.opacity_reset_interval == 0 :
+                                self.gaussianhead.reset_opacity()
                 
                     # regenerate raw data from perm prior
                     if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter \
                                                     and iteration % self.cfg.gaussianhairmodule.strands_reset_interval == 0: 
                         self.gaussianhair.reset_strands()
 
-                    # Optimizer step, for gaussians
-                    # unstrctured
-                    # nan_grad = False
-                    # params = [self.gaussianhead.xyz, 
-                    #         self.gaussianhead.feature,
-                    #         self.gaussianhead.features_dc, 
-                    #         self.gaussianhead.features_rest, 
-                    #         self.gaussianhead.opacity, 
-                    #         self.gaussianhead.label_hair, 
-                    #         self.gaussianhead.label_body, 
-                    #         self.gaussianhead.scales, 
-                    #         self.gaussianhead.rotation]
-                    # labels = ['xyz', 'feature','features_dc', 'features_rest', 'opacity', 'label_hair', 'label_body', 'scaling', 'rotation']
-                    # for param, label in zip(params, labels):
-                    #     if param.grad is not None and param.grad.isnan().any():
-                    #         nan_grad = True
-                    #         print(f'NaN during backprop in {label} unstruct was found, skipping iteration')
-                    
+
                     nan_grad = False
                     for group in self.gaussianhead.optimizer.param_groups:
                         for param in group['params']:
@@ -420,6 +485,8 @@ class GaussianHeadHairTrainer():
                     'ssim_train' : ssim_train,
                     'loss_strand_feature' : loss_strand_feature,
                     'loss_sign_distance' : loss_sign_distance,
+                    'loss_optical_flow' : loss_optical_flow,
+                    'loss_landmarks' : loss_landmarks,
                     'epoch' : epoch,
                     # 'iter' : idx + epoch * len(self.dataloader)
                     'iter' : iteration

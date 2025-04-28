@@ -211,16 +211,16 @@ class GaussianDataset(Dataset):
         camera_folder = os.path.join(self.dataroot, 'cameras')
         
 
-        mask_folder = os.path.join(self.dataroot, 'masks')
         mask_folder = os.path.join(self.dataroot, 'NeuralHaircut_masks')
+        if not os.path.exists(mask_folder):
+            mask_folder = os.path.join(self.dataroot, 'masks')
         # as tested, face_parsing is more robust than matte anything, but less accurate
         # if os.path.exists(os.path.join(self.dataroot, 'face-parsing', 'hair')):
         #     hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
         # else:
         #     hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
         # hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
-        hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
-        hair_mask_folder = os.path.join(self.dataroot, 'NeuralHaircut_masks', 'hair')
+        hair_mask_folder = os.path.join(mask_folder, 'hair')
 
         flame_param_folder = os.path.join(self.dataroot, 'FLAME_params')
         optical_flow_folder = os.path.join(self.dataroot, 'optical_flow')
@@ -265,15 +265,103 @@ class GaussianDataset(Dataset):
             optical_flow_path = [os.path.join(optical_flow_folder, frame, 'image_%s.npy' % camera_id) for camera_id in self.camera_ids]
             
             self.samples.append(sample)
-            params_path_history.append(param_path)
+            # params_path_history.append(param_path)
+            params_path_history.append(flame_param_path)
             self.num_exp_id += 1
 
-        # FLAME_param_folder = os.path.join(self.dataroot, 'FLAME_params')
+        param_folder = os.path.join(self.dataroot, 'FLAME_params')
         param = np.load(os.path.join(param_folder, frames[0], 'params.npz'))
+        init_landmarks_3d = torch.from_numpy(np.load(os.path.join(param_folder, frames[0], 'lmk_3d.npy'))).float()
+        init_vertices = torch.from_numpy(np.load(os.path.join(param_folder, frames[0], 'vertices.npy'))).float()
+
+
+        train_meshes = {}
+
+        self.shape_dims = 100
+        self.exp_dims = 50
+        
+        for i, sample in enumerate(self.samples):
+            mesh = {}
+            flame_param_path = sample[13]
+            flame_param = np.load(flame_param_path)
+
+            # scale is around 0.995
+            scale = flame_param['scale']
+            # (1, 100)
+            shape = flame_param['id_coeff']
+            # (1, 3)
+            # the rotation in GHA is not the same one in FLAME, so we just set it to 0
+            rotation = flame_param['pose'][:, :3]
+            rotation = np.zeros((1, 3))
+            # (1, 3)
+            translation = flame_param['pose'][:, 3:]
+            # (1, 59)
+            exp_coeff = flame_param['exp_coeff']
+            # (1, 3)
+            jaw_pose = exp_coeff[:, self.exp_dims: self.exp_dims + 3]
+            # (1, 6)
+            neck_pose = np.zeros((1, 3))
+            # (1, 3)
+            eyes_pose = exp_coeff[:, self.exp_dims + 3: self.exp_dims + 9]
+            expr = exp_coeff[:, :self.exp_dims]
+
+
+            mesh['expr'] = expr
+            mesh['rotation'] = rotation
+            mesh['translation'] = translation
+            mesh['jaw_pose'] = jaw_pose
+            mesh['neck_pose'] = neck_pose
+            mesh['eyes_pose'] = eyes_pose
+            mesh['shape'] = shape
+            train_meshes[i] = mesh
+
+        self.train_meshes = train_meshes
+
+
         pose = torch.from_numpy(param['pose'][0]).float()
         self.R = so3_exponential_map(pose[None, :3])[0]
         self.T = pose[None, 3:]
         self.S = torch.from_numpy(param['scale']).float()
+
+        R = so3_exponential_map(pose[None, :3])[0]
+        T = pose[None, 3:]
+        S = torch.from_numpy(param['scale']).float()
+
+        # generic_model_path = os.path.join('./assets/FLAME/generic_model.pkl')
+        # import pickle
+        # np.bool = np.bool_
+        # np.int = np.int_
+        # np.float = np.float_
+        # np.complex = np.complex_
+        # np.object = np.object_
+        # np.unicode = np.unicode_
+        # np.str = np.str_
+        # with open(generic_model_path, 'rb') as f:
+        #     generic_model = pickle.load(f, encoding='latin1')
+        # v_template = generic_model['v_template']
+        # f = generic_model['f']
+        # import open3d as o3d
+        # generic_mesh = o3d.geometry.TriangleMesh()
+        # generic_mesh.vertices = o3d.utility.Vector3dVector(v_template)
+        # generic_mesh.triangles = o3d.utility.Vector3iVector(f)
+        # generic_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh("./generic_model.ply", generic_mesh)
+
+        # init_landmarks_3d = torch.cat([init_landmarks_3d, init_vertices[::100]], 0)
+
+        # import open3d as o3d
+        # f = "/local/home/haonchen/Gaussian-Head-Avatar/assets/FLAME/flame2023.pkl"
+        # with open(f, 'rb') as f:
+        #     generic_model_2023 = pickle.load(f, encoding='latin1')
+        self.init_landmarks_3d_neutral = (torch.matmul(init_landmarks_3d- T, R)) / S
+        self.init_flame_model = (torch.matmul(init_vertices- T, R)) / S
+        # import open3d as o3d
+        # landmarks_3d_points = o3d.geometry.TriangleMesh()
+        # landmarks_3d_points.vertices = o3d.utility.Vector3dVector(self.init_landmarks_3d_neutral.cpu().numpy())
+        # landmarks_3d_points.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh("./landmarks_3d_neutral.ply", landmarks_3d_points)
+
+
 
     def get_item(self, index):
         data = self.__getitem__(index)
@@ -349,17 +437,17 @@ class GaussianDataset(Dataset):
         pose = torch.from_numpy(param['pose'][0]).float()
         
         scale = torch.from_numpy(param['scale']).float()
-        # different shape For BFM and FLAME, so unify it
+        # different dimension For BFM and FLAME, so unify it
         scale = scale.view(-1)
-
+        # shape of 64
         exp_coeff = torch.from_numpy(param['exp_coeff'][0]).float()
         
         landmarks_3d_path = sample[5]
         landmarks_3d = torch.from_numpy(np.load(landmarks_3d_path)).float()
-        vertices_path = sample[6]
-        vertices = torch.from_numpy(np.load(vertices_path)).float()
-        landmarks_3d = torch.cat([landmarks_3d, vertices[::100]], 0)
-        
+        # vertices_path = sample[6]
+        # vertices = torch.from_numpy(np.load(vertices_path)).float()
+        # landmarks_3d = torch.cat([landmarks_3d, vertices[::100]], 0)
+
         exp_id = torch.tensor(sample[7]).long()
 
         params_path_history = sample[8]
@@ -448,11 +536,14 @@ class GaussianDataset(Dataset):
         flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
         flame_scale = torch.from_numpy(flame_param['scale']).float()
         flame_scale = flame_scale.view(-1)
+        # shape of 59
+        flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
         # from lib.face_models.FLAMEModule import FLAMEModule
         # breakpoint()
         # flame_model = FLAMEModule(batch_size=1)
 
         return {
+                'timestep': index,
                 'images': image,
                 'masks': mask,
                 'hair_masks': hair_mask,

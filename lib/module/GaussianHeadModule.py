@@ -97,6 +97,46 @@ class GaussianHeadModule(GaussianBaseModule):
                 lr = self.scheduler_args(iter)
                 param_group['lr'] = lr
 
+    # given pose, scale. return the posed xyz
+    def get_posed_points(self, exp_coeff, pose, scale):
+        B = exp_coeff.shape[0]
+
+        xyz = self.xyz.unsqueeze(0).repeat(B, 1, 1)
+
+        dists, _, _ = knn_points(xyz, self.landmarks_3d_neutral.unsqueeze(0).repeat(B, 1, 1))
+        exp_weights = torch.clamp((self.dist_threshold_far - dists) / (self.dist_threshold_far - self.dist_threshold_near), 0.0, 1.0)
+        pose_weights = 1 - exp_weights
+        exp_controlled = (dists < self.dist_threshold_far).squeeze(-1)
+        pose_controlled = (dists > self.dist_threshold_near).squeeze(-1)
+
+        delta_xyz = torch.zeros_like(xyz, device=xyz.device)
+        for b in range(B):
+            if exp_controlled[b].sum() != 0:
+                # xyz deform, [xyz_embedding + exp_coeff] -> [xyz]
+                xyz_exp_controlled = xyz[b, exp_controlled[b], :]
+                exp_deform_input = torch.cat([self.pos_embedding(xyz_exp_controlled).t(), 
+                                            exp_coeff[b].unsqueeze(-1).repeat(1, xyz_exp_controlled.shape[0])], 0)[None]
+                exp_deform = self.exp_deform_mlp(exp_deform_input)[0].t()
+                delta_xyz[b, exp_controlled[b], :] += exp_deform * exp_weights[b, exp_controlled[b], :]
+
+            if pose_controlled[b].sum() != 0:    
+                # xyz deform, [xyz_embedding + pose_embedding] -> [xyz]
+                xyz_pose_controlled = xyz[b, pose_controlled[b], :]
+                pose_deform_input = torch.cat([self.pos_embedding(xyz_pose_controlled).t(), 
+                                            self.pos_embedding(pose[b]).unsqueeze(-1).repeat(1, xyz_pose_controlled.shape[0])], 0)[None]
+                pose_deform = self.pose_deform_mlp(pose_deform_input)[0].t()
+                delta_xyz[b, pose_controlled[b], :] += pose_deform * pose_weights[b, pose_controlled[b], :]
+
+        xyz = xyz + delta_xyz * self.deform_scale
+
+        R = so3_exponential_map(pose[:, :3])
+        T = pose[:, None, 3:]
+        S = scale[:, :, None]
+        xyz = torch.bmm(xyz * S, R.permute(0, 2, 1)) + T
+
+        return {'xyz': xyz}
+
+
     def generate(self, data):
         B = data['exp_coeff'].shape[0]
 

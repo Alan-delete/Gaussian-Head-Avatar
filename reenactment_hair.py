@@ -27,6 +27,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s2_N031.yaml')
     parser.add_argument('--dataroot', type=str, default='')
+    parser.add_argument('--test_camera_id', type=int, default=23)
     arg = parser.parse_args()
 
     cfg = config_train()
@@ -84,13 +85,13 @@ if __name__ == '__main__':
         supres.load_state_dict(torch.load(cfg.load_supres_checkpoint, map_location=lambda storage, loc: storage))
 
     camera = CameraModule()
-    recorder = None
+    recorder = GaussianHeadTrainRecorder(cfg)
 
     torch.autograd.set_detect_anomaly(True)
     start_epoch = cfg.start_epoch
 
 
-    start_epoch = 312
+    start_epoch = 390
     # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
     # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest' % (recorder.checkpoint_path, recorder.name)
     gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
@@ -100,6 +101,7 @@ if __name__ == '__main__':
     # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
     start_epoch += 1
 
+    gaussianhair.update_mesh_alignment_transform(dataset.R, dataset.T, dataset.S, flame_mesh_path = dataset.flame_mesh_path)
 
     if os.path.exists(cfg.load_delta_poses_checkpoint):
         delta_poses = torch.load(cfg.load_delta_poses_checkpoint)
@@ -108,5 +110,5 @@ if __name__ == '__main__':
 
     delta_poses = delta_poses.requires_grad_(False)
 
-    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, False)
+    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=arg.test_camera_id)
     app.run()

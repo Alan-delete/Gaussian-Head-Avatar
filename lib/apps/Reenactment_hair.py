@@ -7,12 +7,13 @@ from tqdm import tqdm
 
 
 class Reenactment_hair():
-    def __init__(self, dataloader, gaussianhead, gaussianhair,supres, camera, recorder, gpu_id, freeview):
+    def __init__(self, dataloader, gaussianhead, gaussianhair,supres, camera, recorder, gpu_id, freeview, camera_id=23):
         self.dataloader = dataloader
         self.gaussianhead = gaussianhead
         self.gaussianhair = gaussianhair
         self.supres = supres
         self.camera = camera
+        self.camera_id = camera_id
         self.recorder = recorder
         self.device = torch.device('cuda:%d' % gpu_id)
         self.freeview = freeview
@@ -33,9 +34,12 @@ class Reenactment_hair():
             param.requires_grad = False
 
         video = []
+        gt_video = []
         
         frame_num = len(dataset.samples)
 
+        breakpoint()
+        # for i in tqdm(range(frame_num, 0, -1)):
         for i in tqdm(range(frame_num)):
             
             torch.cuda.empty_cache()
@@ -48,7 +52,7 @@ class Reenactment_hair():
             
 
             iteration += 1
-            data = dataset.__getitem__(i, 25)
+            data = dataset.__getitem__(i, self.camera_id)
 
             # prepare data
             for data_item in to_cuda:
@@ -60,8 +64,8 @@ class Reenactment_hair():
                 head_data = self.gaussianhead.generate(data)
 
                 self.gaussianhair.generate_hair_gaussians(poses_history = data['poses_history'][0], 
-                                                          pose = data['pose'][0],
-                                                          scale = data['scale'][0])
+                                                          global_pose = data['flame_pose'][0],
+                                                          global_scale = data['flame_scale'][0])
                 hair_data = self.gaussianhair.generate(data)
                 # combine head and hair data
                 for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
@@ -70,17 +74,28 @@ class Reenactment_hair():
 
                 data = self.camera.render_gaussian(data, 512)
                 render_images = data['render_images']
+                gt_images = data['images']
+                gt_video.append(gt_images[0].permute(1,2,0).cpu().numpy())
                 video.append(render_images[0].permute(1,2,0).cpu().numpy())
         
         # save video
         # video = torch.stack(video, dim=0)
         # video = video.permute(0, 2, 3, 1).cpu().numpy()
         # save ground truth video
-        output_path = os.path.join("./test.mp4")
+        output_path = os.path.join("./test_{}.mp4".format(self.camera_id))
         out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (video[0].shape[1], video[0].shape[0]))
         for frame in video:
             frame = (frame*255).astype(np.uint8)
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             out.write(frame)
+        out.release()
+
+        output_path = os.path.join("./gt_{}.mp4".format(self.camera_id))
+        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (gt_video[0].shape[1], gt_video[0].shape[0]))
+        for frame in gt_video:
+            frame = (frame*255).astype(np.uint8)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            out.write(frame)
+
         out.release()
         print('Saved video!')

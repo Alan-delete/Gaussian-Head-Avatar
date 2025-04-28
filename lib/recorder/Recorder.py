@@ -145,7 +145,7 @@ class GaussianHeadTrainRecorder():
             log_record = {key: log_data[key] for key in log_data if key.startswith('loss_')}
             log_record['psnr_train'] = log_data['psnr_train'] if "psnr_train" in log_data else 0
             log_record['ssim_train'] = log_data['ssim_train'] if "ssim_train" in log_data else 0
-            log_record['points_num'] = log_data['gaussianhead'].xyz.shape[0]
+            log_record['points_num'] = log_data['gaussianhead'].get_xyz.shape[0] if 'gaussianhead' in log_data else 0
             wandb.log(log_record)
         
         # save more frequently for debugging
@@ -158,21 +158,19 @@ class GaussianHeadTrainRecorder():
 
         if log_data['iter'] % self.save_freq == 0:
             print('saving checkpoint.')
-            torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_latest' % (self.checkpoint_path, self.name))
-            torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
-            torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_latest' % (self.checkpoint_path, self.name))
-            torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             torch.save(log_data['supres'].state_dict(), '%s/%s/supres_latest' % (self.checkpoint_path, self.name))
             torch.save(log_data['supres'].state_dict(), '%s/%s/supres_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest' % (self.checkpoint_path, self.name))
             torch.save(log_data['delta_poses'], '%s/%s/delta_poses_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             
-            print('save gaussianhair and gaussianhead to path: %s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
 
             # too memory consuming, only used when reuiqring SIBR viewer
             # log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
 
             if 'gaussianhair' in log_data:
+                torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_latest' % (self.checkpoint_path, self.name))
+                torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                
                 log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
                 
                 xyz = log_data['gaussianhair'].xyz.detach().cpu().numpy()
@@ -180,13 +178,20 @@ class GaussianHeadTrainRecorder():
                 hairmesh.vertices = o3d.utility.Vector3dVector(xyz)
                 hairmesh.compute_vertex_normals() 
                 o3d.io.write_triangle_mesh('%s/%s/%06d_hair.ply' % (self.result_path, self.name, log_data['iter']), hairmesh)
+                print('save gaussianhair to path: %s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
 
             if 'gaussianhead' in log_data:
-                xyz = log_data['gaussianhead'].xyz.detach().cpu().numpy()
+                torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_latest' % (self.checkpoint_path, self.name))
+                torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                
+                log_data['gaussianhead'].save_ply("%s/%s/head_latest.ply" % (self.checkpoint_path, self.name))
+
+                xyz = log_data['gaussianhead'].get_xyz.detach().cpu().numpy()
                 headmesh = o3d.geometry.TriangleMesh()
                 headmesh.vertices = o3d.utility.Vector3dVector(xyz)
                 headmesh.compute_vertex_normals()
                 o3d.io.write_triangle_mesh('%s/%s/%06d_head.ply' % (self.result_path, self.name, log_data['iter']), headmesh)
+                print('save gaussianhead to path: %s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
                 
         if log_data['iter'] % self.show_freq == 0:
 
@@ -271,12 +276,12 @@ class GaussianHeadTrainRecorder():
 
                 if 'hair_masks' in data:
                     mask = data['masks'][0]
-                    hair_mask = data['hair_masks'][0] 
+                    hair_mask = data['hair_masks'][0].to(mask.device) 
                     images.append(wandb.Image(hair_mask.permute(1, 2, 0).detach().cpu().numpy(), caption="hair_mask"))
 
 
                     if 'orient_angle' in data:
-                        orientation = data['orient_angle'][0]
+                        orientation = data['orient_angle'][0].to(mask.device)
                         images.append(wandb.Image(vis_orient(orientation, hair_mask), caption="gt_orientation"))
 
                         render_orientation = data['render_orient'][0]
@@ -284,8 +289,10 @@ class GaussianHeadTrainRecorder():
 
                     if 'optical_flow' in data:
                         # [2, resolution, resolution]
-                        optical_flow = data['optical_flow'][0]
-                        angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
+                        optical_flow = data['optical_flow'][0].to(mask.device)
+                        ones_mask = torch.ones_like(mask)
+                        # angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
+                        angle = torch.atan2(optical_flow[1], optical_flow[0]) / np.pi
                         images.append(wandb.Image(vis_orient(angle, mask), caption="optical_flow"))
 
 
@@ -300,8 +307,13 @@ class GaussianHeadTrainRecorder():
                         # render_velocity = cv2.resize(render_velocity, (image.shape[0], image.shape[1]))
                         # images.append(wandb.Image(render_velocity, caption="rendered_velocity"))
                         render_velocity = data['render_velocity'][0]
-                        angle = torch.atan2(render_velocity[1], render_velocity[0]) * 180 / np.pi
+                        # angle = torch.atan2(render_velocity[1], render_velocity[0]) * 180 / np.pi
+                        angle = torch.atan2(render_velocity[1], render_velocity[0]) / np.pi
                         images.append(wandb.Image(vis_orient(angle, mask), caption="rendered_velocity"))
+                    
+                    if 'optical_flow_confidence' in data:
+                        optical_flow_confidence = data['optical_flow_confidence'][0].to(mask.device)
+                        images.append(wandb.Image(optical_flow_confidence.permute(1, 2, 0).detach().cpu().numpy(), caption="optical_flow_confidence"))
 
 
                 wandb.log({"Images": images})
