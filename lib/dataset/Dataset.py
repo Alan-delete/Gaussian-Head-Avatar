@@ -292,7 +292,6 @@ class GaussianDataset(Dataset):
             # (1, 3)
             # the rotation in GHA is not the same one in FLAME, so we just set it to 0
             rotation = flame_param['pose'][:, :3]
-            rotation = np.zeros((1, 3))
             # (1, 3)
             translation = flame_param['pose'][:, 3:]
             # (1, 59)
@@ -305,6 +304,12 @@ class GaussianDataset(Dataset):
             eyes_pose = exp_coeff[:, self.exp_dims + 3: self.exp_dims + 9]
             expr = exp_coeff[:, :self.exp_dims]
 
+            # the difference between FLAME and GHA is that the rotation in GHA is not the same one in FLAME
+            # Flame is with respect to the root joint, while GHA is with respect to world origin
+            rotation_mat = so3_exponential_map(torch.from_numpy(rotation)).detach().numpy()
+            # hard code the root joint position, usually it won't change much
+            J_0 = np.array([-0.0013, -0.1479, -0.0829], dtype=np.float32).reshape(1, 1, 3)
+            translation = translation - J_0 + np.matmul(rotation_mat, J_0.transpose(0, 2, 1)).transpose(0, 2, 1)
 
             mesh['expr'] = expr
             mesh['rotation'] = rotation

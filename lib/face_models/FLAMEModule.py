@@ -425,7 +425,9 @@ class FLAMEModule(nn.Module):
         self.global_translation = nn.Parameter(torch.zeros(1, 1, 3, dtype=torch.float32))
 
         self.register_buffer('neck_pose', torch.zeros(self.batch_size, 3, dtype=torch.float32)) # not optimized
-        self.register_buffer('global_rotation', torch.zeros(self.batch_size, 3, dtype=torch.float32)) # not optimized
+        # self.neck_pose = nn.Parameter(torch.zeros(self.batch_size, 3, dtype=torch.float32), requires_grad=False)
+        self.register_buffer('global_rotation', torch.zeros(self.batch_size, 3, dtype=torch.float32))
+        # self.global_rotation = nn.Parameter(torch.zeros(self.batch_size, 3, dtype=torch.float32), requires_grad=True)
         self.register_buffer('faces', self.flame.faces_tensor)
 
     def forward(self):
@@ -441,9 +443,28 @@ class FLAMEModule(nn.Module):
                                          pose_params, 
                                          neck_pose, 
                                          eye_pose)
+        # vertices = vertices + self.global_translation
+        # landmarks = landmarks + self.global_translation
+
+
+        # pose_params = torch.cat([torch.zeros_like(jaw_rotation) , jaw_rotation], 1) 
+        # vertices_test, landmarks_test = self.flame(shape_params, 
+        #                                  expression_params, 
+        #                                  pose_params, 
+        #                                  neck_pose, 
+        #                                  eye_pose)
+        # R = batch_rodrigues(self.global_rotation)
+        # J_0 = torch.tensor([-0.0013, -0.1479, -0.0829], dtype=torch.float32).to(vertices.device).view(1, 1, 3)
+        # # vertices_test = torch.bmm(vertices_test - J_0, R.permute(0, 2, 1)) + self.global_translation[:, None, :] + J_0
+        # vertices_test = torch.bmm(vertices_test, R.permute(0, 2, 1)) + self.global_translation[:, None, :] + J_0 - torch.matmul(R, J_0.permute(0, 2, 1)).permute(0, 2, 1)
+        # x = (vertices_test - vertices) ** 2
+        # x = x.sum()
+        # breakpoint()
+
+
+
         R = so3_exponential_map(self.pose[:, :3])
         T = self.pose[:, 3:]
-
         vertices = torch.bmm(vertices * self.scale, R.permute(0,2,1)) + T[:, None, :]
         landmarks = torch.bmm(landmarks * self.scale, R.permute(0,2,1)) + T[:, None, :]
 
@@ -460,10 +481,20 @@ class FLAMEModule(nn.Module):
             exp_coeff = self.exp_coeff.detach().cpu().numpy()
             scale = self.scale.detach().cpu().numpy()
             pose = self.pose.detach().cpu().numpy()
+            global_translation = self.global_translation.detach().cpu().numpy()
+            global_rotation = self.global_rotation.detach().cpu().numpy()
+            neck_pose = self.neck_pose.detach().cpu().numpy()
+            jaw_pose = self.exp_coeff[:, self.exp_dims: self.exp_dims + 3].detach().cpu().numpy()
+            eye_pose = self.exp_coeff[:, self.exp_dims + 3: self.exp_dims + 9].detach().cpu().numpy()
             np.savez(path, id_coeff=id_coeff, exp_coeff=exp_coeff, scale=scale, pose=pose)
         else:
             id_coeff = self.id_coeff.detach().cpu().numpy()
             exp_coeff = self.exp_coeff[batch_id:batch_id+1].detach().cpu().numpy()
             scale = self.scale.detach().cpu().numpy()
             pose = self.pose[batch_id:batch_id+1].detach().cpu().numpy()
+            global_translation = self.global_translation.detach().cpu().numpy()
+            global_rotation = self.global_rotation[batch_id:batch_id+1].detach().cpu().numpy()
+            neck_pose = self.neck_pose[batch_id:batch_id+1].detach().cpu().numpy()
+            jaw_pose = self.exp_coeff[batch_id:batch_id+1, self.exp_dims: self.exp_dims + 3].detach().cpu().numpy()
+            eye_pose = self.exp_coeff[batch_id:batch_id+1, self.exp_dims + 3: self.exp_dims + 9].detach().cpu().numpy()
             np.savez(path, id_coeff=id_coeff, exp_coeff=exp_coeff, scale=scale, pose=pose)

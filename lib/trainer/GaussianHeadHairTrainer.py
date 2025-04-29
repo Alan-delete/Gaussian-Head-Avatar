@@ -304,7 +304,7 @@ class GaussianHeadHairTrainer():
                 gt_landmarks_3d = data['landmarks_3d']
                 pred_landmarks_3d = self.gaussianhead.landmarks
                 pred_landmarks_3d = torch.cat([pred_landmarks_3d[:, 0:48], pred_landmarks_3d[:, 49:54], pred_landmarks_3d[:, 55:68]], 1)
-                loss_landmarks = F.mse_loss(pred_landmarks_3d, gt_landmarks_3d, reduction='mean') * 10.
+                loss_landmarks = F.mse_loss(pred_landmarks_3d, gt_landmarks_3d, reduction='mean') * 50.
 
                 gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
                 loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
