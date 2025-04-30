@@ -483,6 +483,7 @@ class GaussianHairModule(GaussianBaseModule):
         # TODO: hardcode scale because it will be anyway cancelled out in the training. 
         S = S.to(torch.double)
         S = torch.clamp(S, min=0.01, max=0.1) 
+        # TODO: maybe directly use the universe "generic_model" mesh, they are basically the same
         target = (torch.matmul(target- T, R)) / S 
         # shrink the mesh a little bit so that most hair roots are roughly on/inside the surface.
         target = target * 0.98
@@ -678,6 +679,58 @@ class GaussianHairModule(GaussianBaseModule):
         return 
 
 
+    def elastic_potential_loss(self,  poses_history):
+        
+        strands_idx = torch.arange(self.num_strands)
+        num_strands = self.num_strands
+
+        # TODO: this part only needs to be done once
+        origins = self.origins_raw[strands_idx] 
+        if self.train_directions:
+            direction = self.dir_raw.view(self.num_strands, self.strand_length - 1, 3)[strands_idx].view(-1, 3)
+            points_origins = torch.cumsum(torch.cat([
+                origins, 
+                direction.view(num_strands, self.strand_length -1, 3)
+            ], dim=1), dim=1)
+            points = points_origins[:, 1:]
+        else:
+            points = self.points_raw[strands_idx]
+            points_origins = torch.cat([origins, points], dim=1)
+            direction = (points_origins[:, 1:] - points_origins[:, :-1]).view(-1, 3)
+        
+        direction_rest = direction.view(-1, 3)
+        direction_rest_norm = direction_rest.norm(dim=-1, keepdim=True)
+        direction_rest_unit = direction_rest / direction_rest_norm
+
+        
+        # TODO: no need to calculate, can be directly gained from generate_hair_gaussians
+        if poses_history is not None:
+            pose_deform = self.get_pose_deform(poses_history)
+
+            points = points + pose_deform.view(self.num_strands, self.strand_length - 1, 3)
+
+            points_origins = torch.cat([origins, points], dim=1)
+            direction = (points_origins[:, 1:] - points_origins[:, :-1]).view(-1, 3)
+
+        # 1/2 * k * sum(||direction - direction_raw||^2)
+
+        direction = direction.view(-1, 3)
+        direction_norm = direction.norm(dim=-1, keepdim=True)
+        direction_unit = direction / direction_norm
+
+        Cosserat_loss = (direction_unit - direction_rest_unit) ** 2
+        Cosserat_loss = Cosserat_loss.sum(dim=-1).mean()
+
+        Stretch_loss = (direction_norm - direction_rest_norm) ** 2
+        Stretch_loss = Stretch_loss.sum(dim=-1).mean()
+
+        loss = Cosserat_loss + Stretch_loss
+
+        return loss
+
+
+
+
     def get_pose_deform(self, all_pose):
         if len(all_pose) == 0:
             return 0
@@ -756,6 +809,8 @@ class GaussianHairModule(GaussianBaseModule):
             self.points = points
             self.points_origins = torch.cat([self.origins, points], dim=1)
             self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+
+        # Cosserat_loss here
 
         # from canonical space to world space, used in orginal codes.
         if global_pose is not None and global_scale is not None:
@@ -920,12 +975,13 @@ class GaussianHairModule(GaussianBaseModule):
             points_origins = torch.cat([origins, points], dim=1)
             dir = (points_origins[:, 1:] - points_origins[:, :-1]).view(-1, 3)
 
-        # from canonical space to world space, used in orginal codes.
+        # from object space to world space, used in orginal codes.
         if pose is not None and scale is not None:
             # add batch dimension
             R = so3_exponential_map(pose[None, :3])
             T = pose[None,None, 3:]
             S = scale.view(1)
+            S = torch.clamp(S, min=0.01, max=0.1)
             
             points = points.reshape(1, -1, 3)
             origins = origins.reshape(1, -1, 3)

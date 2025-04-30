@@ -145,7 +145,6 @@ class GaussianModel(nn.Module):
             # Toyota Motor Europe NV/SA and its affiliated companies retain all intellectual property and proprietary rights in and to the following code lines and related documentation. Any commercial use, reproduction, disclosure or distribution of these code lines and related documentation without an express license agreement from Toyota Motor Europe NV/SA is strictly prohibited.
             if self.face_center is None:
                 self.select_mesh_by_timestep(0)
-            
             xyz = torch.bmm(self.face_orien_mat[self.binding], self._xyz[..., None]).squeeze(-1)
             return xyz * self.face_scaling[self.binding] + self.face_center[self.binding]
 
@@ -330,6 +329,10 @@ class GaussianModel(nn.Module):
             for idx, attr_name in enumerate(binding_names):
                 binding[:, idx] = np.asarray(plydata.elements[0][attr_name])
             self.binding = torch.tensor(binding, dtype=torch.int32, device="cuda").squeeze(-1)
+        
+        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
+        self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
 
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}
@@ -377,7 +380,7 @@ class GaussianModel(nn.Module):
             # make sure each face is bound to at least one point after pruning
             binding_to_prune = self.binding[mask]
             counter_prune = torch.zeros_like(self.binding_counter)
-            counter_prune.scatter_add_(0, binding_to_prune, torch.ones_like(binding_to_prune, dtype=torch.int32, device="cuda"))
+            counter_prune.scatter_add_(0, binding_to_prune.type(torch.int64) , torch.ones_like(binding_to_prune, dtype=torch.int32, device="cuda"))
             mask_redundant = (self.binding_counter - counter_prune) > 0
             mask[mask.clone()] = mask_redundant[binding_to_prune]
 
@@ -398,7 +401,7 @@ class GaussianModel(nn.Module):
 
         if self.binding is not None:
             # Toyota Motor Europe NV/SA and its affiliated companies retain all intellectual property and proprietary rights in and to the following code lines and related documentation. Any commercial use, reproduction, disclosure or distribution of these code lines and related documentation without an express license agreement from Toyota Motor Europe NV/SA is strictly prohibited.
-            self.binding_counter.scatter_add_(0, self.binding[mask], -torch.ones_like(self.binding[mask], dtype=torch.int32, device="cuda"))
+            self.binding_counter.scatter_add_(0, self.binding[mask].type(torch.int64) , -torch.ones_like(self.binding[mask], dtype=torch.int32, device="cuda"))
             self.binding = self.binding[valid_points_mask]
 
     def cat_tensors_to_optimizer(self, tensors_dict):
@@ -475,7 +478,7 @@ class GaussianModel(nn.Module):
             # Toyota Motor Europe NV/SA and its affiliated companies retain all intellectual property and proprietary rights in and to the following code lines and related documentation. Any commercial use, reproduction, disclosure or distribution of these code lines and related documentation without an express license agreement from Toyota Motor Europe NV/SA is strictly prohibited.
             new_binding = self.binding[selected_pts_mask].repeat(N)
             self.binding = torch.cat((self.binding, new_binding))
-            self.binding_counter.scatter_add_(0, new_binding, torch.ones_like(new_binding, dtype=torch.int32, device="cuda"))
+            self.binding_counter.scatter_add_(0, new_binding.type(torch.int64) , torch.ones_like(new_binding, dtype=torch.int32, device="cuda"))
 
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacity, new_scaling, new_rotation)
 
@@ -498,7 +501,7 @@ class GaussianModel(nn.Module):
             # Toyota Motor Europe NV/SA and its affiliated companies retain all intellectual property and proprietary rights in and to the following code lines and related documentation. Any commercial use, reproduction, disclosure or distribution of these code lines and related documentation without an express license agreement from Toyota Motor Europe NV/SA is strictly prohibited.
             new_binding = self.binding[selected_pts_mask]
             self.binding = torch.cat((self.binding, new_binding))
-            self.binding_counter.scatter_add_(0, new_binding, torch.ones_like(new_binding, dtype=torch.int32, device="cuda"))
+            self.binding_counter.scatter_add_(0, new_binding.type(torch.int64) , torch.ones_like(new_binding, dtype=torch.int32, device="cuda"))
         
         self.densification_postfix(new_xyz, new_features_dc, new_features_rest, new_opacities, new_scaling, new_rotation)
 

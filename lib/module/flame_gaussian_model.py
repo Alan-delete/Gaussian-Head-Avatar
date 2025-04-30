@@ -11,6 +11,7 @@ import numpy as np
 import torch
 # from vht.model.flame import FlameHead
 from flame_model.flame import FlameHead
+import open3d as o3d
 
 from lib.module.gaussian_model import GaussianModel
 from lib.utils.graphics_utils import compute_face_orientation
@@ -240,6 +241,19 @@ class FlameGaussianModel(GaussianModel):
         flame_param = {k: v.cpu().numpy() for k, v in self.flame_param.items()}
         np.savez(str(npz_path), **flame_param)
 
+        mesh_path = Path(path).parent / "head_mesh_latest.ply"
+        generic_mesh = o3d.geometry.TriangleMesh()
+        generic_mesh.vertices = o3d.utility.Vector3dVector(self.verts.squeeze(0).detach().cpu().numpy())
+        generic_mesh.triangles = o3d.utility.Vector3iVector(self.faces.squeeze(0).detach().cpu().numpy())
+        generic_mesh.compute_vertex_normals()
+        o3d.io.write_triangle_mesh(mesh_path, generic_mesh)
+
+        posed_gaussian_point_cloud_path = Path(path).parent / "posed_gaussian_point_cloud.ply"
+        xyz = self.get_xyz.squeeze(0).detach().cpu().numpy()
+        generic_mesh = o3d.geometry.PointCloud()
+        generic_mesh.points = o3d.utility.Vector3dVector(xyz)
+        o3d.io.write_point_cloud(posed_gaussian_point_cloud_path, generic_mesh)
+
     def load_ply(self, path, **kwargs):
         super().load_ply(path)
 
@@ -284,6 +298,10 @@ class FlameGaussianModel(GaussianModel):
             self._scaling = self._scaling[mask]
             self._rotation = self._rotation[mask]
             self._opacity = self._opacity[mask]
+        
+        self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
     
     def generate(self, data):
         

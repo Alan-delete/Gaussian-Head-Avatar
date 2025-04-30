@@ -16,7 +16,6 @@ from lib.module.flame_gaussian_model import FlameGaussianModel
 from lib.recorder.Recorder import GaussianHeadTrainRecorder
 from lib.trainer.GaussianHeadTrainer import GaussianHeadTrainer
 from lib.trainer.GaussianHeadHairTrainer import GaussianHeadHairTrainer
-from lib.face_models.FLAMEModule import FLAMEModule
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
@@ -92,28 +91,6 @@ if __name__ == '__main__':
 
         gaussians.training_setup(cfg.flame_gaussian_module)
         
-    # gaussians.select_mesh_by_timestep(1)
-    # vertices = gaussians.verts.squeeze(0)
-    # # 70,3
-    # x = gaussians.landmarks
-    # # lmk_faces_idx = torch.cat([lmk_faces_idx[:, 0:48], lmk_faces_idx[:, 49:54], lmk_faces_idx[:, 55:68]], 1)
-    # x = torch.cat([x[:, 0:48], x[:, 49:54], x[:, 55:68]], 1)
-    # x = x.squeeze(0)
-    # x = x[45:55]
-    # # 66,3
-    # y = dataset[0]['landmarks_3d']
-    # y = y[45:55]
-    # import open3d as o3d
-    # generic_mesh = o3d.geometry.TriangleMesh()
-    # generic_mesh.vertices = o3d.utility.Vector3dVector(x.detach().cpu().numpy())
-    # generic_mesh.compute_vertex_normals()
-    # o3d.io.write_triangle_mesh("./landmark_partial.ply", generic_mesh)
-
-    # generic_mesh.vertices = o3d.utility.Vector3dVector(y.detach().cpu().numpy())
-    # generic_mesh.compute_vertex_normals()
-    # o3d.io.write_triangle_mesh("./landmark_partial_gt.ply", generic_mesh)
-
-    # breakpoint()
 
     # create hair gaussian, 
     gaussianhair = GaussianHairModule(cfg.gaussianhairmodule).to(device)
@@ -131,12 +108,17 @@ if __name__ == '__main__':
 
     # load_state_dict() does not interfere with autograd, it just overwrites the .data of parameters.
     if cfg.resume_training:
-        start_epoch = 390
+        start_epoch = 351
         # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
         # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest' % (recorder.checkpoint_path, recorder.name)
         gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
         gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-        gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
+        gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
+        gaussians_ply_checkpoint =  'checkpoints/gaussianhead_renderme/030000_head.ply'
+        
+        gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
+        gaussians.training_setup(cfg.flame_gaussian_module)
+        # gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
         gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
         # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
         start_epoch += 1

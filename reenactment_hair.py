@@ -10,6 +10,7 @@ from lib.dataset.DataLoaderX import DataLoaderX
 from lib.module.MeshHeadModule import MeshHeadModule
 from lib.module.GaussianHeadModule import GaussianHeadModule
 from lib.module.GaussianHairModule import GaussianHairModule
+from lib.module.flame_gaussian_model import FlameGaussianModel
 from lib.module.SuperResolutionModule import SuperResolutionModule
 from lib.module.CameraModule import CameraModule
 from lib.recorder.Recorder import GaussianHeadTrainRecorder
@@ -76,6 +77,20 @@ if __name__ == '__main__':
         del meshhead
         torch.cuda.empty_cache()
     
+    gaussians = FlameGaussianModel(0, disable_flame_static_offset = True, n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
+    # process meshes
+    T = len(dataset.samples)
+
+    if gaussians.binding != None:
+        gaussians.load_meshes(train_meshes=dataset.train_meshes,
+                              test_meshes={},
+                              tgt_train_meshes = {},
+                              tgt_test_meshes = {})
+        cameras_extent = 4.907987451553345
+        gaussians.create_from_pcd(None, cameras_extent)
+        gaussians.training_setup(cfg.flame_gaussian_module)
+
+
     # create hair gaussian, 
     gaussianhair = GaussianHairModule(cfg.gaussianhairmodule).to(device)
     gaussianhair.update_mesh_alignment_transform(dataset.R, dataset.T, dataset.S, flame_mesh_path = dataset.flame_mesh_path)
@@ -91,13 +106,16 @@ if __name__ == '__main__':
     start_epoch = cfg.start_epoch
 
 
-    start_epoch = 390
-    # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
-    # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest' % (recorder.checkpoint_path, recorder.name)
-    gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
+    start_epoch = 351
+
+    # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
+    # gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
     gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-    gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
     gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
+
+    gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
+    gaussians_ply_checkpoint =  'checkpoints/gaussianhead_renderme/030000_head.ply'
+    gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
     # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
     start_epoch += 1
 
@@ -110,5 +128,5 @@ if __name__ == '__main__':
 
     delta_poses = delta_poses.requires_grad_(False)
 
-    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=arg.test_camera_id)
+    app = Reenactment_hair(dataloader, gaussians, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=arg.test_camera_id)
     app.run()
