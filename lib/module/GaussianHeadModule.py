@@ -150,14 +150,14 @@ class GaussianHeadModule(GaussianBaseModule):
         pose_controlled = (dists > self.dist_threshold_near).squeeze(-1)
 
         color = torch.zeros([B, xyz.shape[1], self.exp_color_mlp.dims[-1]], device=xyz.device)
-        # TODO: If we decide that hair only has diffuse color, then the following direction staff is not needed
-        for b in range(B):
-            # view dependent/independent color
-            shs_view = self.get_features.transpose(1, 2).view(-1, 3, (self.max_sh_degree+1)**2)
-            dir_pp = (self.get_xyz - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
-            dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
-            sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
-            color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
+        # # TODO: If we decide that hair only has diffuse color, then the following direction staff is not needed
+        # for b in range(B):
+        #     # view dependent/independent color
+        #     shs_view = self.get_features.transpose(1, 2).view(-1, 3, (self.max_sh_degree+1)**2)
+        #     dir_pp = (self.get_xyz - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
+        #     dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
+        #     sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
+        #     color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
 
 
         # dir2d + depth + seg = 1 + 1 + 3
@@ -170,8 +170,8 @@ class GaussianHeadModule(GaussianBaseModule):
                 feature_exp_controlled = feature[b, exp_controlled[b], :]
                 exp_color_input = torch.cat([feature_exp_controlled.t(), 
                                             data['exp_coeff'][b].unsqueeze(-1).repeat(1, feature_exp_controlled.shape[0])], 0)[None]
-                # exp_color = self.exp_color_mlp(exp_color_input)[0].t()
-                # color[b, exp_controlled[b], :] += exp_color * exp_weights[b, exp_controlled[b], :]
+                exp_color = self.exp_color_mlp(exp_color_input)[0].t()
+                color[b, exp_controlled[b], :] += exp_color * exp_weights[b, exp_controlled[b], :]
 
                 # attributes: scales, rotation, opacity, [features + exp_coeff] -> [attributes]
                 exp_attributes_input = exp_color_input
@@ -190,8 +190,8 @@ class GaussianHeadModule(GaussianBaseModule):
                 feature_pose_controlled = feature[b, pose_controlled[b], :]
                 pose_color_input = torch.cat([feature_pose_controlled.t(), 
                                                 self.pos_embedding(data['pose'][b]).unsqueeze(-1).repeat(1, feature_pose_controlled.shape[0])], 0)[None]
-                # pose_color = self.pose_color_mlp(pose_color_input)[0].t()
-                # color[b, pose_controlled[b], :] += pose_color * pose_weights[b, pose_controlled[b], :]
+                pose_color = self.pose_color_mlp(pose_color_input)[0].t()
+                color[b, pose_controlled[b], :] += pose_color * pose_weights[b, pose_controlled[b], :]
 
                 # attributes: scales, rotation, opacity, [features + pose_embedding] -> [attributes]
                 pose_attributes_input = pose_color_input

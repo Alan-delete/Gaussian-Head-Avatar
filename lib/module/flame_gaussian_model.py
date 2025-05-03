@@ -52,7 +52,7 @@ class FlameGaussianModel(GaussianModel):
             self.num_timesteps = max(pose_meshes) + 1  # required by viewers
             num_verts = self.flame_model.v_template.shape[0]
 
-            if not self.disable_flame_static_offset:
+            if 'static_offset' in meshes[0]:
                 static_offset = torch.from_numpy(meshes[0]['static_offset'])
                 if static_offset.shape[0] != num_verts:
                     static_offset = torch.nn.functional.pad(static_offset, (0, 0, 0, num_verts - meshes[0]['static_offset'].shape[1]))
@@ -224,10 +224,11 @@ class FlameGaussianModel(GaussianModel):
         param_expr = {'params': [self.flame_param['expr']], 'lr': training_args.flame_expr_lr, "name": "expr"}
         self.optimizer.add_param_group(param_expr)
 
-        # # static_offset
-        # self.flame_param['static_offset'].requires_grad = True
-        # param_static_offset = {'params': [self.flame_param['static_offset']], 'lr': 1e-6, "name": "static_offset"}
-        # self.optimizer.add_param_group(param_static_offset)
+        # static_offset
+        if not self.disable_flame_static_offset:
+            self.flame_param['static_offset'].requires_grad = True
+            param_static_offset = {'params': [self.flame_param['static_offset']], 'lr': 1e-6, "name": "static_offset"}
+            self.optimizer.add_param_group(param_static_offset)
 
         # # dynamic_offset
         # self.flame_param['dynamic_offset'].requires_grad = True

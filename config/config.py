@@ -80,6 +80,7 @@ class config_train(config_base):
         self.cfg.supresmodule.network_capacity = 64             # dimension of the network's last conv layer
 
         self.cfg.gaussianheadmodule = CN()
+        self.cfg.gaussianheadmodule.enable = True               # whether to use the Gaussian head module
         self.cfg.gaussianheadmodule.num_add_mouth_points = 0    # number of the points added around mouth landmarks while initialization
         self.cfg.gaussianheadmodule.exp_color_mlp = []          # dimensions of expression color MLP
         self.cfg.gaussianheadmodule.pose_color_mlp = []         # dimensions of pose color MLP
@@ -104,6 +105,7 @@ class config_train(config_base):
 
 
         self.cfg.flame_gaussian_module = CN()
+        self.cfg.flame_gaussian_module.enable = True
         self.cfg.flame_gaussian_module.iterations = 600_000  # 30_000 (original)
         self.cfg.flame_gaussian_module.position_lr_init = 0.005  # (scaled up according to mean triangle scale)  #0.00016 (original)
         self.cfg.flame_gaussian_module.position_lr_final = 0.00005  # (scaled up according to mean triangle scale) # 0.0000016 (original)
@@ -114,10 +116,10 @@ class config_train(config_base):
         self.cfg.flame_gaussian_module.scaling_lr = 0.017  # (scaled up according to mean triangle scale)  # 0.005 (original)
         self.cfg.flame_gaussian_module.rotation_lr = 0.001
         self.cfg.flame_gaussian_module.densify = True
-        self.cfg.flame_gaussian_module.densification_interval = 2_000  # 100 (original)
+        self.cfg.flame_gaussian_module.densification_interval = 1_000  # 100 (original)
         self.cfg.flame_gaussian_module.opacity_reset_interval = 60_000 # 3000 (original)
-        self.cfg.flame_gaussian_module.densify_from_iter = 10_000  # 500 (original)
-        self.cfg.flame_gaussian_module.densify_until_iter = 600_000  # 15_000 (original)
+        self.cfg.flame_gaussian_module.densify_from_iter = 5_000 #10_000  # 500 (original)
+        self.cfg.flame_gaussian_module.densify_until_iter = 30_000 #600_000  # 15_000 (original)
         self.cfg.flame_gaussian_module.densify_grad_threshold = 0.0002
         
         # GaussianAvatars
@@ -138,6 +140,7 @@ class config_train(config_base):
 
 
         self.cfg.gaussianhairmodule = CN()
+        self.cfg.gaussianhairmodule.enable = True               # whether to use the Gaussian hair module
         # contain all pose related 
         self.cfg.gaussianhairmodule.pose_color_mlp = []         # dimensions of pose color MLP
         self.cfg.gaussianhairmodule.pose_attributes_mlp = []    # dimensions of pose attribute MLP  

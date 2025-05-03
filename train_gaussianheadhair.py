@@ -77,7 +77,7 @@ if __name__ == '__main__':
         del meshhead
         torch.cuda.empty_cache()
     
-    gaussians = FlameGaussianModel(0, disable_flame_static_offset = True, n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
+    gaussians = FlameGaussianModel(0, disable_flame_static_offset = cfg.gaussianhairmodule.enable , n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
     # process meshes
     T = len(dataset.samples)
 
@@ -114,19 +114,27 @@ if __name__ == '__main__':
         gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
         gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
         gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
-        gaussians_ply_checkpoint =  'checkpoints/gaussianhead_renderme/030000_head.ply'
+        gaussians_ply_checkpoint = '/local/home/haonchen/Gaussian-Head-Avatar/checkpoints/flame_gaussian_renderme/025000_head.ply'
         
-        gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
-        gaussians.training_setup(cfg.flame_gaussian_module)
-        # gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
-        gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
+        if os.path.exists(gaussians_ply_checkpoint):
+            gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
+            gaussians.training_setup(cfg.flame_gaussian_module)
+        if os.path.exists(gaussianhair_checkpoint):
+            gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
+        # if os.path.exists(gaussianhead_checkpoint):
+        #     gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
+        
         # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
         start_epoch += 1
+
     else:
         # only reset points_raw if not resume training, otherwise gaussianhair.transform will be backpropagated wrongly
         gaussianhair.reset_strands()
 
+    # gaussians.select_mesh_by_timestep(0)
+    # breakpoint()
 
+    
     # TODO: move the gaussianhead optimizer into the gaussianhead module
     optimized_parameters = [{'params' : supres.parameters(), 'lr' : cfg.lr_net, 'name' : 'supres'},]
 
@@ -169,5 +177,20 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adam(optimized_parameters)
 
-    trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussians, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
+
+    if cfg.flame_gaussian_module.enable:
+        gaussianhead = gaussians
+    else:
+        gaussianhead = gaussianhead 
+    
+
+    if cfg.gaussianhairmodule.enable:
+        gaussianhair = gaussianhair
+    else:
+        gaussianhair = None
+        arg_cfg = ['train_segment', False]
+        cfg.merge_from_list(arg_cfg)
+
+
+    trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
     trainer.train(start_epoch, start_epoch + cfg.num_epochs)

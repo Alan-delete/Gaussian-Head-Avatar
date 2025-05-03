@@ -38,19 +38,11 @@ class Reenactment_hair():
         
         frame_num = len(dataset.samples)
 
-        breakpoint()
         # for i in tqdm(range(frame_num, 0, -1)):
         for i in tqdm(range(frame_num)):
             
             torch.cuda.empty_cache()
             
-            # optical_flow_head = torch.zeros([1, self.gaussianhead.xyz.shape[0], 3], device=self.device, requires_grad=False)
-            optical_flow_head = torch.zeros([1, self.gaussianhead.xyz.shape[0], 3], device=self.device, requires_grad=True)
-            # optical_flow_hair = torch.zeros([1, self.gaussianhair.num_strands * (self.gaussianhair.strand_length - 1) , 3], device=self.device, requires_grad=False)
-            optical_flow_hair = torch.zeros([1, self.gaussianhair.num_strands * (self.gaussianhair.strand_length - 1) , 3], device=self.device, requires_grad=True)
-            optimizer = torch.optim.Adam([optical_flow_hair, optical_flow_head], lr=2e-5, betas=(0.9, 0.999), eps=1e-8)
-            
-
             iteration += 1
             data = dataset.__getitem__(i, self.camera_id)
 
@@ -75,8 +67,8 @@ class Reenactment_hair():
                 data = self.camera.render_gaussian(data, 512)
                 render_images = data['render_images']
                 gt_images = data['images']
-                gt_video.append(gt_images[0].permute(1,2,0).cpu().numpy())
-                video.append(render_images[0].permute(1,2,0).cpu().numpy())
+                gt_video.append(gt_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
+                video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
         
         # save video
         # video = torch.stack(video, dim=0)
@@ -89,6 +81,7 @@ class Reenactment_hair():
             frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
             out.write(frame)
         out.release()
+        print('Saved video to %s' % output_path)
 
         output_path = os.path.join("./gt_{}.mp4".format(self.camera_id))
         out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (gt_video[0].shape[1], gt_video[0].shape[0]))
@@ -98,4 +91,4 @@ class Reenactment_hair():
             out.write(frame)
 
         out.release()
-        print('Saved video!')
+        print('Saved video to %s' % output_path)

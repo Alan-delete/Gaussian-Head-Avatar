@@ -129,6 +129,8 @@ class GaussianHeadTrainRecorder():
         self.save_freq = cfg.save_freq
         self.show_freq = cfg.show_freq
 
+        self.cfg = full_cfg
+
         os.makedirs(self.checkpoint_path, exist_ok=True)
         os.makedirs(self.result_path, exist_ok=True)
         os.makedirs('%s/%s' % (self.checkpoint_path, self.name), exist_ok=True)
@@ -158,39 +160,36 @@ class GaussianHeadTrainRecorder():
 
         if log_data['iter'] % self.save_freq == 0:
             print('saving checkpoint.')
-            torch.save(log_data['supres'].state_dict(), '%s/%s/supres_latest' % (self.checkpoint_path, self.name))
-            torch.save(log_data['supres'].state_dict(), '%s/%s/supres_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
-            torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest' % (self.checkpoint_path, self.name))
-            torch.save(log_data['delta_poses'], '%s/%s/delta_poses_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+
+            if 'supres' in log_data and log_data['supres'] is not None:
+                torch.save(log_data['supres'].state_dict(), '%s/%s/supres_latest' % (self.checkpoint_path, self.name))
+                torch.save(log_data['supres'].state_dict(), '%s/%s/supres_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+            
+            if 'delta_poses' in log_data and log_data['delta_poses'] is not None:
+                torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest' % (self.checkpoint_path, self.name))
+                torch.save(log_data['delta_poses'], '%s/%s/delta_poses_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             
 
-            # too memory consuming, only used when reuiqring SIBR viewer
-            # log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
-
-            if 'gaussianhair' in log_data:
-                torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_latest' % (self.checkpoint_path, self.name))
+            if 'gaussianhair' in log_data and log_data['gaussianhair'] is not None:
                 torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_latest' % (self.checkpoint_path, self.name))
                 
                 log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
                 
-                xyz = log_data['gaussianhair'].xyz.detach().cpu().numpy()
-                hairmesh = o3d.geometry.TriangleMesh()
-                hairmesh.vertices = o3d.utility.Vector3dVector(xyz)
-                hairmesh.compute_vertex_normals() 
-                o3d.io.write_triangle_mesh('%s/%s/%06d_hair.ply' % (self.result_path, self.name, log_data['iter']), hairmesh)
+                # xyz = log_data['gaussianhair'].xyz.detach().cpu().numpy()
+                # hairmesh = o3d.geometry.TriangleMesh()
+                # hairmesh.vertices = o3d.utility.Vector3dVector(xyz)
+                # hairmesh.compute_vertex_normals() 
+                # o3d.io.write_triangle_mesh('%s/%s/%06d_hair.ply' % (self.result_path, self.name, log_data['iter']), hairmesh)
                 print('save gaussianhair to path: %s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
 
-            if 'gaussianhead' in log_data:
-                torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_latest' % (self.checkpoint_path, self.name))
+            if 'gaussianhead' in log_data and log_data['gaussianhead'] is not None:
                 torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_latest' % (self.checkpoint_path, self.name))
                 
+                log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
                 log_data['gaussianhead'].save_ply("%s/%s/head_latest.ply" % (self.checkpoint_path, self.name))
 
-                xyz = log_data['gaussianhead'].get_xyz.detach().cpu().numpy()
-                headmesh = o3d.geometry.TriangleMesh()
-                headmesh.vertices = o3d.utility.Vector3dVector(xyz)
-                headmesh.compute_vertex_normals()
-                o3d.io.write_triangle_mesh('%s/%s/%06d_head.ply' % (self.result_path, self.name, log_data['iter']), headmesh)
                 print('save gaussianhead to path: %s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
                 
         if log_data['iter'] % self.show_freq == 0:
@@ -233,7 +232,7 @@ class GaussianHeadTrainRecorder():
             # [:,:,::-1] to convert RGB to BGR
             image = (image * 255).astype(np.uint8)[:,:,::-1]
 
-            render_image = data['render_images'][0, 0:3].permute(1, 2, 0).detach().cpu().numpy()
+            render_image = data['render_images'][0, 0:3].permute(1, 2, 0).clamp(0, 1).detach().cpu().numpy()
             render_image = (render_image * 255).astype(np.uint8)[:,:,::-1]
 
             # cropped_image = data['cropped_images'][0].permute(1, 2, 0).detach().cpu().numpy()
