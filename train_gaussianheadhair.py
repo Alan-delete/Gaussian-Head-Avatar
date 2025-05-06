@@ -108,13 +108,14 @@ if __name__ == '__main__':
 
     # load_state_dict() does not interfere with autograd, it just overwrites the .data of parameters.
     if cfg.resume_training:
-        start_epoch = 351
+        start_epoch = 390
         # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
         # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest' % (recorder.checkpoint_path, recorder.name)
         gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
         gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-        gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
-        gaussians_ply_checkpoint = '/local/home/haonchen/Gaussian-Head-Avatar/checkpoints/flame_gaussian_renderme/025000_head.ply'
+        # gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
+        # gaussians_ply_checkpoint = '/local/home/haonchen/Gaussian-Head-Avatar/checkpoints/flame_gaussian_renderme/025000_head.ply'
+        gaussians_ply_checkpoint =  f'%s/%s/050000_head.ply' % (recorder.checkpoint_path, recorder.name)
         
         if os.path.exists(gaussians_ply_checkpoint):
             gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)

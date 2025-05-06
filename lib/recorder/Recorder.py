@@ -176,11 +176,6 @@ class GaussianHeadTrainRecorder():
                 
                 log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
                 
-                # xyz = log_data['gaussianhair'].xyz.detach().cpu().numpy()
-                # hairmesh = o3d.geometry.TriangleMesh()
-                # hairmesh.vertices = o3d.utility.Vector3dVector(xyz)
-                # hairmesh.compute_vertex_normals() 
-                # o3d.io.write_triangle_mesh('%s/%s/%06d_hair.ply' % (self.result_path, self.name, log_data['iter']), hairmesh)
                 print('save gaussianhair to path: %s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
 
             if 'gaussianhead' in log_data and log_data['gaussianhead'] is not None:

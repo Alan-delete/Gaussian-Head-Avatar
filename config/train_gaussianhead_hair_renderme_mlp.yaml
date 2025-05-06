@@ -9,15 +9,16 @@ batch_size: 1
 optimize_pose: False
 use_supres: False
 train_segment: True
+train_optical_flow: False
 resume_training: False
 start_epoch: 0
-num_epochs: 300   
+num_epochs: 400   
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
   camera_ids: []
   test_camera_ids: []
-  selected_frames: ['0042']
+  selected_frames: []
   original_resolution: 2048
   resolution: 2048
 
@@ -88,6 +89,7 @@ gaussianheadmodule:
   gaussian_pruning_threshold: 0.5
 
 gaussianhairmodule:
+  pose_deform_method: 'mlp'
   pose_point_mlp: [81, 256, 3]
   pose_prior_mlp: [54, 54] 
   pos_freq: 4
@@ -112,6 +114,7 @@ gaussianhairmodule:
   strands_reset_from_iter: 5_000
   strands_reset_until_iter: 5_000
   strands_reset_interval: 1_000
+
 
 
   lrs : {
@@ -146,7 +149,7 @@ gaussianhairmodule:
 
 recorder:
   debug_tool: 'wandb' # 'tensorboard' or 'wandb'
-  name: 'gaussianhead_renderme_single'
+  name: 'gaussianhead_hair_renderme_mlp'
   logdir: 'log/gaussianhead_NeRSemble031_Simplified'
   checkpoint_path: 'checkpoints'
   result_path: 'results'

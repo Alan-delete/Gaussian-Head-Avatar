@@ -10,7 +10,7 @@ optimize_pose: False
 use_supres: False
 train_segment: True
 train_optical_flow: False
-resume_training: True
+resume_training: False
 start_epoch: 0
 num_epochs: 400   
 
@@ -104,7 +104,7 @@ gaussianhairmodule:
   train_directions: False
   train_features_rest: False
   train_width: False
-  train_opacity: True
+  train_opacity: False 
   strand_scale : 0.001
   sh_degree : 3
 
@@ -148,9 +148,10 @@ gaussianhairmodule:
 
 recorder:
   debug_tool: 'wandb' # 'tensorboard' or 'wandb'
-  name: 'gaussianhead_renderme'
+  # name: 'gaussianhead_hair_renderme_NoOpacity'
+  name: 'gaussianhead_hair_renderme'
   logdir: 'log/gaussianhead_NeRSemble031_Simplified'
   checkpoint_path: 'checkpoints'
   result_path: 'results'
-  save_freq: 5000
+  save_freq: 10000
   show_freq: 500

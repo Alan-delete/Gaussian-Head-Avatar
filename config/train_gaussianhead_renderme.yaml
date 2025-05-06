@@ -9,13 +9,13 @@ batch_size: 1
 optimize_pose: False
 use_supres: False
 train_segment: True
-train_optical_flow: True
+train_optical_flow: False 
 resume_training: False
 start_epoch: 0
 num_epochs: 400   
 
 dataset:
-  dataroot: 'datasets/mini_demo_dataset/031'
+  dataroot: ''
   camera_ids: []
   test_camera_ids: []
   selected_frames: []
@@ -58,6 +58,7 @@ supresmodule:
   network_capacity: 4
 
 gaussianheadmodule:
+  enable: True
   num_add_mouth_points: 3000
   exp_color_mlp: [192, 256, 256, 32]
   # pose_color_mlp: [182, 128, 32]
@@ -89,6 +90,7 @@ gaussianheadmodule:
   gaussian_pruning_threshold: 0.5
 
 gaussianhairmodule:
+  enable: False
   pose_point_mlp: [81, 256, 3]
   pose_prior_mlp: [54, 54] 
   pos_freq: 4
@@ -143,6 +145,8 @@ gaussianhairmodule:
   scaling_lr: 0.005
   rotation_lr: 0.001
 
+flame_gaussian_module:
+  enable: False
   
 
 recorder:
@@ -151,5 +155,5 @@ recorder:
   logdir: 'log/gaussianhead_NeRSemble031_Simplified'
   checkpoint_path: 'checkpoints'
   result_path: 'results'
-  save_freq: 10000000
+  save_freq: 10000
   show_freq: 500

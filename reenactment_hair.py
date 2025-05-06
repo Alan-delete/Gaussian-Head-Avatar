@@ -106,7 +106,7 @@ if __name__ == '__main__':
     start_epoch = cfg.start_epoch
 
 
-    start_epoch = 351
+    start_epoch = 390
 
     # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
     # gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
 
     gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
-    gaussians_ply_checkpoint =  'checkpoints/gaussianhead_renderme/030000_head.ply'
+    gaussians_ply_checkpoint =  f'%s/%s/050000_head.ply' % (recorder.checkpoint_path, recorder.name)
     gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
     # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
     start_epoch += 1

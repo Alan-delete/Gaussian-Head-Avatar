@@ -38,6 +38,11 @@ class Reenactment_hair():
         
         frame_num = len(dataset.samples)
 
+        head_vertices = []
+        hair_strand_points = []
+        hair_strand_points_posed = []
+        hair_color = None
+
         # for i in tqdm(range(frame_num, 0, -1)):
         for i in tqdm(range(frame_num)):
             
@@ -69,12 +74,17 @@ class Reenactment_hair():
                 gt_images = data['images']
                 gt_video.append(gt_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
                 video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
+
+                hair_strand_points_world_per_frame = self.gaussianhair.get_strand_points_world
+                hair_strand_points_posed_per_frame = self.gaussianhair.get_strand_points_posed
+                head_vertices_world_per_frame = self.gaussianhead.verts
+                hair_strand_points.append(hair_strand_points_world_per_frame.cpu().numpy())
+                hair_strand_points_posed.append(hair_strand_points_posed_per_frame.cpu().numpy())
+                head_vertices.append(head_vertices_world_per_frame.squeeze(0).cpu().numpy())
+                hair_color = data['color'].view(-1, 3).mean(dim=0).cpu().numpy()
         
         # save video
-        # video = torch.stack(video, dim=0)
-        # video = video.permute(0, 2, 3, 1).cpu().numpy()
-        # save ground truth video
-        output_path = os.path.join("./test_{}.mp4".format(self.camera_id))
+        output_path = os.path.join("{}/{}/test_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
         out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (video[0].shape[1], video[0].shape[0]))
         for frame in video:
             frame = (frame*255).astype(np.uint8)
@@ -83,7 +93,7 @@ class Reenactment_hair():
         out.release()
         print('Saved video to %s' % output_path)
 
-        output_path = os.path.join("./gt_{}.mp4".format(self.camera_id))
+        output_path = os.path.join("{}/{}/gt_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
         out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (gt_video[0].shape[1], gt_video[0].shape[0]))
         for frame in gt_video:
             frame = (frame*255).astype(np.uint8)
@@ -92,3 +102,22 @@ class Reenactment_hair():
 
         out.release()
         print('Saved video to %s' % output_path)
+
+        # save head vertices
+        head_vertices = np.stack(head_vertices, axis=0)
+        faces = self.gaussianhead.faces.cpu().numpy()
+        np.savez(os.path.join("{}/{}/head_vertices_{}.npz".format(self.recorder.checkpoint_path ,self.recorder.name, self.camera_id)), vertices=head_vertices, faces=faces)
+        
+        # save hair strand points
+        hair_strand_points = np.stack(hair_strand_points, axis=0)
+        hair_strand_points = hair_strand_points.reshape(hair_strand_points.shape[0], -1, 3)
+        np.savez(os.path.join("{}/{}/hair_strand_points_{}.npz".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id)), points=hair_strand_points, color = hair_color)
+
+        # save hair strand points posed
+        hair_strand_points_posed = np.stack(hair_strand_points_posed, axis=0)
+        hair_strand_points_posed = hair_strand_points_posed.reshape(hair_strand_points_posed.shape[0], -1, 3)
+        np.savez(os.path.join("{}/{}/hair_strand_points_posed_{}.npz".format(self.recorder.checkpoint_path, self.recorder.name,self.camera_id)), points=hair_strand_points_posed, color = hair_color)
+
+        print('Saved head vertices to %s' % os.path.join(self.recorder.checkpoint_path , self.recorder.name, 'head_vertices_{}.npz'.format(self.camera_id)))
+        print('Saved hair strand points to %s' % os.path.join(self.recorder.checkpoint_path,self.recorder.name, 'hair_strand_points_{}.npz'.format(self.camera_id)))
+        

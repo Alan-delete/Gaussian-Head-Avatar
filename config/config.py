@@ -142,6 +142,7 @@ class config_train(config_base):
         self.cfg.gaussianhairmodule = CN()
         self.cfg.gaussianhairmodule.enable = True               # whether to use the Gaussian hair module
         # contain all pose related 
+        self.cfg.gaussianhairmodule.pose_deform_method = 'attention' # deformation method, can be 'Attention' or 'MLP'
         self.cfg.gaussianhairmodule.pose_color_mlp = []         # dimensions of pose color MLP
         self.cfg.gaussianhairmodule.pose_attributes_mlp = []    # dimensions of pose attribute MLP  
         self.cfg.gaussianhairmodule.pose_deform_mlp = []        # dimensions of pose deformation MLP

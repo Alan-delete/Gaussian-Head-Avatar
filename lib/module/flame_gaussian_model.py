@@ -352,4 +352,5 @@ class FlameGaussianModel(GaussianModel):
     def get_seg_label(self):
         # seg_label_unstruct = torch.cat([self.seg_label_activation(self.seg_label[..., :2]), torch.zeros_like(self.get_opacity)], dim = -1)
         seg_label_unstruct = torch.zeros_like(self._xyz) 
+        seg_label_unstruct[:, 1] = 1
         return seg_label_unstruct
