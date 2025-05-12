@@ -70,7 +70,8 @@ if __name__ == '__main__':
         gaussianhead = GaussianHeadModule(cfg.gaussianheadmodule, 
                                           xyz=data['verts'][select_indices].cpu(),
                                           feature=torch.atanh(data['verts_feature'][select_indices].cpu()), 
-                                          landmarks_3d_neutral=meshhead.landmarks_3d_neutral.detach().cpu(),
+                                        #   landmarks_3d_neutral=meshhead.landmarks_3d_neutral.detach().cpu(),
+                                          landmarks_3d_neutral=dataset.init_landmarks_3d_neutral,
                                           add_mouth_points=True).to(device)
         # release memory
         meshhead = meshhead.cpu()
@@ -108,14 +109,19 @@ if __name__ == '__main__':
 
     start_epoch = 390
 
-    # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-    # gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
+    gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
+    if os.path.exists(gaussianhead_checkpoint):
+        gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
+    
     gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-    gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
+    if os.path.exists(gaussianhair_checkpoint):
+        gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
 
     gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
-    gaussians_ply_checkpoint =  f'%s/%s/050000_head.ply' % (recorder.checkpoint_path, recorder.name)
-    gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
+    gaussians_ply_checkpoint =  f'%s/%s/020000_head.ply' % (recorder.checkpoint_path, recorder.name)
+    if os.path.exists(gaussians_ply_checkpoint):
+        gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
+    
     # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
     start_epoch += 1
 
@@ -128,5 +134,18 @@ if __name__ == '__main__':
 
     delta_poses = delta_poses.requires_grad_(False)
 
-    app = Reenactment_hair(dataloader, gaussians, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=arg.test_camera_id)
+    if cfg.flame_gaussian_module.enable:
+        gaussianhead = gaussians
+    else:
+        gaussianhead = gaussianhead 
+    
+
+    if cfg.gaussianhairmodule.enable:
+        gaussianhair = gaussianhair
+    else:
+        gaussianhair = None
+        arg_cfg = ['train_segment', False]
+        cfg.merge_from_list(arg_cfg)
+
+    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=arg.test_camera_id)
     app.run()

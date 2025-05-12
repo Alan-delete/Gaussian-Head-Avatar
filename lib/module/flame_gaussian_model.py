@@ -43,6 +43,19 @@ class FlameGaussianModel(GaussianModel):
             self.binding = torch.arange(len(self.flame_model.faces)).cuda()
             self.binding_counter = torch.ones(len(self.flame_model.faces), dtype=torch.int32).cuda()
 
+    def disable_static_parameters(self):
+        if self.flame_param is not None:
+            self.flame_param['static_offset'].requires_grad = False
+            self.flame_param['shape'].requires_grad = False
+
+        self._xyz.requires_grad = False
+        self._features_dc.requires_grad = False
+        self._features_rest.requires_grad = False
+        self._opacity.requires_grad = False
+        self._scaling.requires_grad = False
+        self._rotation.requires_grad = False
+    
+
     def load_meshes(self, train_meshes, test_meshes, tgt_train_meshes, tgt_test_meshes):
         if self.flame_param is None:
             meshes = {**train_meshes, **test_meshes}

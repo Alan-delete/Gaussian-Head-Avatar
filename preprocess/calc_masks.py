@@ -309,14 +309,14 @@ def main(args):
     device = torch.device('cuda')
     modnet.eval().to(device)
     
-    # # Create silh masks
-    # silh_list = []
-    # for i in tqdm(range(len(images))):
-    #     data = T.ToTensor()(Image.open(images[i]))
-    #     silh_mask = obtain_modnet_mask(data, modnet, 512)
-    #     silh_list.append(silh_mask)
-    #     cv2.imwrite(images[i].replace('images', 'NeuralHaircut_masks/body'), postprocess_mask(silh_mask)[0].astype(np.uint8))
-    #     # cv2.imwrite(images[i].replace('image_', 'mask_'), postprocess_mask(silh_mask)[0].astype(np.uint8))
+    # Create silh masks
+    silh_list = []
+    for i in tqdm(range(len(images))):
+        data = T.ToTensor()(Image.open(images[i]))
+        silh_mask = obtain_modnet_mask(data, modnet, 512)
+        silh_list.append(silh_mask)
+        cv2.imwrite(images[i].replace('images', 'NeuralHaircut_masks/body'), postprocess_mask(silh_mask)[0].astype(np.uint8))
+        # cv2.imwrite(images[i].replace('image_', 'mask_'), postprocess_mask(silh_mask)[0].astype(np.uint8))
     
     print("Start calculating hair masks!")
 #     load CDGNet for hair masks

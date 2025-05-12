@@ -192,6 +192,7 @@ class GaussianDataset(Dataset):
         self.camera_ids = cfg.camera_ids
         self.selected_frames = cfg.selected_frames
         
+        
         if len(self.camera_ids) == 0:
             image_paths = sorted(glob.glob(os.path.join(self.dataroot, 'images', '*', 'image_[0-9]*.jpg')))
             self.camera_ids = set([os.path.basename(image_path).split('_')[1].split('.')[0] for image_path in image_paths])
@@ -203,6 +204,7 @@ class GaussianDataset(Dataset):
 
         self.original_resolution = cfg.original_resolution
         self.resolution = cfg.resolution
+        self.coarse_scale_factor = cfg.coarse_scale_factor 
 
         self.samples = []
 
@@ -227,6 +229,8 @@ class GaussianDataset(Dataset):
         orientation_folder = os.path.join(self.dataroot, 'orientation_maps')
         orientation_confidence_folder = os.path.join(self.dataroot, 'orientation_confidence_maps')
         frames = sorted(os.listdir(image_folder)) if len(self.selected_frames) == 0 else self.selected_frames
+        # decrease the number of frames for debugging 
+        frames = frames[::5] if len(self.selected_frames) == 0 else frames
         
         self.num_exp_id = 0
         params_path_history = []
@@ -424,10 +428,10 @@ class GaussianDataset(Dataset):
         mask = torch.from_numpy(cv2.resize(mask, (self.resolution, self.resolution)))[None].float()
         hair_mask = torch.from_numpy(cv2.resize(hair_mask, (self.resolution, self.resolution)))[None].float()
         visible = torch.from_numpy(cv2.resize(visible, (self.resolution, self.resolution)))[None].float()
-        image_coarse = F.interpolate(image[None], scale_factor=0.25)[0]
-        mask_coarse = F.interpolate(mask[None], scale_factor=0.25)[0]
-        hair_mask_coarse = F.interpolate(hair_mask[None], scale_factor=0.25)[0]
-        visible_coarse = F.interpolate(visible[None], scale_factor=0.25)[0]
+        image_coarse = F.interpolate(image[None], scale_factor=self.coarse_scale_factor)[0]
+        mask_coarse = F.interpolate(mask[None], scale_factor=self.coarse_scale_factor)[0]
+        hair_mask_coarse = F.interpolate(hair_mask[None], scale_factor=self.coarse_scale_factor)[0]
+        visible_coarse = F.interpolate(visible[None], scale_factor=self.coarse_scale_factor)[0]
 
         fovx = 2 * math.atan(1 / intrinsic[0, 0])
         fovy = 2 * math.atan(1 / intrinsic[1, 1])
@@ -500,14 +504,20 @@ class GaussianDataset(Dataset):
                 optical_flow[1, ...] = -optical_flow[1, ...]
             else:
                 raise ValueError('Unknown optical flow data type')
+
+        optical_flow_coarse = F.interpolate(optical_flow[None], scale_factor = self.coarse_scale_factor)[0]
         
         if os.path.exists(optical_flow_confidence_path):
             # (1, H, W)
             optical_flow_confidence = torch.from_numpy(np.load(optical_flow_confidence_path)).float()
-            optical_flow_confidence = F.interpolate(optical_flow_confidence[None, None], size=(self.resolution, self.resolution), mode='bilinear')[0]
+            # (H, W) -> (1, H, W)
+            if len(optical_flow_confidence.shape) == 2:
+                optical_flow_confidence = optical_flow_confidence.unsqueeze(0)
+            optical_flow_confidence = F.interpolate(optical_flow_confidence[None], size=(self.resolution, self.resolution), mode='bilinear')[0]
         else:
             optical_flow_confidence = torch.ones(1, self.resolution, self.resolution)
 
+        optical_flow_confidence_coarse = F.interpolate(optical_flow_confidence[None], scale_factor=self.coarse_scale_factor)[0]
 
         orientation_path = sample[11][view]
         orientation_confidence_path = sample[12][view]
@@ -517,9 +527,17 @@ class GaussianDataset(Dataset):
             resized_orient_angle = torch.from_numpy(resized_orient_angle).float() / 180.0
             resized_orient_angle = resized_orient_angle.view(self.resolution, self.resolution, 1).permute(2, 0, 1)
             orient_angle = resized_orient_angle[:1, ...] * hair_mask
+            
+            # resized_orient_angle = PILtoTorch(Image.open(cam_info.image_path.replace(f'images_2', f'orientations_2/angles').replace('png', 'png')), resolution, max_value=180.0) # [0, 1], where 1 stands for pi
+            # resized_orient_var = F.interpolate(torch.from_numpy(np.load(cam_info.image_path.replace(f'images_2', f'orientations_2/vars').replace('png', 'npy'))).float()[None, None], size=resolution[::-1], mode='bilinear')[0] / math.pi**2
+            # resized_orient_conf = 1 / (resized_orient_var ** 2 + 1e-7)
+            # gt_orient_angle = resized_orient_angle[:1, ...]
+            # gt_orient_conf = resized_orient_conf[:1, ...]
         else:
             # raise ValueError('Orientation map not found')
             orient_angle = torch.zeros(1, self.resolution, self.resolution)
+        
+        orient_angle_coarse = F.interpolate(orient_angle[None], scale_factor=self.coarse_scale_factor)[0]
 
         if os.path.exists(orientation_confidence_path):
             resized_orient_var = F.interpolate(torch.from_numpy(np.load(orientation_confidence_path)).float()[None, None], size=(self.resolution, self.resolution), mode='bilinear')[0] / math.pi**2
@@ -529,6 +547,7 @@ class GaussianDataset(Dataset):
             orient_conf = resized_orient_conf[:1, ...] * hair_mask
         else:
             orient_conf = torch.ones(1, self.resolution, self.resolution)
+        
 
         flame_param_path = sample[13]
         # self.id_coeff = nn.Parameter(torch.zeros(1, self.shape_dims, dtype=torch.float32))
@@ -576,7 +595,11 @@ class GaussianDataset(Dataset):
                 'flame_pose': flame_pose,
                 'flame_scale': flame_scale,
                 'optical_flow': optical_flow,
-                'optical_flow_confidence': optical_flow_confidence,}
+                'optical_flow_confidence': optical_flow_confidence,
+                'optical_flow_coarse': optical_flow_coarse,
+                'optical_flow_confidence_coarse': optical_flow_confidence_coarse,
+                'orient_angle_coarse': orient_angle_coarse,
+                }
 
     def __len__(self):
         return max(len(self.samples), 128)

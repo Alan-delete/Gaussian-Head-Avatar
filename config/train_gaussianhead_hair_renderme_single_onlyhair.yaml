@@ -1,6 +1,5 @@
 gpu_id: 0
 load_meshhead_checkpoint: 'checkpoints/meshhead_renderme/meshhead_latest'
-# load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_renderme/gaussianhead_latest'
 # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
 # load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
 # load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
@@ -10,19 +9,19 @@ batch_size: 1
 optimize_pose: False
 use_supres: False
 train_segment: True
-train_optical_flow: False 
 resume_training: False
 start_epoch: 0
 num_epochs: 400   
 
 dataset:
-  dataroot: ''
+  dataroot: 'datasets/mini_demo_dataset/031'
   camera_ids: []
   test_camera_ids: []
-  # selected_frames: []
+  # selected_frames: ['0042']
   selected_frames: ['0000']
   original_resolution: 2048
   resolution: 2048
+  coarse_scale_factor: 1.0
 
 
 loss_weights:
@@ -62,13 +61,13 @@ supresmodule:
 gaussianheadmodule:
   enable: True
   num_add_mouth_points: 3000
-  exp_color_mlp: [192, 256, 256, 32]
+  # exp_color_mlp: [192, 256, 256, 32]
   # pose_color_mlp: [182, 128, 32]
   # exp_deform_mlp: [91, 256, 256, 256, 3]
   # pose_deform_mlp: [81, 256, 256, 3]
   # exp_attributes_mlp: [192, 256, 256, 256, 8]
   # pose_attributes_mlp: [182, 128, 128, 8]
-  # exp_color_mlp: [192, 256, 32]
+  exp_color_mlp: [192, 256, 32]
   pose_color_mlp: [182, 128, 32]
   exp_deform_mlp: [91, 256, 256, 256,256,256, 3]
   pose_deform_mlp: [81, 256, 256, 3]
@@ -92,7 +91,6 @@ gaussianheadmodule:
   gaussian_pruning_threshold: 0.5
 
 gaussianhairmodule:
-  enable: False
   pose_point_mlp: [81, 256, 3]
   pose_prior_mlp: [54, 54] 
   pos_freq: 4
@@ -147,13 +145,44 @@ gaussianhairmodule:
   scaling_lr: 0.005
   rotation_lr: 0.001
 
+  
+
 flame_gaussian_module:
   enable: False
-  
+  iterations: 600_000  # 30_000 (original)
+  position_lr_init: 0.005  # (scaled up according to mean triangle scale)  #0.00016 (original)
+  position_lr_final: 0.00005  # (scaled up according to mean triangle scale) # 0.0000016 (original)
+  position_lr_delay_mult: 0.01
+  position_lr_max_steps: 600_000  # 30_000 (original)
+  feature_lr: 0.0025
+  opacity_lr: 0.05
+  scaling_lr: 0.017  # (scaled up according to mean triangle scale)  # 0.005 (original)
+  rotation_lr: 0.001
+  densify: True
+  densification_interval: 1_000  # 100 (original)
+  opacity_reset_interval: 6_000 # 3000 (original)
+  densify_from_iter: 5_000 #10_000  # 500 (original)
+  densify_until_iter: 60_000 #600_000  # 15_000 (original)
+  densify_grad_threshold: 0.0002
+  # GaussianAvatars
+  flame_expr_lr: 1e-3
+  flame_trans_lr: 1e-6
+  flame_pose_lr: 1e-5
+  percent_dense: 0.01
+  lambda_dssim: 0.2
+  lambda_xyz: 1e-2
+  threshold_xyz: 1.
+  metric_xyz: False
+  lambda_scale: 1.
+  threshold_scale: 0.6
+  metric_scale: False
+  lambda_dynamic_offset: 0.
+  lambda_laplacian: 0.
+  lambda_dynamic_offset_std: 0 
 
 recorder:
   debug_tool: 'wandb' # 'tensorboard' or 'wandb'
-  name: 'gaussianhead_renderme'
+  name: 'gaussianhead_renderme_single_onlyhair'
   logdir: 'log/gaussianhead_NeRSemble031_Simplified'
   checkpoint_path: 'checkpoints'
   result_path: 'results'

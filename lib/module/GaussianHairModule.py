@@ -9,6 +9,8 @@ import tqdm
 from plyfile import PlyData, PlyElement
 from einops import rearrange
 import pickle
+import trimesh 
+
 
 from simple_knn._C import distCUDA2
 from pytorch3d.transforms import so3_exponential_map
@@ -260,37 +262,44 @@ class GaussianHairModule(GaussianBaseModule):
         self.spatial_lr_scale = self.cameras_extent
 
         # TODO: Add learning rate for each parameter
-        l_struct = [
-            {'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"},
+        l_dynamic = [
             {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-4, "name": "pose_prior"},
             {'params': self.pose_query_mlp.parameters(), 'lr': 1e-4, "name": "pose_query"},
             {'params': self.pose_key_mlp.parameters(), 'lr': 1e-4, "name": "pose_key"},
             {'params': self.pose_value_mlp.parameters(), 'lr': 1e-4, "name": "pose_value"},
             {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
         ]
+
+        l_static = [{'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"}]
+        
         if self.train_directions:
-            l_struct.append({'params': [self.dir_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
+            l_static.append({'params': [self.dir_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
         else:
-            l_struct.append({'params': [self.points_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
+            l_static.append({'params': [self.points_raw], 'lr': cfg.position_lr_init * 0.1 * self.spatial_lr_scale, "name": "pts"})
         if self.train_features_rest:
-            l_struct.append({'params': [self.features_rest_raw], 'lr': cfg.feature_lr / 20.0, "name": "f_rest"})
+            l_static.append({'params': [self.features_rest_raw], 'lr': cfg.feature_lr / 20.0, "name": "f_rest"})
         if self.train_width:
-            l_struct.append({'params': [self.width_raw], 'lr': cfg.scaling_lr, "name": "width"})
+            l_static.append({'params': [self.width_raw], 'lr': cfg.scaling_lr, "name": "width"})
         if self.train_opacity:
-            l_struct.append({'params': [self.opacity_raw], 'lr': cfg.opacity_lr, "name": "opacity"})
+            l_static.append({'params': [self.opacity_raw], 'lr': cfg.opacity_lr, "name": "opacity"})
         # TODO: transform actually should be more related to prior, since it's used by prior to generate strand 
         # better add it to prior optimizer
-        # l_struct.append({'params': [self.transform], 'lr': 1e-4 , "name": "transform"})
-        l_struct.append({'params': [self.transform], 'lr': 0 , "name": "transform"})
+        # l_static.append({'params': [self.transform], 'lr': 1e-4 , "name": "transform"})
+        l_static.append({'params': [self.transform], 'lr': 0 , "name": "transform"})
 
+        self.l_dynamic = l_dynamic
+        self.l_static = l_static
         self.pts_scheduler_args = get_expon_lr_func(lr_init=cfg.position_lr_init*0.1*self.spatial_lr_scale,
                                                     lr_final=cfg.position_lr_final*self.spatial_lr_scale,
                                                     lr_delay_mult=cfg.position_lr_delay_mult,
                                                     max_steps=cfg.position_lr_max_steps)
-        self.optimizer = torch.optim.Adam(l_struct, lr=0.0, eps=1e-15)     
+        l_gaussian = l_dynamic + l_static
+        # Gaussian optimizer
+        self.optimizer = torch.optim.Adam(l_gaussian, lr=0.0, eps=1e-15)     
 
         self.milestones = cfg['milestones']
         self.lrs = cfg['lrs']
+        # prior optimizers
         self.prior_optimizers = {
             'theta': torch.optim.Adam([self.theta], self.lrs['theta']),
             'G_raw': torch.optim.Adam(self.strands_generator.G_raw.parameters(), self.lrs['G_raw']),
@@ -335,13 +344,21 @@ class GaussianHairModule(GaussianBaseModule):
         self.optical_flow_3D = torch.ones_like(self.points_raw)
         self.optical_flow_3D_lift = nn.Parameter(torch.zeros(self.num_strands, self.strand_length - 1, 3).cuda())
 
+    def disable_static_parameters(self):
+        # Disable the static parameters
+        for param_group in self.l_static:
+            for param in param_group['params']:
+                param.requires_grad = False
+
+
     def update_learning_rate(self, iter):
         ''' Learning rate scheduling per step '''
+        # points
         for param_group in self.optimizer.param_groups:
             if param_group["name"] == "pts":
                 lr = self.pts_scheduler_args(iter)
                 param_group['lr'] = lr
-
+        # prior
         for k in self.prior_optimizers.keys():
             iter_start, iter_end = self.milestones[k]
             for param_group in self.prior_optimizers[k].param_groups:
@@ -493,39 +510,44 @@ class GaussianHairModule(GaussianBaseModule):
     def update_mesh_alignment_transform(self, R, T, S, dir_path = None, flame_mesh_path = 'datasets/mini_demo_dataset/031/FLAME_params/0000/mesh_0.obj'):
         # Estimate the transform to align Perm canonical space with the scene
         print('Updating FLAME to Pinscreen alignment transform')
-        # source_mesh = o3d.io.read_triangle_mesh(f'{dir_path}/data/flame_mesh_aligned_to_pinscreen.obj')
-        source_mesh = o3d.io.read_triangle_mesh(f'assets/flame_mesh_aligned_to_pinscreen.obj')
-        # target_mesh = o3d.io.read_triangle_mesh(flame_mesh_dir)
+        # o3d.io.read_triangle_mesh change the faces  
+        # source_mesh = o3d.io.read_triangle_mesh(f'assets/flame_mesh_aligned_to_pinscreen.obj')
+        source_mesh = trimesh.load(f'assets/flame_mesh_aligned_to_pinscreen.obj', process=False)
         source = torch.from_numpy(np.asarray(source_mesh.vertices))
-        # target = torch.from_numpy(np.asarray(target_mesh.vertices))
-        # already posed mesh, for hair we don't do the pose transformation again in generate() function
-        # target = torch.from_numpy(np.load('datasets/mini_demo_dataset/031/FLAME_params/0000/vertices.npy').astype(np.double))
-        target_mesh = o3d.io.read_triangle_mesh(flame_mesh_path)
-        target = torch.from_numpy(np.asarray(target_mesh.vertices))
-        
-        # tensor double
-        R = R.to(torch.double)
-        T = T.to(torch.double) 
-        # TODO: hardcode scale because it will be anyway cancelled out in the training. 
+
+        generic_model_path = 'assets/FLAME/generic_model.pkl'
+        import pickle
+        np.bool = np.bool_
+        np.int = np.int_
+        np.float = np.float_
+        np.complex = np.complex_
+        np.object = np.object_
+        np.unicode = np.unicode_
+        np.str = np.str_
+        with open(generic_model_path, 'rb') as f:
+            generic_model = pickle.load(f, encoding='latin1')
+        v_template = generic_model['v_template']
+        faces = generic_model['f'].astype(np.int32)
+        v_template = torch.from_numpy(v_template)
         S = S.to(torch.double)
         S = torch.clamp(S, min=0.01, max=0.1) 
-        # TODO: maybe directly use the universe "generic_model" mesh, they are basically the same
-        target = (torch.matmul(target- T, R)) / S 
-        # shrink the mesh a little bit so that most hair roots are roughly on/inside the surface.
-        target = target * 0.99
+        target = v_template / S
+
+        hair_list_filename = "assets/FLAME/hair_list.pkl"
+        if os.path.exists(hair_list_filename):
+            with open(hair_list_filename, 'rb') as f:
+                scalp_indices = torch.tensor(pickle.load(f))
+                self.scalp_indices = scalp_indices
+                source_scalp = source[scalp_indices]  
+                target_scalp = target[scalp_indices] 
+        else:
+            source_scalp = source
+            target_scalp = target
+
 
         # pytorch3d canonical mesh
-        faces = torch.from_numpy(np.asarray(target_mesh.triangles)).cuda() 
-        target_mesh = Meshes(verts= target[None].cuda().to(torch.float), faces=faces[None])
-        self.FLAME_mesh = target_mesh
-
-
-        # hair_list_filename = "assets/FLAME/hair_list.pkl"
-        # with open(hair_list_filename, 'rb') as f:
-        #     scalp_indices = torch.tensor(pickle.load(f))
-        #     self.scalp_indices = scalp_indices
-        #     source = source[scalp_indices]  
-        #     target = target[scalp_indices] 
+        faces = torch.from_numpy(np.asarray(faces)).cuda() 
+        self.FLAME_mesh = Meshes(verts= target[None].cuda().to(torch.float), faces=faces[None])
 
 
         # # create a mesh from xyz
@@ -533,19 +555,21 @@ class GaussianHairModule(GaussianBaseModule):
         # source mesh
         source_mesh = o3d.geometry.TriangleMesh()
         source_mesh.vertices = o3d.utility.Vector3dVector(source)
+        # source_mesh.triangles = o3d.utility.Vector3iVector(faces)
         source_mesh.compute_vertex_normals()
         o3d.io.write_triangle_mesh('Init_source_mesh.ply', source_mesh)
 
         # create a mesh from the target vertices for debugging
         target_mesh = o3d.geometry.TriangleMesh()
         target_mesh.vertices = o3d.utility.Vector3dVector(target)
+        # target_mesh.triangles = o3d.utility.Vector3iVector(faces)
         target_mesh.compute_vertex_normals()
         o3d.io.write_triangle_mesh('Init_target_mesh.ply', target_mesh) 
         
 
-        source = torch.cat([source, torch.ones_like(source[:, :1])], -1)
-        target = torch.cat([target, torch.ones_like(target[:, :1])], -1)
-        transform = (source.transpose(0, 1) @ source).inverse() @ source.transpose(0, 1) @ target
+        source_scalp = torch.cat([source_scalp, torch.ones_like(source_scalp[:, :1])], -1)
+        target_scalp = torch.cat([target_scalp, torch.ones_like(target_scalp[:, :1])], -1)
+        transform = (source_scalp.transpose(0, 1) @ source_scalp).inverse() @ source_scalp.transpose(0, 1) @ target_scalp
         self.transform.data = transform.detach().clone().cuda().float()
 
         # don't simply use detach here, returned value from detach shares the same memory with the original tensor
@@ -554,7 +578,6 @@ class GaussianHairModule(GaussianBaseModule):
 
         # transformed hair
         transformed_hair = (torch.cat([self.xyz, torch.ones_like(self.xyz[:, :1])], -1) @ self.transform).detach().cpu().numpy()[:, :3]
-        # transformed_hair = (self.xyz * s @ R.cuda().float() + t.cuda().float()).detach().cpu().numpy()
         hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_hair)
         hair_mesh.compute_vertex_normals()
         o3d.io.write_triangle_mesh('Init_transformed_hair.ply', hair_mesh)
@@ -563,6 +586,7 @@ class GaussianHairModule(GaussianBaseModule):
         transformed_source = (torch.cat([source[:, :3], torch.ones_like(source[:, :1])], -1) @ transform).detach().cpu().numpy()[:, :3]
         # transformed_source = (source[:, :3] * s @ R + t).detach().cpu().numpy()
         hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_source)
+        # hair_mesh.triangles = o3d.utility.Vector3iVector(faces)
         hair_mesh.compute_vertex_normals()
         o3d.io.write_triangle_mesh('Init_transformed_source.ply', hair_mesh)
 
@@ -852,6 +876,7 @@ class GaussianHairModule(GaussianBaseModule):
         
         # Add dynamics to the hair strands
         # Points shift
+        self.points_posed = self.points
         if given_optical_flow is not None:
             accumulate_optical_flow = accumulate_optical_flow.view(num_strands, self.strand_length - 1, 3)
             optical_flow = given_optical_flow.view(num_strands, self.strand_length - 1, 3)
@@ -880,6 +905,7 @@ class GaussianHairModule(GaussianBaseModule):
         # Cosserat_loss here
 
         # from canonical space to world space, used in orginal codes.
+        self.points_origins_world = self.points_origins
         if global_pose is not None and global_scale is not None:
             # add batch dimension
             R = so3_exponential_map(global_pose[None, :3])
@@ -901,6 +927,8 @@ class GaussianHairModule(GaussianBaseModule):
             origins_world = self.origins.view(num_strands, 1, 3)
             self.points_origins_world = torch.cat([origins_world, points_world], dim=1)
             dir_world = (self.points_origins_world[:, 1:] - self.points_origins_world[:, :-1]).view(-1, 3)
+
+        # get root diff by origin_world
 
         
         # TODO: scale is negative sometimes!

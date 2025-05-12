@@ -37,6 +37,7 @@ class config_train(config_base):
         self.cfg.resume_training = False                        # resume training or not
         self.cfg.start_epoch = 0
         self.cfg.num_epochs = 300                            # number of epochs for training
+        self.cfg.static_scene_init = False                     # initialize the scene with static images or not
    
         self.cfg.loss_weights = CN()
         self.cfg.loss_weights.rgb_hr = 1.0                      # loss for high resolution image
@@ -55,9 +56,10 @@ class config_train(config_base):
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset
         self.cfg.dataset.camera_ids = []                        # which cameras are used
-        self.cfg.dataset.test_camera_ids = []                   # which cameras are used for testing
+        self.cfg.dataset.test_camera_ids = [0, 25]                   # which cameras are used for testing
         self.cfg.dataset.original_resolution = 2048             # original image resolution, should match the intrinsic
         self.cfg.dataset.resolution = 512                       # image resolution for rendering
+        self.cfg.dataset.coarse_scale_factor = 0.25                # scale factor for coarse image
         self.cfg.dataset.num_sample_view = 8                    # number of sampled images from different views during mesh head training
         self.cfg.dataset.selected_frames = []                           # selected frames for training, if not set, all frames will be used
         
@@ -118,8 +120,8 @@ class config_train(config_base):
         self.cfg.flame_gaussian_module.densify = True
         self.cfg.flame_gaussian_module.densification_interval = 1_000  # 100 (original)
         self.cfg.flame_gaussian_module.opacity_reset_interval = 60_000 # 3000 (original)
-        self.cfg.flame_gaussian_module.densify_from_iter = 5_000 #10_000  # 500 (original)
-        self.cfg.flame_gaussian_module.densify_until_iter = 30_000 #600_000  # 15_000 (original)
+        self.cfg.flame_gaussian_module.densify_from_iter = 10_000  # 500 (original)
+        self.cfg.flame_gaussian_module.densify_until_iter = 600_000  # 15_000 (original)
         self.cfg.flame_gaussian_module.densify_grad_threshold = 0.0002
         
         # GaussianAvatars

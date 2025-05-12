@@ -89,6 +89,11 @@ class GaussianHeadModule(GaussianBaseModule):
     def get_body_label(self):
         return self.label_activation(self.label_body)
 
+    def disable_static_parameters(self):
+        ''' Disable the static parameters in the Gaussian Head Module '''
+        for name, param in self.named_parameters():
+            if name in self.GS_parameter_names:
+                param.requires_grad = False
 
     def update_learning_rate(self, iter):
         ''' Learning rate scheduling per step '''

@@ -425,7 +425,7 @@ class FLAMEModule(nn.Module):
         self.global_translation = nn.Parameter(torch.zeros(1, 1, 3, dtype=torch.float32))
 
         self.register_buffer('neck_pose', torch.zeros(self.batch_size, 3, dtype=torch.float32)) # not optimized
-        # self.neck_pose = nn.Parameter(torch.zeros(self.batch_size, 3, dtype=torch.float32), requires_grad=False)
+        # self.neck_pose = nn.Parameter(torch.zeros(self.batch_size, 3, dtype=torch.float32), requires_grad=True)
         self.register_buffer('global_rotation', torch.zeros(self.batch_size, 3, dtype=torch.float32))
         # self.global_rotation = nn.Parameter(torch.zeros(self.batch_size, 3, dtype=torch.float32), requires_grad=True)
         self.register_buffer('faces', self.flame.faces_tensor)
@@ -465,6 +465,8 @@ class FLAMEModule(nn.Module):
 
         R = so3_exponential_map(self.pose[:, :3])
         T = self.pose[:, 3:]
+        # R = so3_exponential_map(self.pose[:1, :3]).repeat(self.batch_size, 1, 1)
+        # T = self.pose[:1, 3:].repeat(self.batch_size, 1)
         vertices = torch.bmm(vertices * self.scale, R.permute(0,2,1)) + T[:, None, :]
         landmarks = torch.bmm(landmarks * self.scale, R.permute(0,2,1)) + T[:, None, :]
 

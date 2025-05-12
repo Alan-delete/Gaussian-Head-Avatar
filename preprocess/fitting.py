@@ -132,7 +132,7 @@ class Fitter():
         #                    torch.optim.Adam([{'params' : self.face_model.parameters(), 'lr' : 1e-3}])]
 
         self.optimizers = [torch.optim.Adam([{'params' : self.face_model.scale, 'lr' : 1e-3},
-                                             {'params':  self.face_model.neck_pose, 'lr' : 1e-2},
+                                            #  {'params':  self.face_model.neck_pose, 'lr' : 1e-2},
                                              {'params' : self.face_model.pose, 'lr' : 1e-2},]),
                            torch.optim.Adam([{'params' : self.face_model.parameters(), 'lr' : 1e-3}])]
     

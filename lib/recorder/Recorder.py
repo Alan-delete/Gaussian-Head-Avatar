@@ -5,6 +5,7 @@ import numpy as np
 import cv2
 import wandb
 import open3d as o3d
+import time
 
 class MeshHeadTrainRecorder():
     def __init__(self, cfg):
@@ -131,6 +132,12 @@ class GaussianHeadTrainRecorder():
 
         self.cfg = full_cfg
 
+        # camera view idx for debugging
+        self.debug_view = [1,25]
+
+        # current time as random seed
+        self.random_seq = str(int(time.time())) + str(np.random.randint(0, 100))
+
         os.makedirs(self.checkpoint_path, exist_ok=True)
         os.makedirs(self.result_path, exist_ok=True)
         os.makedirs('%s/%s' % (self.checkpoint_path, self.name), exist_ok=True)
@@ -147,12 +154,12 @@ class GaussianHeadTrainRecorder():
             log_record = {key: log_data[key] for key in log_data if key.startswith('loss_')}
             log_record['psnr_train'] = log_data['psnr_train'] if "psnr_train" in log_data else 0
             log_record['ssim_train'] = log_data['ssim_train'] if "ssim_train" in log_data else 0
-            log_record['points_num'] = log_data['gaussianhead'].get_xyz.shape[0] if 'gaussianhead' in log_data else 0
+            log_record['points_num'] = log_data['gaussianhead'].get_xyz.shape[0] if 'gaussianhead' in log_data and log_data['gaussianhead'] is not None else 0
             wandb.log(log_record)
         
         # save more frequently for debugging
         if log_data['iter'] % 500 == 0 and 'pre_shift_head' in log_data:    
-            path = '%s/%s/pre_shift_epoch_version2_%d' % (self.checkpoint_path, self.name, log_data['epoch'])
+            path = '%s/%s/pre_shift_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch'])
             torch.save({'epoch': log_data['epoch'], 
                         'pre_shift_head': log_data['pre_shift_head'],
                         'pre_shift_hair': log_data['pre_shift_hair']}, path)
@@ -162,30 +169,34 @@ class GaussianHeadTrainRecorder():
             print('saving checkpoint.')
 
             if 'supres' in log_data and log_data['supres'] is not None:
-                torch.save(log_data['supres'].state_dict(), '%s/%s/supres_latest' % (self.checkpoint_path, self.name))
+                torch.save(log_data['supres'].state_dict(), '%s/%s/supres_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
                 torch.save(log_data['supres'].state_dict(), '%s/%s/supres_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             
             if 'delta_poses' in log_data and log_data['delta_poses'] is not None:
-                torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest' % (self.checkpoint_path, self.name))
+                torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
                 torch.save(log_data['delta_poses'], '%s/%s/delta_poses_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
             
 
             if 'gaussianhair' in log_data and log_data['gaussianhair'] is not None:
                 torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
-                torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_latest' % (self.checkpoint_path, self.name))
+                torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
                 
-                log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
+                log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['epoch']))
+                log_data['gaussianhair'].save_ply("%s/%s/hair_latest_%s.ply" % (self.checkpoint_path, self.name, self.random_seq))
                 
                 print('save gaussianhair to path: %s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                print('save gaussianhair to path: %s/%s/gaussianhair_latest_%s.ply' % (self.checkpoint_path, self.name, self.random_seq))
 
             if 'gaussianhead' in log_data and log_data['gaussianhead'] is not None:
                 torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
-                torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_latest' % (self.checkpoint_path, self.name))
+                torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
                 
-                log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
-                log_data['gaussianhead'].save_ply("%s/%s/head_latest.ply" % (self.checkpoint_path, self.name))
+                log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['epoch']))
+                log_data['gaussianhead'].save_ply("%s/%s/head_latest_%s.ply" % (self.checkpoint_path, self.name, self.random_seq))
 
                 print('save gaussianhead to path: %s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                print('save gaussianhead to path: %s/%s/head_latest_%s.ply' % (self.checkpoint_path, self.name, self.random_seq))
+                
                 
         if log_data['iter'] % self.show_freq == 0:
 
@@ -193,6 +204,8 @@ class GaussianHeadTrainRecorder():
 
             if self.test_dataloader is not None:
                 # already inside the torhc.no_grad() context
+                dataset = self.test_dataloader.dataset
+                
                 data = next(iter(self.tese_dataloader)) 
                 to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
@@ -208,9 +221,6 @@ class GaussianHeadTrainRecorder():
                 resolution_coarse = images_coarse.shape[2]
                 resolution_fine = images.shape[2]
 
-                # data['pose'] = data['pose'] + self.delta_poses[data['exp_id'], :]
-            
-
                 # render coarse images
                 head_data = log_data['gaussianhead'].generate(data)
                 hair_data = log_data['gaussianhair'].generate(data)
@@ -224,8 +234,13 @@ class GaussianHeadTrainRecorder():
 
 
             image = data['images'][0].permute(1, 2, 0).detach().cpu().numpy()
-            # [:,:,::-1] to convert RGB to BGR
             image = (image * 255).astype(np.uint8)[:,:,::-1]
+
+            images_coarse = data['images_coarse'][0].permute(1, 2, 0).detach().cpu().numpy()
+            images_coarse = (images_coarse * 255).astype(np.uint8)[:,:,::-1]
+
+            resolution_fine = image.shape[0]
+            resolution_coarse = images_coarse.shape[0]
 
             render_image = data['render_images'][0, 0:3].permute(1, 2, 0).clamp(0, 1).detach().cpu().numpy()
             render_image = (render_image * 255).astype(np.uint8)[:,:,::-1]
@@ -249,11 +264,15 @@ class GaussianHeadTrainRecorder():
                 # images.append(wandb.Image(result, caption="rendered"))
                 image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 image = cv2.resize(image, (render_image.shape[0], render_image.shape[1]))
-                images.append(wandb.Image(image, caption="gt_image"))
+                images.append(wandb.Image(image, caption="gt_image_supres"))
+
+                images_coarse = cv2.cvtColor(images_coarse, cv2.COLOR_BGR2RGB)
+                images_coarse = cv2.resize(images_coarse, (render_image.shape[0], render_image.shape[1]))
+                images.append(wandb.Image(images_coarse, caption="gt_image_coarse"))
 
                 render_image = cv2.cvtColor(render_image, cv2.COLOR_BGR2RGB)
                 render_image = cv2.resize(render_image, (render_image.shape[0], render_image.shape[1]))
-                images.append(wandb.Image(render_image, caption="rendered_image"))
+                images.append(wandb.Image(render_image, caption="rendered_image_coarse"))
 
                 if 'gt_segment' in data:
                     segment_vis = data['gt_segment'][0]
@@ -269,13 +288,13 @@ class GaussianHeadTrainRecorder():
                     images.append(wandb.Image(render_segment, caption="rendered_segment"))
 
                 if 'hair_masks' in data:
-                    mask = data['masks'][0]
-                    hair_mask = data['hair_masks'][0].to(mask.device) 
+                    mask = data['masks_coarse'][0]
+                    hair_mask = data['hair_masks_coarse'][0].to(mask.device) 
                     images.append(wandb.Image(hair_mask.permute(1, 2, 0).detach().cpu().numpy(), caption="hair_mask"))
 
 
                     if 'orient_angle' in data:
-                        orientation = data['orient_angle'][0].to(mask.device)
+                        orientation = data['orient_angle_coarse'][0].to(mask.device)
                         images.append(wandb.Image(vis_orient(orientation, hair_mask), caption="gt_orientation"))
 
                         render_orientation = data['render_orient'][0]
@@ -283,7 +302,7 @@ class GaussianHeadTrainRecorder():
 
                     if 'optical_flow' in data:
                         # [2, resolution, resolution]
-                        optical_flow = data['optical_flow'][0].to(mask.device)
+                        optical_flow = data['optical_flow_coarse'][0].to(mask.device)
                         ones_mask = torch.ones_like(mask)
                         # angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
                         angle = torch.atan2(optical_flow[1], optical_flow[0]) / np.pi
@@ -306,7 +325,7 @@ class GaussianHeadTrainRecorder():
                         images.append(wandb.Image(vis_orient(angle, mask), caption="rendered_velocity"))
                     
                     if 'optical_flow_confidence' in data:
-                        optical_flow_confidence = data['optical_flow_confidence'][0].to(mask.device)
+                        optical_flow_confidence = data['optical_flow_confidence_coarse'][0].to(mask.device)
                         images.append(wandb.Image(optical_flow_confidence.permute(1, 2, 0).detach().cpu().numpy(), caption="optical_flow_confidence"))
 
 

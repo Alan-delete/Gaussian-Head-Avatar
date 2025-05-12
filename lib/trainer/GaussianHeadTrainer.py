@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -20,25 +21,45 @@ class GaussianHeadTrainer():
         self.cfg = cfg
 
     def train(self, start_epoch=0, epochs=1):
+        dataset = self.dataloader.dataset
         for epoch in range(start_epoch, epochs):
             for idx, data in tqdm(enumerate(self.dataloader)):
-                
-                # prepare data
-                to_cuda = ['images', 'masks', 'visibles', 'images_coarse', 'masks_coarse', 'visibles_coarse', 
-                           'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
-                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id']
+                iteration = epoch * len(self.dataloader) + idx
+                # # prepare data
+                # to_cuda = ['images', 'masks', 'visibles', 'images_coarse', 'masks_coarse', 'visibles_coarse', 
+                #            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
+                #            'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id']
+                to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
+                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
+                            'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','poses_history', 'optical_flow','optical_flow_confidence',
+                            'optical_flow_coarse','optical_flow_confidence_coarse', 'orient_angle_coarse']
+
+
+                if iteration % self.recorder.show_freq == 0:
+                    # random pick the view from back(1) and front(25)
+                    i = np.random.choice(self.cfg.dataset.test_camera_ids)
+                    data = dataset.__getitem__(idx, i)
+                    
+                    for data_item in to_cuda:
+                        data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+                        data[data_item] = data[data_item].unsqueeze(0)
+
                 for data_item in to_cuda:
                     data[data_item] = data[data_item].to(device=self.device)
 
                 images = data['images']
                 visibles = data['visibles']
 
-                if self.cfg.use_supres:
-                    images_coarse = data['images_coarse']
-                    visibles_coarse = data['visibles_coarse']
-                else:
-                    images_coarse = images
-                    visibles_coarse = visibles
+                # if self.cfg.use_supres:
+                #     images_coarse = data['images_coarse']
+                #     visibles_coarse = data['visibles_coarse']
+                # else:
+                #     images_coarse = images
+                #     visibles_coarse = visibles
+
+                # 512x512
+                images_coarse = data['images_coarse']
+                visibles_coarse = data['visibles_coarse']
 
                 resolution_coarse = images_coarse.shape[2]
                 resolution_fine = images.shape[2]
@@ -59,8 +80,8 @@ class GaussianHeadTrainer():
                 cropped_render_images, cropped_images, cropped_visibles = self.random_crop(render_images, images, visibles, scale_factor, resolution_coarse, resolution_fine)
                 data['cropped_images'] = cropped_images
                 
-                # generate super resolution images
-                supres_images = self.supres(cropped_render_images) if self.cfg.use_supres else cropped_render_images[:,:3]
+                # generate super resolution images, 512*512 -> 2048*2048
+                supres_images = self.supres(cropped_render_images) if self.cfg.use_supres else cropped_images
                 data['supres_images'] = supres_images
 
                 # loss functions
@@ -110,7 +131,7 @@ class GaussianHeadTrainer():
                     'loss_rgb_hr' : loss_rgb_hr,
                     'loss_vgg' : loss_vgg,
                     'epoch' : epoch,
-                    'iter' : idx + epoch * len(self.dataloader) + 1
+                    'iter' : idx + epoch * len(self.dataloader) 
                 }
                 self.recorder.log(log)
 
