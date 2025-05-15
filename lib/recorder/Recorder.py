@@ -170,31 +170,33 @@ class GaussianHeadTrainRecorder():
 
             if 'supres' in log_data and log_data['supres'] is not None:
                 torch.save(log_data['supres'].state_dict(), '%s/%s/supres_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
-                torch.save(log_data['supres'].state_dict(), '%s/%s/supres_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                torch.save(log_data['supres'].state_dict(), '%s/%s/supres_iter_%d' % (self.checkpoint_path, self.name, log_data['iter']))
             
             if 'delta_poses' in log_data and log_data['delta_poses'] is not None:
                 torch.save(log_data['delta_poses'], '%s/%s/delta_poses_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
-                torch.save(log_data['delta_poses'], '%s/%s/delta_poses_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                torch.save(log_data['delta_poses'], '%s/%s/delta_poses_iter_%d' % (self.checkpoint_path, self.name, log_data['iter']))
             
 
             if 'gaussianhair' in log_data and log_data['gaussianhair'] is not None:
-                torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_iter_%d' % (self.checkpoint_path, self.name, log_data['iter']))
                 torch.save(log_data['gaussianhair'].state_dict(), '%s/%s/gaussianhair_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
                 
-                log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['epoch']))
-                log_data['gaussianhair'].save_ply("%s/%s/hair_latest_%s.ply" % (self.checkpoint_path, self.name, self.random_seq))
+                # log_data['gaussianhair'].save_ply("%s/%s/%06d_hair.ply" % (self.checkpoint_path, self.name, log_data['iter']))
+                # log_data['gaussianhair'].save_ply("%s/%s/hair_latest_%s.ply" % (self.checkpoint_path, self.name, self.random_seq))
                 
-                print('save gaussianhair to path: %s/%s/gaussianhair_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
-                print('save gaussianhair to path: %s/%s/gaussianhair_latest_%s.ply' % (self.checkpoint_path, self.name, self.random_seq))
+                print('save gaussianhair to path: %s/%s/gaussianhair_iter_%d' % (self.checkpoint_path, self.name, log_data['iter']))
+                print('save gaussianhair to path: %s/%s/gaussianhair_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
 
             if 'gaussianhead' in log_data and log_data['gaussianhead'] is not None:
-                torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                # torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_iter_%d' % (self.checkpoint_path, self.name, log_data['iter']))
                 torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
                 
-                log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['epoch']))
+                log_data['gaussianhead'].save_ply("%s/%s/%06d_head.ply" % (self.checkpoint_path, self.name, log_data['iter']))
                 log_data['gaussianhead'].save_ply("%s/%s/head_latest_%s.ply" % (self.checkpoint_path, self.name, self.random_seq))
 
-                print('save gaussianhead to path: %s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                # print('save gaussianhead to path: %s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
+                print('save gaussianhead to path: %s/%s/gaussianhead_iter_%d' % (self.checkpoint_path, self.name, log_data['iter']))
                 print('save gaussianhead to path: %s/%s/head_latest_%s.ply' % (self.checkpoint_path, self.name, self.random_seq))
                 
                 

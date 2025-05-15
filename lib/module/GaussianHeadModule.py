@@ -91,8 +91,9 @@ class GaussianHeadModule(GaussianBaseModule):
 
     def disable_static_parameters(self):
         ''' Disable the static parameters in the Gaussian Head Module '''
+        l_static = ['xyz', 'features_dc', 'features_rest', 'scales', 'rotation', 'opacity', 'seg_label']
         for name, param in self.named_parameters():
-            if name in self.GS_parameter_names:
+            if name in l_static:
                 param.requires_grad = False
 
     def update_learning_rate(self, iter):

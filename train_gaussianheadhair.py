@@ -108,22 +108,25 @@ if __name__ == '__main__':
 
     # load_state_dict() does not interfere with autograd, it just overwrites the .data of parameters.
     if cfg.resume_training:
-        start_epoch = 156
+        start_epoch = 13
         # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
         # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest' % (recorder.checkpoint_path, recorder.name)
         gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
         gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-        # gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
-        # gaussians_ply_checkpoint = '/local/home/haonchen/Gaussian-Head-Avatar/checkpoints/flame_gaussian_renderme/025000_head.ply'
+        gaussianhair_checkpoint =  'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_epoch_13'
         gaussians_ply_checkpoint =  f'%s/%s/020000_head.ply' % (recorder.checkpoint_path, recorder.name)
         
         if os.path.exists(gaussians_ply_checkpoint):
             gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
             gaussians.training_setup(cfg.flame_gaussian_module)
+            print(f'load gaussians from {gaussians_ply_checkpoint}')
         if os.path.exists(gaussianhair_checkpoint):
             gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
-        # if os.path.exists(gaussianhead_checkpoint):
-        #     gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
+            print(f'load gaussianhair from {gaussianhair_checkpoint}')
+        
+        if os.path.exists(gaussianhead_checkpoint):
+            gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
+            print(f'load gaussianhead from {gaussianhead_checkpoint}')
         
         # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
         start_epoch += 1

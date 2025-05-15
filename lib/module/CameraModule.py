@@ -149,6 +149,10 @@ class CameraModule():
         render_orient = []
         render_velocity  = []
         radii = []
+
+        if 'bg_rgb_color' in data:
+            self.bg_color[:3] = data['bg_rgb_color']
+
         for b in range(B):
 
             tanfovx = math.tan(fovx[b] * 0.5)

@@ -370,7 +370,9 @@ class GaussianDataset(Dataset):
         # landmarks_3d_points.compute_vertex_normals()
         # o3d.io.write_triangle_mesh("./landmarks_3d_neutral.ply", landmarks_3d_points)
 
-
+        # color -- random color from red, green, blue, white and black
+        random_color = [torch.as_tensor([1.0, 0.0, 0.0]), torch.as_tensor([0.0, 1.0, 0.0]), torch.as_tensor([0.0, 0.0, 1.0]), torch.as_tensor([1.0, 1.0, 1.0]), torch.as_tensor([0.0, 0.0, 0.0])]
+        self.bg_rgb_color = [random_color[np.random.randint(0, 5)] for _ in range(len(frames))]
 
     def get_item(self, index):
         data = self.__getitem__(index)
@@ -389,7 +391,9 @@ class GaussianDataset(Dataset):
         mask = cv2.resize(io.imread(mask_path), (self.original_resolution, self.original_resolution)) / 255
         mask = mask[:, :, 0:1] if len(mask.shape) == 3 else mask[:, :, None]
         # image = image * mask + (1 - mask)
-        image = image * mask 
+        
+        image = image * mask  + (1 - mask) * self.bg_rgb_color[index].numpy()
+
         hair_mask_path = sample[9][view]
         if os.path.exists(hair_mask_path):
             hair_mask = cv2.resize(io.imread(hair_mask_path), (self.original_resolution, self.original_resolution))[:, :, None] / 255
@@ -599,10 +603,12 @@ class GaussianDataset(Dataset):
                 'optical_flow_coarse': optical_flow_coarse,
                 'optical_flow_confidence_coarse': optical_flow_confidence_coarse,
                 'orient_angle_coarse': orient_angle_coarse,
+                'bg_rgb_color': self.bg_rgb_color[index],
                 }
 
     def __len__(self):
-        return max(len(self.samples), 128)
+        # return max(len(self.samples), 128)
+        return len(self.samples)
     
 
 

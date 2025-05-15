@@ -19,6 +19,7 @@ from pytorch3d.ops.knn import knn_gather, knn_points
 from pytorch3d.structures import Meshes, Pointclouds
 from pytorch3d.loss import point_mesh_face_distance
 import open3d as o3d
+import kaolin
 
 from lib.utils.general_utils import inverse_sigmoid, eval_sh,RGB2SH
 from lib.module.GaussianBaseModule import GaussianBaseModule
@@ -169,6 +170,116 @@ def moller_trumbore(ray_o: torch.Tensor, ray_d: torch.Tensor, tris: torch.Tensor
     return u, v, t
 
 
+# winding number way 
+def winding_number(pts: torch.Tensor, verts: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+    """
+    Parallel implementation of the Generalized Winding Number of points on the mesh
+    O(n_points * n_faces) memory usage, parallelized execution
+    1. Project tris onto the unit sphere around every points
+    2. Compute the signed solid angle of the each triangle for each point
+    3. Sum the solid angle of each triangle
+    Parameters
+    ----------
+    pts    : torch.Tensor, (n_points, 3)
+    verts  : torch.Tensor, (n_verts, 3)
+    faces  : torch.Tensor, (n_faces, 3)
+    This implementation is also able to take a/multiple batch dimension
+    """
+    # projection onto unit sphere: verts implementation gives a little bit more performance
+    uv = verts[..., None, :, :] - pts[..., :, None, :]  # n_points, n_verts, 3
+    uv = uv / uv.norm(dim=-1, keepdim=True)  # n_points, n_verts, 3
+
+    # gather from the computed vertices (will result in a copy for sure)
+    expanded_faces = faces[..., None, :, :].expand(*faces.shape[:-2], pts.shape[-2], *faces.shape[-2:])  # n_points, n_faces, 3
+
+    u0 = multi_gather(uv, expanded_faces[..., 0])  # n, f, 3
+    u1 = multi_gather(uv, expanded_faces[..., 1])  # n, f, 3
+    u2 = multi_gather(uv, expanded_faces[..., 2])  # n, f, 3
+
+    e0 = u1 - u0  # n, f, 3
+    e1 = u2 - u1  # n, f, 3
+    del u1
+
+    # compute solid angle signs
+    sign = (torch.cross(e0, e1) * u2).sum(dim=-1).sign()
+
+    e2 = u0 - u2
+    del u0, u2
+
+    l0 = e0.norm(dim=-1)
+    del e0
+
+    l1 = e1.norm(dim=-1)
+    del e1
+
+    l2 = e2.norm(dim=-1)
+    del e2
+
+    # compute edge lengths: pure triangle
+    l = torch.stack([l0, l1, l2], dim=-1)  # n_points, n_faces, 3
+
+    # compute spherical edge lengths
+    l = 2 * (l/2).arcsin()  # n_points, n_faces, 3
+
+    # compute solid angle: preparing: n_points, n_faces
+    s = l.sum(dim=-1) / 2
+    s0 = s - l[..., 0]
+    s1 = s - l[..., 1]
+    s2 = s - l[..., 2]
+
+    # compute solid angle: and generalized winding number: n_points, n_faces
+    eps = 1e-10  # NOTE: will cause nan if not bigger than 1e-10
+    solid = 4 * (((s/2).tan() * (s0/2).tan() * (s1/2).tan() * (s2/2).tan()).abs() + eps).sqrt().arctan()
+    signed_solid = solid * sign  # n_points, n_faces
+
+    winding = signed_solid.sum(dim=-1) / (4 * torch.pi)  # n_points
+
+    return winding
+
+
+def find_boundary_edges(faces):
+    # Create all directed edges
+    edges = torch.cat([faces[:, [0, 1]],
+                       faces[:, [1, 2]],
+                       faces[:, [2, 0]]], dim=0)
+
+    # Sort each edge so direction is ignored
+    edges_sorted, _ = edges.sort(dim=1)
+    edges_sorted = edges_sorted.cpu().numpy()
+
+    # Count occurrences of each edge
+    from collections import defaultdict
+    edge_count = defaultdict(int)
+    for e in map(tuple, edges_sorted):
+        edge_count[e] += 1
+
+    # Edges that appear only once are boundary edges
+    boundary_edges = [e for e, c in edge_count.items() if c == 1]
+    return torch.tensor(boundary_edges, dtype=torch.long)
+
+# get ordered vertices indices
+def order_boundary_loop(edges):
+    # Build connectivity
+    from collections import defaultdict
+    conn = defaultdict(list)
+    for a, b in edges.tolist():
+        conn[a].append(b)
+        conn[b].append(a)
+
+    # Start at any vertex
+    # loop = [edges[0, 0].item()] 3260 3359
+    loop = [3260]
+    visited = set(loop)
+    while True:
+        last = loop[-1]
+        next_candidates = [n for n in conn[last] if n not in visited]
+        if not next_candidates:
+            break
+        next_v = next_candidates[0]
+        loop.append(next_v)
+        visited.add(next_v)
+    return loop
+
 class GaussianHairModule(GaussianBaseModule):
     def __init__(self, cfg, optimizer=None ):
         super().__init__(optimizer)
@@ -213,6 +324,8 @@ class GaussianHairModule(GaussianBaseModule):
         self.features_rest_raw = torch.empty(0)
         self.opacity_raw = torch.empty(0)
         self.width_raw = torch.empty(0)
+        self.hair_dynamics = {'delta_pos' : torch.zeros_like(self.points_raw),
+                            'velocity' : torch.zeros_like(self.points_raw)}
 
         # for dynamic hair, points deformation should be used only when directly training point_raw
         self.points_deform_accumulate = torch.empty(0)
@@ -268,6 +381,8 @@ class GaussianHairModule(GaussianBaseModule):
             {'params': self.pose_key_mlp.parameters(), 'lr': 1e-4, "name": "pose_key"},
             {'params': self.pose_value_mlp.parameters(), 'lr': 1e-4, "name": "pose_value"},
             {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
+            {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
+            {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
         ]
 
         l_static = [{'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"}]
@@ -335,7 +450,7 @@ class GaussianHairModule(GaussianBaseModule):
 
     @property
     def get_strand_points_posed(self):
-        return self.points_posed
+        return self.points_origins_posed
 
     def epoch_start(self):
         self.points_deform_accumulate = torch.zeros_like(self.points_raw)
@@ -344,11 +459,38 @@ class GaussianHairModule(GaussianBaseModule):
         self.optical_flow_3D = torch.ones_like(self.points_raw)
         self.optical_flow_3D_lift = nn.Parameter(torch.zeros(self.num_strands, self.strand_length - 1, 3).cuda())
 
+        self.hair_dynamics['delta_pos'] = torch.zeros_like(self.points_raw)
+        self.hair_dynamics['velocity'] = torch.zeros_like(self.points_raw)
+    
+    def frame_start(self):
+        self.hair_dynamics['delta_pos'] += self.hair_dynamics['velocity']
+        # break the gradient flow
+        self.hair_dynamics['delta_pos'] = self.hair_dynamics['delta_pos'].detach()
+        self.hair_dynamics['velocity'] = torch.zeros_like(self.points_raw)
+
     def disable_static_parameters(self):
         # Disable the static parameters
         for param_group in self.l_static:
             for param in param_group['params']:
                 param.requires_grad = False
+    
+    def enable_static_parameters(self):
+        # Enable the static parameters
+        for param_group in self.l_static:
+            for param in param_group['params']:
+                param.requires_grad = True
+
+    def disable_dynamic_parameters(self):
+        # Disable the dynamic parameters
+        for param_group in self.l_dynamic:
+            for param in param_group['params']:
+                param.requires_grad = False
+    
+    def enable_dynamic_parameters(self):
+        # Enable the dynamic parameters
+        for param_group in self.l_dynamic:
+            for param in param_group['params']:
+                param.requires_grad = True
 
 
     def update_learning_rate(self, iter):
@@ -430,7 +572,7 @@ class GaussianHairModule(GaussianBaseModule):
         square_dist = square_dist.min(dim=-1)[0]
         return square_dist.mean()
     
-    def sign_distance_loss(self, max_num_points = 10000):
+    def sign_distance_loss(self, max_num_points = 20000):
         # negative relu
         # calc distance points to mesh 
         
@@ -446,8 +588,22 @@ class GaussianHairModule(GaussianBaseModule):
         vertices = self.FLAME_mesh.verts_packed()  # (V, 3)
         faces = self.FLAME_mesh.faces_packed()  # (F, 3)
         # (N, 1), bool, true means inside
-        inside = ray_stabbing(points, vertices, faces).view(-1).bool()
+        # inside = ray_stabbing(points, vertices, faces).view(-1).bool()
+ 
+        sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
+        inside = sign.bool()
 
+        # # save points to ply, with inside outside differnt color
+        # points = points.squeeze(0).cpu().numpy()
+        # inside = inside.squeeze(0).cpu().numpy()
+        # colors = np.zeros((points.shape[0], 3))
+        # colors[inside] = [1, 0, 0]
+        # colors[~inside] = [0, 1, 0]
+        # points = np.concatenate([points, colors], axis=-1)
+        # points[:, 3:] = (points[:, 3:] * 255).astype(np.uint8)
+        # vertex = np.array( [tuple(p) for p in points], dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4'),('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
+        # ply_el = PlyElement.describe(vertex, 'vertex')
+        # PlyData([ply_el]).write('colored_points.ply')
 
         # only inside points get the loss
         points = points[inside]
@@ -455,7 +611,21 @@ class GaussianHairModule(GaussianBaseModule):
         # B, N, 3
         points = points.view(1, -1, 3)
         point_cloud = Pointclouds(points)
+        # squared distance
         unsigned_dist = point_mesh_face_distance(self.FLAME_mesh, point_cloud)
+
+        # colors = np.zeros((points.shape[0], 3))
+        # # change the color according to the unsigned distance
+        # # colors = np.zeros((points.shape[0], 3))
+        # norm_dist = unsigned_dist / unsigned_dist.max()
+        # breakpoint()
+        # colors[:, 0] = norm_dist
+        # points = np.concatenate([points, colors], axis=-1)
+        # points[:, 3:] = (points[:, 3:] * 255).astype(np.uint8)
+        # vertex = np.array( [tuple(p) for p in points], dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4'),('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
+        # ply_el = PlyElement.describe(vertex, 'vertex')
+        # PlyData([ply_el]).write('distant_points.ply')
+        
 
         return unsigned_dist 
 
@@ -475,7 +645,6 @@ class GaussianHairModule(GaussianBaseModule):
         feature_diff = (feature_dc - feature_dc[indices]) ** 2
         
         return feature_diff.mean()
-        return 0
     
     # TODO: may limit the expressive capacity of the model
     # what this loss try to solve --- hair gaussian mixed with body gaussian
@@ -546,8 +715,40 @@ class GaussianHairModule(GaussianBaseModule):
 
 
         # pytorch3d canonical mesh
-        faces = torch.from_numpy(np.asarray(faces)).cuda() 
-        self.FLAME_mesh = Meshes(verts= target[None].cuda().to(torch.float), faces=faces[None])
+        # find the bottom neck point
+        faces = torch.from_numpy(np.asarray(faces))
+        edges = find_boundary_edges(faces)
+        # vertex indices of the boundary edges
+        boundary_loop = order_boundary_loop(edges)
+        boundary_loop = torch.tensor(boundary_loop)
+        boundary_verts = target[boundary_loop]
+        # # visualize the boundary loop
+        # boundary_mesh = o3d.geometry.TriangleMesh()
+        # boundary_mesh.vertices = o3d.utility.Vector3dVector(boundary_verts.cpu().numpy())
+        # boundary_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('boundary.ply', boundary_mesh)
+
+        # Compute center point of neck
+        center = boundary_verts.mean(dim=0, keepdim=True)
+        new_verts = torch.cat([target, center], dim=0)
+        center_idx = new_verts.shape[0] - 1
+
+
+        # Create new faces (triangle fan)
+        fan_faces = []
+        for i in range(len(boundary_loop)):
+            v1 = boundary_loop[i]
+            v0 = boundary_loop[(i + 1) % len(boundary_loop)]
+            fan_faces.append([v0.item(), v1.item(), center_idx])
+        fan_faces = torch.tensor(fan_faces)
+
+        # Combine old and new faces
+        new_faces = torch.cat([faces, fan_faces], dim=0)
+        new_faces = new_faces.cuda().to(torch.int32)
+        new_verts = new_verts.cuda().to(torch.float)
+        self.FLAME_mesh =  Meshes(verts=[new_verts], faces=[new_faces])
+        # breakpoint()
+        # self.FLAME_mesh = Meshes(verts= target[None].cuda().to(torch.float), faces=faces[None])
 
 
         # # create a mesh from xyz
@@ -561,8 +762,10 @@ class GaussianHairModule(GaussianBaseModule):
 
         # create a mesh from the target vertices for debugging
         target_mesh = o3d.geometry.TriangleMesh()
-        target_mesh.vertices = o3d.utility.Vector3dVector(target)
-        # target_mesh.triangles = o3d.utility.Vector3iVector(faces)
+        # target_mesh.vertices = o3d.utility.Vector3dVector(target)
+        target_mesh.vertices = o3d.utility.Vector3dVector(new_verts.cpu().numpy())
+        faces = faces.cpu().numpy()
+        target_mesh.triangles = o3d.utility.Vector3iVector(new_faces.cpu().numpy())
         target_mesh.compute_vertex_normals()
         o3d.io.write_triangle_mesh('Init_target_mesh.ply', target_mesh) 
         
@@ -778,7 +981,8 @@ class GaussianHairModule(GaussianBaseModule):
 
         return loss
 
-
+    def deform_regularization_loss(self):
+        return self.deform_regularization 
 
 
     def get_pose_deform(self, all_pose):
@@ -877,6 +1081,7 @@ class GaussianHairModule(GaussianBaseModule):
         # Add dynamics to the hair strands
         # Points shift
         self.points_posed = self.points
+        self.deform_regularization = 0
         if given_optical_flow is not None:
             accumulate_optical_flow = accumulate_optical_flow.view(num_strands, self.strand_length - 1, 3)
             optical_flow = given_optical_flow.view(num_strands, self.strand_length - 1, 3)
@@ -889,13 +1094,23 @@ class GaussianHairModule(GaussianBaseModule):
             self.dir_posed = (self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]).view(-1, 3)
 
         elif poses_history is not None:
-            # point : (frame_num-1, 3)
+            # # point : (frame_num-1, 3)
             pose_deform = self.get_pose_deform(poses_history)
+            self.deform_regularization = pose_deform.norm(dim=-1).mean()
             points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
 
             self.points_posed = points
             self.points_origins_posed = torch.cat([self.origins, self.points_posed], dim=1)
             self.dir_posed = (self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]).view(-1, 3)
+            
+            # pose_deform = self.get_pose_deform(poses_history)
+            # self.hair_dynamics['velocity'] = pose_deform.view(num_strands, self.strand_length - 1, 3)
+
+            # points = self.points + self.hair_dynamics['delta_pos'] + self.hair_dynamics['velocity']
+
+            # self.points_posed = points
+            # self.points_origins_posed = torch.cat([self.origins, self.points_posed], dim=1)
+            # self.dir_posed = (self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]).view(-1, 3)
         
         else:
             self.points_posed = self.points
@@ -1240,6 +1455,8 @@ class GaussianHairModule(GaussianBaseModule):
             self.dir_raw = nn.Parameter(dir_struct_raw.contiguous().requires_grad_(True))
         else:
             self.points_raw = nn.Parameter(points_struct_raw.contiguous().requires_grad_(True))
+        self.hair_dynamics['delta_pos'] = torch.zeros_like(self.points_raw)
+        self.hair_dynamics['velocity'] = torch.zeros_like(self.points_raw)
         self.width_raw = nn.Parameter(torch.ones(self.num_strands, 1).cuda().contiguous().requires_grad_(True))
         self.width_raw.data *= scaling_factor
         if self.train_opacity:
@@ -1313,8 +1530,6 @@ class GaussianHairModule(GaussianBaseModule):
 
         # velocity = self.optical_flow_3D.view(1, -1, 3).repeat(B, 1, 1)
 
-
-        pre_poses = poses_history[0, :-1, :]
         # # from canonical space to world space, used in orginal codes.
         # if 'pose' in data:
         #     R = so3_exponential_map(data['pose'][:, :3])

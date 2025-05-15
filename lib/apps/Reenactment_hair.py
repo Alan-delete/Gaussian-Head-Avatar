@@ -4,7 +4,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
-
+import trimesh
 
 class Reenactment_hair():
     def __init__(self, dataloader, gaussianhead, gaussianhair,supres, camera, recorder, gpu_id, freeview, camera_id=23):
@@ -36,7 +36,7 @@ class Reenactment_hair():
 
         video = []
         gt_video = []
-        
+
         frame_num = len(dataset.samples)
 
         head_vertices = []
@@ -83,7 +83,12 @@ class Reenactment_hair():
                     hair_strand_points.append(hair_strand_points_world_per_frame.cpu().numpy())
                     hair_strand_points_posed.append(hair_strand_points_posed_per_frame.cpu().numpy())
                     hair_color = data['color'][...,:3].view(-1, 3).mean(dim=0).cpu().numpy()
-                
+                    self.gaussianhair.sign_distance_loss()
+                    
+                    strands_origins = self.gaussianhair.get_strand_points_posed
+                    cols = torch.cat((torch.rand(strands_origins.shape[0], 3).unsqueeze(1).repeat(1, 100, 1), torch.ones(strands_origins.shape[0], 100, 1)), dim=-1).reshape(-1, 4).cpu()           
+                    trimesh.PointCloud(strands_origins.reshape(-1, 3).detach().cpu(), colors=cols).export('strands_points.ply')
+
                 if hasattr(self.gaussianhead, 'verts'):
                     head_vertices_world_per_frame = self.gaussianhead.verts
                     head_vertices.append(head_vertices_world_per_frame.squeeze(0).cpu().numpy())

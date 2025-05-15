@@ -108,12 +108,18 @@ if __name__ == '__main__':
 
 
     start_epoch = 390
+    
+    random_seed = '17470484321'
 
     gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
+    gaussianhead_checkpoint = 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_latest_174716194630' 
+    gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest_%s' % (recorder.checkpoint_path, recorder.name, random_seed)
     if os.path.exists(gaussianhead_checkpoint):
         gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
     
     gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
+    gaussianhair_checkpoint =  'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_latest_174716194630'
+    gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest_%s' % (recorder.checkpoint_path, recorder.name, random_seed)
     if os.path.exists(gaussianhair_checkpoint):
         gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
 

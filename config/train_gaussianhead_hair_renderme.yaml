@@ -10,7 +10,7 @@ optimize_pose: False
 use_supres: False
 train_segment: True
 train_optical_flow: False
-resume_training: False
+resume_training: True 
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
@@ -19,7 +19,8 @@ dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
   camera_ids: []
   test_camera_ids: []
-  selected_frames: []
+  # selected_frames: []
+  selected_frames: ['0000', '0054']
   original_resolution: 2048
   resolution: 2048
 
@@ -90,6 +91,7 @@ gaussianheadmodule:
   gaussian_pruning_threshold: 0.5
 
 gaussianhairmodule:
+  pose_deform_method: 'mlp' #'attention'
   pose_point_mlp: [81, 256, 3]
   pose_prior_mlp: [54, 54] 
   pos_freq: 4
