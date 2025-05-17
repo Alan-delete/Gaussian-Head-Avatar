@@ -37,8 +37,10 @@ class config_train(config_base):
         self.cfg.resume_training = False                        # resume training or not
         self.cfg.start_epoch = 0
         self.cfg.num_epochs = 300                            # number of epochs for training
+        self.cfg.num_iterations = -1                      # number of iterations for training, will overwrite num_epochs
         self.cfg.static_scene_init = False                     # initialize the scene with static images or not
         self.cfg.static_training_util_iter = 25000              # static training util iteration
+        self.cfg.checkpoint_seed = -1
 
         self.cfg.loss_weights = CN()
         self.cfg.loss_weights.rgb_hr = 1.0                      # loss for high resolution image
@@ -53,7 +55,7 @@ class config_train(config_base):
         self.cfg.loss_weights.orient = 1e-1                     # loss for orientation
         self.cfg.loss_weights.strand_feature = 1e-2              # loss for strand feature
         self.cfg.loss_weights.sign_distance = 1e-2              # loss for sign distance
-        self.cfg.loss_weights.deform_reg = 5e-2                  # loss for deformation regularization
+        self.cfg.loss_weights.deform_reg = 2e-2                  # loss for deformation regularization
 
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset

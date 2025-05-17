@@ -49,7 +49,6 @@ class Reenactment_hair():
             
             torch.cuda.empty_cache()
             
-            iteration += 1
             data = dataset.__getitem__(i, self.camera_id)
 
             # prepare data
@@ -62,7 +61,7 @@ class Reenactment_hair():
                 head_data = self.gaussianhead.generate(data)
 
                 if self.gaussianhair is not None:
-                    self.gaussianhair.generate_hair_gaussians( poses_history = None, #data['poses_history'][0], 
+                    self.gaussianhair.generate_hair_gaussians(poses_history = None, #data['poses_history'][0], 
                                                             global_pose = data['flame_pose'][0],
                                                             global_scale = data['flame_scale'][0])
                     hair_data = self.gaussianhair.generate(data)
@@ -86,8 +85,19 @@ class Reenactment_hair():
                     self.gaussianhair.sign_distance_loss()
                     
                     strands_origins = self.gaussianhair.get_strand_points_posed
+                    
+                    strands_opacity = self.gaussianhair.get_opacity.view(strands_origins.shape[0], -1)
+                    strands_opacity = strands_opacity.mean(dim=-1)
+                    
+                    strands_origins = strands_origins[strands_opacity > 0.2]
+
                     cols = torch.cat((torch.rand(strands_origins.shape[0], 3).unsqueeze(1).repeat(1, 100, 1), torch.ones(strands_origins.shape[0], 100, 1)), dim=-1).reshape(-1, 4).cpu()           
-                    trimesh.PointCloud(strands_origins.reshape(-1, 3).detach().cpu(), colors=cols).export('strands_points.ply')
+                    # trimesh.PointCloud(strands_origins.reshape(-1, 3).detach().cpu(), colors=cols).export('strands_points.ply')
+
+                    trimesh.PointCloud(strands_origins.reshape(-1, 3).detach().cpu(), colors=cols).export(os.path.join(self.recorder.checkpoint_path, self.recorder.name, 'strands_points.ply'))
+                    if i==0:
+                        trimesh.PointCloud(strands_origins.reshape(-1, 3).detach().cpu(), colors=cols).export(os.path.join(self.recorder.checkpoint_path, self.recorder.name, 'strands_points_frame0.ply'))
+
 
                 if hasattr(self.gaussianhead, 'verts'):
                     head_vertices_world_per_frame = self.gaussianhead.verts

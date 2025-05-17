@@ -292,6 +292,7 @@ class GaussianHeadTrainRecorder():
                 if 'hair_masks' in data:
                     mask = data['masks_coarse'][0]
                     hair_mask = data['hair_masks_coarse'][0].to(mask.device) 
+                    ones_mask = torch.ones_like(mask)
                     images.append(wandb.Image(hair_mask.permute(1, 2, 0).detach().cpu().numpy(), caption="hair_mask"))
 
 
@@ -302,10 +303,11 @@ class GaussianHeadTrainRecorder():
                         render_orientation = data['render_orient'][0]
                         images.append(wandb.Image(vis_orient(render_orientation, hair_mask), caption="rendered_orientation"))
 
+                        images.append(wandb.Image(vis_orient(render_orientation, ones_mask), caption="global_rendered_orientation"))
+
                     if 'optical_flow' in data:
                         # [2, resolution, resolution]
                         optical_flow = data['optical_flow_coarse'][0].to(mask.device)
-                        ones_mask = torch.ones_like(mask)
                         # angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
                         angle = torch.atan2(optical_flow[1], optical_flow[0]) / np.pi
                         images.append(wandb.Image(vis_orient(angle, mask), caption="optical_flow"))

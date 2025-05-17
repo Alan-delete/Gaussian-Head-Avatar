@@ -10,8 +10,12 @@ optimize_pose: False
 use_supres: False
 train_segment: True
 resume_training: False
+checkpoint_seed: 174700561392 
+static_scene_init: True
+static_training_util_iter: 50000
 start_epoch: 0
 num_epochs: 400   
+
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
@@ -33,7 +37,7 @@ loss_weights:
   rgb_hr: 1.
   rgb_lr: 1.
   segment: 2.
-  sign_distance: 0.01
+  sign_distance: 0.05
   strand_feature: 0.01
   transform_reg: 10.
   vgg: 0.1
@@ -103,9 +107,9 @@ gaussianhairmodule:
   aspect_ratio: 1
   quantile: 1
   train_directions: False
-  train_features_rest: False
+  train_features_rest: True 
   train_width: False
-  train_opacity: True
+  train_opacity: False 
   strand_scale : 0.001
   sh_degree : 3
 

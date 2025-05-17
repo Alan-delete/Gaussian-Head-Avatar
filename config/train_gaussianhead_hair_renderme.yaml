@@ -20,7 +20,7 @@ dataset:
   camera_ids: []
   test_camera_ids: []
   # selected_frames: []
-  selected_frames: ['0000', '0054']
+  selected_frames: ['0000', '0099']
   original_resolution: 2048
   resolution: 2048
 

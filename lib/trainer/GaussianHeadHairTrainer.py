@@ -91,10 +91,10 @@ class GaussianHeadHairTrainer():
 
     def train(self, start_epoch=0, epochs=1):
         iteration = start_epoch * len(self.dataloader) * 128
-        iteration = 23000 
+        # iteration = 23000 
+        end_iterationi = 50000
         dataset = self.dataloader.dataset
         static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
-        # static_training_util_iter = 25000 if self.cfg.static_scene_init else 0
         
         # prepare data
         to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
@@ -102,51 +102,55 @@ class GaussianHeadHairTrainer():
                     'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','poses_history', 'optical_flow','optical_flow_confidence',
                     'optical_flow_coarse','optical_flow_confidence_coarse', 'orient_angle_coarse']
 
+        self.gaussianhair.epoch_start()
+        self.gaussianhair.frame_start()
+
+        if self.cfg.static_scene_init and iteration < static_training_util_iter:
+
+            epoch = start_epoch
+            for _ in tqdm(range(iteration, static_training_util_iter)):
+                iteration += 1
+
+                # if this iteration is to save, use predefined view
+                if iteration % self.recorder.show_freq == 0:
+                    # view 22 or 25 are good for visualization
+                    i = np.random.choice([0, 25])
+                    data = dataset.__getitem__(0, i)
+                else:
+                    data = dataset[0]
+
+                # prepare data
+                for data_item in to_cuda:
+                    data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+                    data[data_item] = data[data_item].unsqueeze(0)
+                # data = init_data[idx % len(init_data)]
+
+
+                # disable deformation 
+                data['poses_history'] = [None]
+                self.train_step(iteration, epoch, data)
+                
+            # disable the training of gaussian, just focus on the deformer
+            if self.gaussianhair is not None:
+                self.gaussianhair.disable_static_parameters()
+            if self.gaussianhead is not None:
+                self.gaussianhead.disable_static_parameters()
+            print('Disable static training, start dynamic training')
+
+
         for epoch in range(start_epoch, epochs):
  
             self.gaussianhair.epoch_start()
-            self.gaussianhair.frame_start()
 
-            if self.cfg.static_scene_init and iteration < static_training_util_iter:
-
-                for _ in tqdm(range(iteration, static_training_util_iter)):
-                    iteration += 1
-
-                    # if this iteration is to save, use predefined view
-                    if iteration % self.recorder.show_freq == 0:
-                        # view 22 or 25 are good for visualization
-                        i = np.random.choice([0, 25])
-                        data = dataset.__getitem__(0, i)
-                    else:
-                        data = dataset[0]
-
-                    # prepare data
-                    for data_item in to_cuda:
-                        data[data_item] = torch.as_tensor(data[data_item], device=self.device)
-                        data[data_item] = data[data_item].unsqueeze(0)
-                    # data = init_data[idx % len(init_data)]
-
-
-                    # disable deformation before 20000 iterations
-                    if iteration <= 20000:
-                        data['poses_history'] = [None]
-
-                    self.train_step(iteration, epoch, data)
-                
-                # disable the training of gaussian, just focus on the deformer
-                if self.gaussianhair is not None:
-                    self.gaussianhair.disable_static_parameters()
-                if self.gaussianhead is not None:
-                    self.gaussianhead.disable_static_parameters()
-                print('Disable static training, start dynamic training')
-
+            if iteration > end_iterationi:
+                break
 
             # for idx, data in tqdm(enumerate(range(len(dataset)))):
-            for idx in tqdm((range(len(dataset)))):
+            for idx in (range(len(dataset))):
 
                 self.gaussianhair.frame_start()
 
-                for _ in range(128):
+                for _ in tqdm(range(128)):
 
                     iteration += 1
 
@@ -202,7 +206,7 @@ class GaussianHeadHairTrainer():
         data['pose'] = data['pose'] + self.delta_poses[data['exp_id'], :]
         
         
-
+        B = data['pose'].shape[0]
         if self.gaussianhead is not None:
             # self.gaussianhead.update_learning_rate(iteration)
             head_data = self.gaussianhead.generate(data)
@@ -215,7 +219,7 @@ class GaussianHeadHairTrainer():
                 pre_scale = data['scale']
                 pre_head = self.gaussianhead.get_posed_points( exp_coeff = pre_exp_coeff, pose = pre_pose, scale = pre_scale)
                 optical_flow_head = self.gaussianhead.xyz - pre_head['xyz']
-                for b in range(1):
+                for b in range(B):
                     image_height = resolution_coarse
                     image_width = resolution_coarse
                     # TODO, velocity should not be normalized
@@ -258,7 +262,7 @@ class GaussianHeadHairTrainer():
                 pre_strand = self.gaussianhair.get_posed_points(poses_history = pose_history, pose = pre_pose, scale = pre_scale)
                 optical_flow_hair = self.gaussianhair.points.reshape(-1,3) - pre_strand['points'].reshape(-1, 3)
                 optical_flow_hair = optical_flow_hair.unsqueeze(0)
-                for b in range(1):
+                for b in range(B):
                     image_height = resolution_coarse
                     image_width = resolution_coarse
                     # TODO, velocity should not be normalized
@@ -352,7 +356,7 @@ class GaussianHeadHairTrainer():
         # step decay for segment loss
         if iteration > 20000:
             decay_rate = 0.6 ** ( iteration // 20000)
-            decay_rate = max(decay_rate, 0.3)
+            decay_rate = max(decay_rate, 0.4)
             loss_segment = loss_segment * decay_rate
 
 
@@ -453,7 +457,7 @@ class GaussianHeadHairTrainer():
                                         (cropped_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], normalize=True).mean()
         else:
             loss_rgb_hr = loss_rgb_lr
-            loss_vgg = self.fn_lpips((render_images[:,:3] * visibles_coarse), images_coarse * visibles_coarse, normalize=True).mean()
+            # loss_vgg = self.fn_lpips((render_images[:,:3] * visibles_coarse), images_coarse * visibles_coarse, normalize=True).mean()
 
 
         if self.cfg.flame_gaussian_module.enable:
@@ -483,7 +487,7 @@ class GaussianHeadHairTrainer():
         loss_deform_reg = loss_deform_reg * self.cfg.loss_weights.deform_reg
         # in static training, keep the deformation small
         if iteration < self.cfg.static_training_util_iter:
-            loss_deform_reg = loss_deform_reg * 20.
+            loss_deform_reg = loss_deform_reg * 50.
 
         loss = ( 
                 loss_rgb_hr +

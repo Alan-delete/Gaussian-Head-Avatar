@@ -109,23 +109,24 @@ if __name__ == '__main__':
 
     start_epoch = 390
     
-    random_seed = '17470484321'
+    random_seed = '174731702465'
+
+    if cfg.checkpoint_seed != -1:
+        random_seed = str(cfg.checkpoint_seed)
 
     gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-    gaussianhead_checkpoint = 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_latest_174716194630' 
     gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest_%s' % (recorder.checkpoint_path, recorder.name, random_seed)
     if os.path.exists(gaussianhead_checkpoint):
         gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
     
     gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-    gaussianhair_checkpoint =  'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_latest_174716194630'
     gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest_%s' % (recorder.checkpoint_path, recorder.name, random_seed)
     if os.path.exists(gaussianhair_checkpoint):
         gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
 
     gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
     gaussians_ply_checkpoint =  f'%s/%s/020000_head.ply' % (recorder.checkpoint_path, recorder.name)
-    if os.path.exists(gaussians_ply_checkpoint):
+    if cfg.flame_gaussian_module.enable and os.path.exists(gaussians_ply_checkpoint):
         gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
     
     # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
