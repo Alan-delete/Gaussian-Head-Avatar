@@ -91,7 +91,7 @@ class GaussianHeadHairTrainer():
 
     def train(self, start_epoch=0, epochs=1):
         iteration = start_epoch * len(self.dataloader) * 128
-        # iteration = 23000 
+        iteration = 23000 
         end_iterationi = 50000
         dataset = self.dataloader.dataset
         static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
@@ -127,7 +127,8 @@ class GaussianHeadHairTrainer():
 
 
                 # disable deformation 
-                data['poses_history'] = [None]
+                if iteration < 20000:
+                    data['poses_history'] = [None]
                 self.train_step(iteration, epoch, data)
                 
             # disable the training of gaussian, just focus on the deformer
@@ -366,13 +367,12 @@ class GaussianHeadHairTrainer():
 
 
 
-        gt_optical_flow = data['optical_flow_coarse']
-        gt_optical_flow_confidence = data['optical_flow_confidence_coarse']
-        pred_optical_flow = data['render_velocity']
-        gt_optical_flow = gt_optical_flow * intersect_body_mask
-        pred_optical_flow = pred_optical_flow * intersect_body_mask
-
         if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2 and iteration > 7000:
+            gt_optical_flow = data['optical_flow_coarse']
+            gt_optical_flow_confidence = data['optical_flow_confidence_coarse']
+            pred_optical_flow = data['render_velocity']
+            gt_optical_flow = gt_optical_flow * intersect_body_mask
+            pred_optical_flow = pred_optical_flow * intersect_body_mask
             loss_optical_flow = ( (pred_optical_flow - gt_optical_flow) ** 2 * gt_optical_flow_confidence).mean() * 0.01
             # TODO: use 3d optical flow or 2d optical flow projection?
             loss_optical_flow_hair_reg = optical_flow_hair.norm(2).mean() * 0.1

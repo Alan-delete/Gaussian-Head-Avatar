@@ -105,6 +105,7 @@ if __name__ == '__main__':
 
     torch.autograd.set_detect_anomaly(True)
     start_epoch = cfg.start_epoch
+    checkpoint_seed = cfg.checkpoint_seed
 
     # load_state_dict() does not interfere with autograd, it just overwrites the .data of parameters.
     if cfg.resume_training:
@@ -112,8 +113,12 @@ if __name__ == '__main__':
         # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
         # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest' % (recorder.checkpoint_path, recorder.name)
         gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
+        gaussianhead_checkpoint =  'checkpoints/gaussianhead_renderme_single/gaussianhead_latest_174757976374'
+
         gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
         gaussianhair_checkpoint =  'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_epoch_13'
+        gaussianhair_checkpoint =  'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_174757976374'
+
         gaussians_ply_checkpoint =  f'%s/%s/020000_head.ply' % (recorder.checkpoint_path, recorder.name)
         
         if os.path.exists(gaussians_ply_checkpoint):

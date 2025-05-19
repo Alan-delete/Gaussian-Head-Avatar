@@ -787,7 +787,7 @@ class GaussianHairModule(GaussianBaseModule):
         v_template = torch.from_numpy(v_template)
         S = S.to(torch.double)
         S = torch.clamp(S, min=0.01, max=0.1) 
-        target = v_template / S * 0.95
+        target = v_template / S * 0.85
 
         hair_list_filename = "assets/FLAME/hair_list.pkl"
         if os.path.exists(hair_list_filename):

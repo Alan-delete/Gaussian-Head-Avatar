@@ -234,6 +234,7 @@ class GaussianDataset(Dataset):
         
         self.num_exp_id = 0
         params_path_history = []
+        self.poses_history = []
         self.flame_mesh_path = os.path.join(flame_param_folder, '0000', 'mesh_0.obj')
         optical_flow_path = ['void_path' for _ in self.camera_ids]
         for frame in frames:
@@ -273,10 +274,17 @@ class GaussianDataset(Dataset):
             params_path_history.append(flame_param_path)
             self.num_exp_id += 1
 
+            pre_param = np.load(flame_param_path)
+            pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
+            self.poses_history.append(pre_pose)
+
+        self.poses_history = torch.stack(self.poses_history)
+
         param_folder = os.path.join(self.dataroot, 'FLAME_params')
         param = np.load(os.path.join(param_folder, frames[0], 'params.npz'))
         init_landmarks_3d = torch.from_numpy(np.load(os.path.join(param_folder, frames[0], 'lmk_3d.npy'))).float()
         init_vertices = torch.from_numpy(np.load(os.path.join(param_folder, frames[0], 'vertices.npy'))).float()
+
 
 
         train_meshes = {}
@@ -464,63 +472,67 @@ class GaussianDataset(Dataset):
 
         exp_id = torch.tensor(sample[7]).long()
 
-        params_path_history = sample[8]
-        poses_history = []
-        for pre_idx in range(index + 1):
-            pre_param_path = params_path_history[pre_idx]
-            pre_param = np.load(pre_param_path)
-            pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
-            poses_history.append(pre_pose)
-        if len(poses_history) == 0:
-            # poses_history = torch.zeros(1, 6)
-            poses_history = torch.empty(0, 6)
-        else:
-            poses_history = torch.stack(poses_history)
+        # params_path_history = sample[8]
+        # poses_history = []
+        # for pre_idx in range(index + 1):
+        #     pre_param_path = params_path_history[pre_idx]
+        #     pre_param = np.load(pre_param_path)
+        #     pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
+        #     poses_history.append(pre_pose)
+        # if len(poses_history) == 0:
+        #     # poses_history = torch.zeros(1, 6)
+        #     poses_history = torch.empty(0, 6)
+        # else:
+        #     poses_history = torch.stack(poses_history)
+        
+        poses_history = self.poses_history[:index + 1]
 
 
 
         optical_flow_path = sample[10][view]
         optical_flow_confidence_path = optical_flow_path.replace('.npy', '_confidence_map.npy')
-        optical_flow = torch.zeros(2, self.resolution, self.resolution)
+        optical_flow = torch.zeros(2, 128,128)
+        # optical_flow = torch.zeros(2, self.resolution, self.resolution)
 
-        if os.path.exists(optical_flow_path):
-            data = np.load(optical_flow_path, allow_pickle=True)
-            if data.dtype == object:
-                data_dict = data.item()
-                # N, 2
-                coord = torch.from_numpy(data_dict['coord'])
-                # N, 2
-                flow = torch.from_numpy(data_dict['flow'])
-                # N
-                visibility = torch.from_numpy(data_dict['visibility']).bool()
-                coord = coord[visibility]
-                flow = flow[visibility]
-                x = coord[:, 0]
-                y = coord[:, 1]
-                optical_flow[0, y, x] = flow[:,0]
-                optical_flow[1, y, x] = flow[:,1]
-            elif data.dtype == np.float32:
-                # (2, H, W)
-                optical_flow = torch.from_numpy(data)
-                optical_flow = optical_flow.squeeze(0)
-                # dense matching estimate from t+1 to t, need to invert it
-                optical_flow = - optical_flow
-                # TODO: opencv/numpy's orgin at top left, now should invert y axis of optical flow? 
-                optical_flow[1, ...] = -optical_flow[1, ...]
-            else:
-                raise ValueError('Unknown optical flow data type')
+        # if os.path.exists(optical_flow_path):
+        #     data = np.load(optical_flow_path, allow_pickle=True)
+        #     if data.dtype == object:
+        #         data_dict = data.item()
+        #         # N, 2
+        #         coord = torch.from_numpy(data_dict['coord'])
+        #         # N, 2
+        #         flow = torch.from_numpy(data_dict['flow'])
+        #         # N
+        #         visibility = torch.from_numpy(data_dict['visibility']).bool()
+        #         coord = coord[visibility]
+        #         flow = flow[visibility]
+        #         x = coord[:, 0]
+        #         y = coord[:, 1]
+        #         optical_flow[0, y, x] = flow[:,0]
+        #         optical_flow[1, y, x] = flow[:,1]
+        #     elif data.dtype == np.float32:
+        #         # (2, H, W)
+        #         optical_flow = torch.from_numpy(data)
+        #         optical_flow = optical_flow.squeeze(0)
+        #         # dense matching estimate from t+1 to t, need to invert it
+        #         optical_flow = - optical_flow
+        #         # TODO: opencv/numpy's orgin at top left, now should invert y axis of optical flow? 
+        #         optical_flow[1, ...] = -optical_flow[1, ...]
+        #     else:
+        #         raise ValueError('Unknown optical flow data type')
 
         optical_flow_coarse = F.interpolate(optical_flow[None], scale_factor = self.coarse_scale_factor)[0]
         
-        if os.path.exists(optical_flow_confidence_path):
-            # (1, H, W)
-            optical_flow_confidence = torch.from_numpy(np.load(optical_flow_confidence_path)).float()
-            # (H, W) -> (1, H, W)
-            if len(optical_flow_confidence.shape) == 2:
-                optical_flow_confidence = optical_flow_confidence.unsqueeze(0)
-            optical_flow_confidence = F.interpolate(optical_flow_confidence[None], size=(self.resolution, self.resolution), mode='bilinear')[0]
-        else:
-            optical_flow_confidence = torch.ones(1, self.resolution, self.resolution)
+        # if os.path.exists(optical_flow_confidence_path):
+        #     # (1, H, W)
+        #     optical_flow_confidence = torch.from_numpy(np.load(optical_flow_confidence_path)).float()
+        #     # (H, W) -> (1, H, W)
+        #     if len(optical_flow_confidence.shape) == 2:
+        #         optical_flow_confidence = optical_flow_confidence.unsqueeze(0)
+        #     optical_flow_confidence = F.interpolate(optical_flow_confidence[None], size=(self.resolution, self.resolution), mode='bilinear')[0]
+        # else:
+        #     optical_flow_confidence = torch.ones(1, self.resolution, self.resolution)
+        optical_flow_confidence = torch.ones(1, self.resolution, self.resolution)
 
         optical_flow_confidence_coarse = F.interpolate(optical_flow_confidence[None], scale_factor=self.coarse_scale_factor)[0]
 
@@ -544,7 +556,7 @@ class GaussianDataset(Dataset):
         
         orient_angle_coarse = F.interpolate(orient_angle[None], scale_factor=self.coarse_scale_factor)[0]
 
-        if os.path.exists(orientation_confidence_path):
+        if False and os.path.exists(orientation_confidence_path):
             resized_orient_var = F.interpolate(torch.from_numpy(np.load(orientation_confidence_path)).float()[None, None], size=(self.resolution, self.resolution), mode='bilinear')[0] / math.pi**2
             resized_orient_conf = 1 / (resized_orient_var ** 2 + 1e-7)
 
@@ -566,7 +578,7 @@ class GaussianDataset(Dataset):
         flame_scale = torch.from_numpy(flame_param['scale']).float()
         flame_scale = flame_scale.view(-1)
         # shape of 59
-        flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
+        # flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
         # from lib.face_models.FLAMEModule import FLAMEModule
         # breakpoint()
         # flame_model = FLAMEModule(batch_size=1)

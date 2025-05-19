@@ -305,32 +305,32 @@ class GaussianHeadTrainRecorder():
 
                         images.append(wandb.Image(vis_orient(render_orientation, ones_mask), caption="global_rendered_orientation"))
 
-                    if 'optical_flow' in data:
-                        # [2, resolution, resolution]
-                        optical_flow = data['optical_flow_coarse'][0].to(mask.device)
-                        # angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
-                        angle = torch.atan2(optical_flow[1], optical_flow[0]) / np.pi
-                        images.append(wandb.Image(vis_orient(angle, mask), caption="optical_flow"))
+                    # if 'optical_flow' in data:
+                    #     # [2, resolution, resolution]
+                    #     optical_flow = data['optical_flow_coarse'][0].to(mask.device)
+                    #     # angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
+                    #     angle = torch.atan2(optical_flow[1], optical_flow[0]) / np.pi
+                    #     images.append(wandb.Image(vis_orient(angle, mask), caption="optical_flow"))
 
 
-                        # estimated_flow_numpy = (data['optical_flow'][0] * mask).permute(1, 2, 0).detach().cpu().numpy()
-                        # warped_query_image = remap_using_flow_fields(image, estimated_flow_numpy[:, :, 0],
-                        #                              estimated_flow_numpy[:, :, 1]).astype(np.uint8)
-                        # images.append(wandb.Image(warped_query_image, caption="warped_image"))
+                    #     # estimated_flow_numpy = (data['optical_flow'][0] * mask).permute(1, 2, 0).detach().cpu().numpy()
+                    #     # warped_query_image = remap_using_flow_fields(image, estimated_flow_numpy[:, :, 0],
+                    #     #                              estimated_flow_numpy[:, :, 1]).astype(np.uint8)
+                    #     # images.append(wandb.Image(warped_query_image, caption="warped_image"))
 
-                    if 'render_velocity' in data:
-                        # render_velocity = data['render_velocity'][0].permute(1, 2, 0).detach().cpu().numpy() 
-                        # render_velocity = (render_velocity * 255).astype(np.uint8)
-                        # render_velocity = cv2.resize(render_velocity, (image.shape[0], image.shape[1]))
-                        # images.append(wandb.Image(render_velocity, caption="rendered_velocity"))
-                        render_velocity = data['render_velocity'][0]
-                        # angle = torch.atan2(render_velocity[1], render_velocity[0]) * 180 / np.pi
-                        angle = torch.atan2(render_velocity[1], render_velocity[0]) / np.pi
-                        images.append(wandb.Image(vis_orient(angle, mask), caption="rendered_velocity"))
+                    # if 'render_velocity' in data:
+                    #     # render_velocity = data['render_velocity'][0].permute(1, 2, 0).detach().cpu().numpy() 
+                    #     # render_velocity = (render_velocity * 255).astype(np.uint8)
+                    #     # render_velocity = cv2.resize(render_velocity, (image.shape[0], image.shape[1]))
+                    #     # images.append(wandb.Image(render_velocity, caption="rendered_velocity"))
+                    #     render_velocity = data['render_velocity'][0]
+                    #     # angle = torch.atan2(render_velocity[1], render_velocity[0]) * 180 / np.pi
+                    #     angle = torch.atan2(render_velocity[1], render_velocity[0]) / np.pi
+                    #     images.append(wandb.Image(vis_orient(angle, mask), caption="rendered_velocity"))
                     
-                    if 'optical_flow_confidence' in data:
-                        optical_flow_confidence = data['optical_flow_confidence_coarse'][0].to(mask.device)
-                        images.append(wandb.Image(optical_flow_confidence.permute(1, 2, 0).detach().cpu().numpy(), caption="optical_flow_confidence"))
+                    # if 'optical_flow_confidence' in data:
+                    #     optical_flow_confidence = data['optical_flow_confidence_coarse'][0].to(mask.device)
+                    #     images.append(wandb.Image(optical_flow_confidence.permute(1, 2, 0).detach().cpu().numpy(), caption="optical_flow_confidence"))
 
 
                 wandb.log({"Images": images})
