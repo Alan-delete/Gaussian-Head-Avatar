@@ -9,6 +9,7 @@
 from pathlib import Path
 import numpy as np
 import torch
+import torch.nn as nn
 # from vht.model.flame import FlameHead
 from flame_model.flame import FlameHead
 import open3d as o3d
@@ -16,6 +17,8 @@ import open3d as o3d
 from lib.module.gaussian_model import GaussianModel
 from lib.utils.graphics_utils import compute_face_orientation
 from lib.utils.general_utils import inverse_sigmoid, eval_sh
+from lib.network.PositionalEmbedding import get_embedder
+from lib.network.MLP import MLP
 
 # from pytorch3d.transforms import matrix_to_quaternion
 from roma import rotmat_to_unitquat, quat_xyzw_to_wxyz
@@ -42,6 +45,16 @@ class FlameGaussianModel(GaussianModel):
         if self.binding is None:
             self.binding = torch.arange(len(self.flame_model.faces)).cuda()
             self.binding_counter = torch.ones(len(self.flame_model.faces), dtype=torch.int32).cuda()
+
+        self.pos_embedding, _ = get_embedder(multires = 4)
+        self.pose_deform_mlp = MLP([81, 256, 256, 3], last_op=nn.Tanh()).cuda()
+        # initialize the pose_deform_mlp as zero
+        def init_weights(m):
+            if isinstance(m, nn.Linear) or isinstance(m, nn.Conv1d):
+                torch.nn.init.zeros_(m.weight)
+                m.bias.data.fill_(0.001)
+        self.pose_deform_mlp.apply(init_weights)
+        
 
     def disable_static_parameters(self):
         if self.flame_param is not None:
@@ -243,6 +256,10 @@ class FlameGaussianModel(GaussianModel):
             param_static_offset = {'params': [self.flame_param['static_offset']], 'lr': 1e-6, "name": "static_offset"}
             self.optimizer.add_param_group(param_static_offset)
 
+        # add pose-dependent dynamic offset
+        pose_deformer_params = {'params': self.pose_deform_mlp.parameters(), 'lr': 1e-5, "name": "pose_deform_mlp"}
+        self.optimizer.add_param_group(pose_deformer_params)
+
         # # dynamic_offset
         # self.flame_param['dynamic_offset'].requires_grad = True
         # param_dynamic_offset = {'params': [self.flame_param['dynamic_offset']], 'lr': 1.6e-6, "name": "dynamic_offset"}
@@ -251,22 +268,23 @@ class FlameGaussianModel(GaussianModel):
     def save_ply(self, path):
         super().save_ply(path)
 
-        npz_path = Path(path).parent / "flame_param.npz"
+        # npz_path = Path(path).parent / "flame_param.npz"
+        npz_path = path.replace('.ply', '_flame_param.npz') 
         flame_param = {k: v.cpu().numpy() for k, v in self.flame_param.items()}
         np.savez(str(npz_path), **flame_param)
 
-        mesh_path = Path(path).parent / "head_mesh_latest.ply"
-        generic_mesh = o3d.geometry.TriangleMesh()
-        generic_mesh.vertices = o3d.utility.Vector3dVector(self.verts.squeeze(0).detach().cpu().numpy())
-        generic_mesh.triangles = o3d.utility.Vector3iVector(self.faces.squeeze(0).detach().cpu().numpy())
-        generic_mesh.compute_vertex_normals()
-        o3d.io.write_triangle_mesh(mesh_path, generic_mesh)
+        # mesh_path = Path(path).parent / "head_mesh_latest.ply"
+        # generic_mesh = o3d.geometry.TriangleMesh()
+        # generic_mesh.vertices = o3d.utility.Vector3dVector(self.verts.squeeze(0).detach().cpu().numpy())
+        # generic_mesh.triangles = o3d.utility.Vector3iVector(self.faces.squeeze(0).detach().cpu().numpy())
+        # generic_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh(mesh_path, generic_mesh)
 
-        posed_gaussian_point_cloud_path = Path(path).parent / "posed_gaussian_point_cloud.ply"
-        xyz = self.get_xyz.squeeze(0).detach().cpu().numpy()
-        generic_mesh = o3d.geometry.PointCloud()
-        generic_mesh.points = o3d.utility.Vector3dVector(xyz)
-        o3d.io.write_point_cloud(posed_gaussian_point_cloud_path, generic_mesh)
+        # posed_gaussian_point_cloud_path = Path(path).parent / "posed_gaussian_point_cloud.ply"
+        # xyz = self.get_xyz.squeeze(0).detach().cpu().numpy()
+        # generic_mesh = o3d.geometry.PointCloud()
+        # generic_mesh.points = o3d.utility.Vector3dVector(xyz)
+        # o3d.io.write_point_cloud(posed_gaussian_point_cloud_path, generic_mesh)
 
     def load_ply(self, path, **kwargs):
         super().load_ply(path)
@@ -274,9 +292,24 @@ class FlameGaussianModel(GaussianModel):
         if not kwargs['has_target']:
             # When there is no target motion specified, use the finetuned FLAME parameters.
             # This operation overwrites the FLAME parameters loaded from the dataset.
-            npz_path = Path(path).parent / "flame_param.npz"
+            # npz_path = Path(path).parent / "flame_param.npz"
+            npz_path = path.replace('.ply', '_flame_param.npz')
             flame_param = np.load(str(npz_path))
             flame_param = {k: torch.from_numpy(v).cuda() for k, v in flame_param.items()}
+
+            checkpoint_num_timesteps = flame_param['expr'].shape[0]
+
+            # if the number of timesteps in the checkpoint is different from the current one, use the current one
+            # TODO: remove this part. Currently it exists because we want to use the checkpoint of static scene for dynamic scene training
+            if checkpoint_num_timesteps != self.num_timesteps:
+                flame_param['translation'] = self.flame_param['translation'].clone()
+                flame_param['rotation'] = self.flame_param['rotation'].clone()
+                flame_param['neck_pose'] = self.flame_param['neck_pose'].clone()
+                flame_param['jaw_pose'] = self.flame_param['jaw_pose'].clone()
+                flame_param['eyes_pose'] = self.flame_param['eyes_pose'].clone()
+                flame_param['expr'] = self.flame_param['expr'].clone()
+                flame_param['dynamic_offset'] = self.flame_param['dynamic_offset'].clone()
+
 
             self.flame_param = flame_param
             self.num_timesteps = self.flame_param['expr'].shape[0]  # required by viewers
@@ -301,7 +334,7 @@ class FlameGaussianModel(GaussianModel):
                 'dynamic_offset': flame_param['dynamic_offset'],
             }
             self.num_timesteps = self.flame_param['expr'].shape[0]  # required by viewers
-        
+
         if 'disable_fid' in kwargs and len(kwargs['disable_fid']) > 0:
             mask = (self.binding[:, None] != kwargs['disable_fid'][None, :]).all(-1)
 
@@ -340,6 +373,48 @@ class FlameGaussianModel(GaussianModel):
         rotation = self.get_rotation.unsqueeze(0).repeat(B, 1, 1)
 
         opacity = self.get_opacity.unsqueeze(0).repeat(B, 1, 1) 
+
+
+        delta_xyz = torch.zeros_like(xyz, device=xyz.device)
+        delta_attributes = torch.zeros([B, xyz.shape[1], scales.shape[2] + rotation.shape[2] + opacity.shape[2]], device=xyz.device)
+
+        # # TODO: save the weigts
+        # if data['poses_history'] is not None:
+        #     for b in range(B):
+        #         # # color, [features + pose_embedding] -> [color]
+        #         # feature_pose_controlled = feature[b]
+        #         # pose_color_input = torch.cat([feature_pose_controlled.t(), 
+        #         #                                 self.pos_embedding(data['pose'][b]).unsqueeze(-1).repeat(1, feature_pose_controlled.shape[0])], 0)[None]
+        #         # pose_color = self.pose_color_mlp(pose_color_input)[0].t()
+        #         # color[b] += pose_color
+
+        #         # # attributes: scales, rotation, opacity, [features + pose_embedding] -> [attributes]
+        #         # pose_attributes_input = pose_color_input
+        #         # pose_attributes = self.pose_attributes_mlp(pose_attributes_input)[0].t()
+        #         # delta_attributes[b] += pose_attributes 
+
+        #         # xyz deform, [xyz_embedding + pose_embedding] -> [xyz]
+        #         xyz_pose_controlled = xyz[b]
+        #         pose_deform_input = torch.cat([self.pos_embedding(xyz_pose_controlled).t(), 
+        #                                     self.pos_embedding(data['pose'][b]).unsqueeze(-1).repeat(1, xyz_pose_controlled.shape[0])], 0)[None]
+        #         pose_deform = self.pose_deform_mlp(pose_deform_input)[0].t()
+        #         delta_xyz[b] += pose_deform 
+
+        xyz = xyz + delta_xyz
+
+        # delta_scales = delta_attributes[:, :, 0:3]
+        # scales = self.scales.unsqueeze(0).repeat(B, 1, 1) + delta_scales 
+        # scales = torch.exp(scales)
+
+        # delta_rotation = delta_attributes[:, :, 3:7]
+        # rotation = self.rotation.unsqueeze(0).repeat(B, 1, 1) + delta_rotation 
+        # rotation = torch.nn.functional.normalize(rotation, dim=2)
+
+        # delta_opacity = delta_attributes[:, :, 7:8]
+        # opacity = self.opacity.unsqueeze(0).repeat(B, 1, 1) + delta_opacity 
+        # opacity = torch.sigmoid(opacity)
+
+
 
         # data['exp_deform'] = exp_deform
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)

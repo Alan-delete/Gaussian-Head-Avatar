@@ -330,9 +330,9 @@ class GaussianModel(nn.Module):
                 binding[:, idx] = np.asarray(plydata.elements[0][attr_name])
             self.binding = torch.tensor(binding, dtype=torch.int32, device="cuda").squeeze(-1)
         
-        self.max_radii2D = torch.zeros((self.get_xyz.shape[0]), device="cuda")
-        self.xyz_gradient_accum = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
-        self.denom = torch.zeros((self.get_xyz.shape[0], 1), device="cuda")
+        self.max_radii2D = torch.zeros((self._xyz.shape[0]), device="cuda")
+        self.xyz_gradient_accum = torch.zeros((self._xyz.shape[0], 1), device="cuda")
+        self.denom = torch.zeros((self._xyz.shape[0], 1), device="cuda")
 
     def replace_tensor_to_optimizer(self, tensor, name):
         optimizable_tensors = {}

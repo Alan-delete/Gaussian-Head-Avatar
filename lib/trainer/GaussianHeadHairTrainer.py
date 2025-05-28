@@ -90,9 +90,10 @@ class GaussianHeadHairTrainer():
         self.cfg = cfg
 
     def train(self, start_epoch=0, epochs=1):
-        iteration = start_epoch * len(self.dataloader) * 128
-        iteration = 23000 
-        end_iterationi = 50000
+        # iteration = start_epoch * len(self.dataloader) * 128
+        # iteration = 24001
+        iteration = 120001
+        end_iteration = iteration + 50000
         dataset = self.dataloader.dataset
         static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
         
@@ -105,11 +106,10 @@ class GaussianHeadHairTrainer():
         self.gaussianhair.epoch_start()
         self.gaussianhair.frame_start()
 
-        if self.cfg.static_scene_init and iteration < static_training_util_iter:
+        if self.cfg.static_scene_init:
 
             epoch = start_epoch
             for _ in tqdm(range(iteration, static_training_util_iter)):
-                iteration += 1
 
                 # if this iteration is to save, use predefined view
                 if iteration % self.recorder.show_freq == 0:
@@ -123,13 +123,14 @@ class GaussianHeadHairTrainer():
                 for data_item in to_cuda:
                     data[data_item] = torch.as_tensor(data[data_item], device=self.device)
                     data[data_item] = data[data_item].unsqueeze(0)
-                # data = init_data[idx % len(init_data)]
 
+                # # disable deformation util the last 2000 iterations to initialize deformation
+                # if iteration < 10000:
+                #     data['poses_history'] = [None]
+                data['poses_history'] = [None]
 
-                # disable deformation 
-                if iteration < 20000:
-                    data['poses_history'] = [None]
                 self.train_step(iteration, epoch, data)
+                iteration += 1
                 
             # disable the training of gaussian, just focus on the deformer
             if self.gaussianhair is not None:
@@ -143,17 +144,14 @@ class GaussianHeadHairTrainer():
  
             self.gaussianhair.epoch_start()
 
-            if iteration > end_iterationi:
+            if iteration > end_iteration:
                 break
 
             # for idx, data in tqdm(enumerate(range(len(dataset)))):
             for idx in (range(len(dataset))):
 
                 self.gaussianhair.frame_start()
-
                 for _ in tqdm(range(128)):
-
-                    iteration += 1
 
                     if iteration % self.recorder.show_freq == 0:
                         # random pick the view from back(1) and front(25)
@@ -175,6 +173,7 @@ class GaussianHeadHairTrainer():
                         data[data_item] = data[data_item].to(device=self.device)
                     
                     self.train_step(iteration, epoch, data, grad_accumulation = 1)
+                    iteration += 1
 
 
 
@@ -339,6 +338,7 @@ class GaussianHeadHairTrainer():
 
         # sgement loss
         # B, C, H, W 
+
         segment_clone = render_segments.clone()
         segment_clone[:,1] = render_segments[:,1] + render_segments[:,2]
         def l1_loss(a, b):
@@ -348,7 +348,7 @@ class GaussianHeadHairTrainer():
             return (gt - pred).clamp(min=0).mean()
 
         def relax_recall_loss(gt, pred):
-            return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.5
+            return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.7
         
         # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
         loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
@@ -404,7 +404,7 @@ class GaussianHeadHairTrainer():
 
             loss_mesh_dist = 0 #self.gaussianhair.mesh_distance_loss()
 
-            loss_knn_feature = 0 #self.gaussianhair.knn_feature_loss()
+            loss_knn_feature = 0 # self.gaussianhair.knn_feature_loss()
 
             loss_strand_feature = 0 #self.gaussianhair.strand_feature_loss()
 
@@ -488,6 +488,10 @@ class GaussianHeadHairTrainer():
         # in static training, keep the deformation small
         if iteration < self.cfg.static_training_util_iter:
             loss_deform_reg = loss_deform_reg * 50.
+
+        # random_point = torch.rand(1, 3, device=self.device) * 2 - 1
+        # strand_end_points = self.gaussianhair.get_strand_points_posed.view(-1, 100, 3)[:, -1 , :]
+        # loss_debug = (strand_end_points - random_point).norm(2, dim=1).mean() * 1e3
 
         loss = ( 
                 loss_rgb_hr +

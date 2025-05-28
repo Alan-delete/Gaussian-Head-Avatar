@@ -392,6 +392,7 @@ class GaussianHairModule(GaussianBaseModule):
             hair_roots_path = f'{dir_path}/../../ext/perm/data/roots/rootPositions_30k.txt'
         roots, _ = self.strands_generator.hair_roots.load_txt(hair_roots_path)
         self.roots = roots.cuda().unsqueeze(0)
+        self.knn_roots_indices = None
         with torch.no_grad():
             init_theta = self.strands_generator.G_raw.mapping(torch.zeros(1, self.strands_generator.G_raw.z_dim).cuda())
         self.theta = nn.Parameter(init_theta.requires_grad_().cuda())
@@ -445,6 +446,20 @@ class GaussianHairModule(GaussianBaseModule):
             torch.nn.ReLU(),
             torch.nn.Linear(128, self.pose_deform_dim),
         )
+
+        # # initialize the pose_deform_mlp as zero
+        # def init_weights(m):
+        #     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv1d):
+        #         torch.nn.init.zeros_(m.weight)
+        #         m.bias.data.fill_(0.001)
+        # self.pose_deform_attention.apply(init_weights)
+        # self.pose_mlp.apply(init_weights)
+        # self.pose_query_mlp.apply(init_weights)
+        # self.pose_key_mlp.apply(init_weights)
+        # self.pose_value_mlp.apply(init_weights)
+        # self.pose_point_mlp.apply(init_weights)
+        # self.pose_prior_mlp.apply(init_weights)
+
     
 
 
@@ -557,9 +572,12 @@ class GaussianHairModule(GaussianBaseModule):
                 param.requires_grad = False
 
         self.features_dc_raw.requires_grad = True
+        
         if self.train_features_rest:
             self.features_rest_raw.requires_grad = True
-        self.opacity_raw.requires_grad = True
+
+        if self.train_opacity:
+            self.opacity_raw.requires_grad = True
     
     def enable_static_parameters(self):
         # Enable the static parameters
@@ -665,13 +683,14 @@ class GaussianHairModule(GaussianBaseModule):
         
         # self.points_raw is of shape (strand_num, strand_length - 1, 3)
         # select finite points
-        num_points = self.points_posed.shape[0] * self.points_posed.shape[1]
+        num_points = self.points.shape[0] * self.points.shape[1]
         if num_points > max_num_points:
             indices = torch.randperm(num_points)[:max_num_points]
         else:
             indices = torch.arange(num_points)
 
-        points = self.points_posed.reshape(-1, 3)[indices]
+        # points = self.points_posed.reshape(-1, 3)[indices]
+        points = self.points.reshape(-1, 3)[indices]
         vertices = self.FLAME_mesh.verts_packed()  # (V, 3)
         faces = self.FLAME_mesh.faces_packed()  # (F, 3)
         # (N, 1), bool, true means inside
@@ -697,39 +716,50 @@ class GaussianHairModule(GaussianBaseModule):
 
         # B, N, 3
         points = points.view(1, -1, 3)
-        point_cloud = Pointclouds(points)
-        # squared distance
-        unsigned_dist = point_mesh_face_distance(self.FLAME_mesh, point_cloud)
+        mesh_h = kaolin.ops.mesh.index_vertices_by_faces(vertices.unsqueeze(0), faces)
+        distance, _, _ = kaolin.metrics.trianglemesh.point_to_mesh_distance(
+            points.contiguous(), mesh_h.contiguous() #, vertices.contiguous(), faces.contiguous(), eps=1e-8
+        )
+        # distance = torch.sqrt(distance)  # kaolin outputs squared distance
+        distance[distance < 1e-5] = 0
+        dist_loss = distance.mean()
 
-        # colors = np.zeros((points.shape[0], 3))
-        # # change the color according to the unsigned distance
-        # # colors = np.zeros((points.shape[0], 3))
-        # norm_dist = unsigned_dist / unsigned_dist.max()
-        # breakpoint()
-        # colors[:, 0] = norm_dist
-        # points = np.concatenate([points, colors], axis=-1)
-        # points[:, 3:] = (points[:, 3:] * 255).astype(np.uint8)
-        # vertex = np.array( [tuple(p) for p in points], dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4'),('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
-        # ply_el = PlyElement.describe(vertex, 'vertex')
-        # PlyData([ply_el]).write('distant_points.ply')
         
 
-        return unsigned_dist 
+        # For posed points
+        points = self.points_posed.reshape(-1, 3)[indices]
+        sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
+        inside = sign.bool()
+        # only inside points get the loss
+        points = points[inside]
+        # B, N, 3
+        points = points.view(1, -1, 3)
+        distance, _, _ = kaolin.metrics.trianglemesh.point_to_mesh_distance(
+            points.contiguous(), mesh_h.contiguous() #, vertices.contiguous(), faces.contiguous(), eps=1e-8
+        )
+        # distance = torch.sqrt(distance)  # kaolin outputs squared distance
+        distance[distance < 1e-5] = 0
+        dist_loss = dist_loss +  distance.mean()
+
+
+        return dist_loss 
 
     
     # TODO: use root distance or point distance?
     def knn_feature_loss(self):
-        # strand_num, 3
-        roots = self.origins_raw.view(-1, 3)
-        # don't need to do it every time
-        # _, indices = distCUDA2(roots, roots)
-        square_dist = ((roots[:, None] - roots[None])**2).sum(dim=-1)
-        _, indices = square_dist.topk(2, dim=-1, largest=False)
-        indices = indices[:, 1]
+        if self.knn_roots_indices is None:
+            # strand_num, 3
+            roots = self.origins_raw.view(-1, 3)
+            # don't need to do it every time
+            # _, indices = distCUDA2(roots, roots)
+            square_dist = ((roots[:, None] - roots[None])**2).sum(dim=-1)
+            _, indices = square_dist.topk(10, dim=-1, largest=False)
+            self.knn_roots_indices = indices[:, 1:]
 
         # should get idx of size [num_strands], indicating the nearest neighbor
         feature_dc = self.features_dc_raw.view(self.num_strands, self.strand_length -1, -1)
-        feature_diff = (feature_dc - feature_dc[indices]) ** 2
+        neighbor_feature_dc = feature_dc[self.knn_roots_indices].mean(dim=1)
+        feature_diff = (feature_dc - neighbor_feature_dc) ** 2
         
         return feature_diff.mean()
     
@@ -1205,6 +1235,7 @@ class GaussianHairModule(GaussianBaseModule):
             self.dir_posed = (self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]).view(-1, 3)
 
         # Cosserat_loss here
+        # breakpoint()
 
         # from canonical space to world space, used in orginal codes.
         self.points_origins_world = self.points_origins

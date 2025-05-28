@@ -339,6 +339,7 @@ class GaussianDataset(Dataset):
         self.R = so3_exponential_map(pose[None, :3])[0]
         self.T = pose[None, 3:]
         self.S = torch.from_numpy(param['scale']).float()
+        self.pose = pose
 
         R = so3_exponential_map(pose[None, :3])[0]
         T = pose[None, 3:]
@@ -488,7 +489,6 @@ class GaussianDataset(Dataset):
         poses_history = self.poses_history[:index + 1]
 
 
-
         optical_flow_path = sample[10][view]
         optical_flow_confidence_path = optical_flow_path.replace('.npy', '_confidence_map.npy')
         optical_flow = torch.zeros(2, 128,128)
@@ -577,6 +577,10 @@ class GaussianDataset(Dataset):
         flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
         flame_scale = torch.from_numpy(flame_param['scale']).float()
         flame_scale = flame_scale.view(-1)
+
+        # DEBUG: fix the pose to the first frame
+        flame_pose = self.pose 
+
         # shape of 59
         # flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
         # from lib.face_models.FLAMEModule import FLAMEModule

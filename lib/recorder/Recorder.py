@@ -197,6 +197,7 @@ class GaussianHeadTrainRecorder():
 
                 # print('save gaussianhead to path: %s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
                 print('save gaussianhead to path: %s/%s/gaussianhead_iter_%d' % (self.checkpoint_path, self.name, log_data['iter']))
+                print('save gaussianhead to path: %s/%s/gaussianhead_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
                 print('save gaussianhead to path: %s/%s/head_latest_%s.ply' % (self.checkpoint_path, self.name, self.random_seq))
                 
                 

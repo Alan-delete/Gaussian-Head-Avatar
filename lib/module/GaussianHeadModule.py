@@ -91,10 +91,17 @@ class GaussianHeadModule(GaussianBaseModule):
 
     def disable_static_parameters(self):
         ''' Disable the static parameters in the Gaussian Head Module '''
+ 
+    # gaussianhead.optimizer = torch.optim.Adam(gaussianhead_optimized_parameters)
         l_static = ['xyz', 'features_dc', 'features_rest', 'scales', 'rotation', 'opacity', 'seg_label']
-        for name, param in self.named_parameters():
-            if name in l_static:
-                param.requires_grad = False
+        # decrease the learning rate of the static parameters
+        for param_group in self.optimizer.param_groups:
+            if param_group["name"] in l_static:
+                param_group['lr'] = param_group['lr'] * 0.3
+
+        # for name, param in self.named_parameters():
+        #     if name in l_static:
+        #         param.requires_grad = False
 
     def update_learning_rate(self, iter):
         ''' Learning rate scheduling per step '''

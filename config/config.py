@@ -86,6 +86,7 @@ class config_train(config_base):
         self.cfg.supresmodule.network_capacity = 64             # dimension of the network's last conv layer
 
         self.cfg.gaussianheadmodule = CN()
+        self.cfg.gaussianheadmodule.load_gaussianhead_checkpoint = ''              # checkpoint path of gaussian head
         self.cfg.gaussianheadmodule.enable = True               # whether to use the Gaussian head module
         self.cfg.gaussianheadmodule.num_add_mouth_points = 0    # number of the points added around mouth landmarks while initialization
         self.cfg.gaussianheadmodule.exp_color_mlp = []          # dimensions of expression color MLP
@@ -111,6 +112,7 @@ class config_train(config_base):
 
 
         self.cfg.flame_gaussian_module = CN()
+        self.cfg.flame_gaussian_module.load_flame_gaussian_checkpoint = ''              # checkpoint path of gaussian head
         self.cfg.flame_gaussian_module.enable = True
         self.cfg.flame_gaussian_module.iterations = 600_000  # 30_000 (original)
         self.cfg.flame_gaussian_module.position_lr_init = 0.005  # (scaled up according to mean triangle scale)  #0.00016 (original)
@@ -146,6 +148,7 @@ class config_train(config_base):
 
 
         self.cfg.gaussianhairmodule = CN()
+        self.cfg.gaussianhairmodule.load_gaussianhair_checkpoint = ''              # checkpoint path of gaussian hair
         self.cfg.gaussianhairmodule.enable = True               # whether to use the Gaussian hair module
         # contain all pose related 
         self.cfg.gaussianhairmodule.pose_deform_method = 'attention' # deformation method, can be 'Attention' or 'MLP'
