@@ -39,6 +39,9 @@ class GaussianBaseModule(nn.Module):
 
         # mlp
         self.feature = torch.empty(0)
+        # by default, only use diffuse color
+        self.max_sh_degree = 0
+        self.active_sh_degree = 0
         # sh
         self.features_dc = torch.empty(0)
         self.features_rest = torch.empty(0)
@@ -101,6 +104,12 @@ class GaussianBaseModule(nn.Module):
     def get_rotation(self):
         return self.rotation_activation(self.rotation)
 
+    @property
+    def get_features(self):
+        features_dc = self.features_dc
+        features_rest = self.features_rest
+        return torch.cat((features_dc, features_rest), dim=1)    
+
 
     def get_direction_2d(self, viewpoint_camera):
         mean = self.get_xyz
@@ -161,14 +170,14 @@ class GaussianBaseModule(nn.Module):
     def construct_list_of_attributes(self):
         l = ['x', 'y', 'z', 'nx', 'ny', 'nz']
         # All channels except the 3 DC
-        for i in range(self._features_dc.shape[1]*self._features_dc.shape[2]):
+        for i in range(self.features_dc.shape[1]*self.features_dc.shape[2]):
             l.append('f_dc_{}'.format(i))
-        for i in range(self._features_rest.shape[1]*self._features_rest.shape[2]):
+        for i in range(self.features_rest.shape[1]*self.features_rest.shape[2]):
             l.append('f_rest_{}'.format(i))
         l.append('opacity')
-        for i in range(self._scaling.shape[1]):
+        for i in range(self.scales.shape[1]):
             l.append('scale_{}'.format(i))
-        for i in range(self._rotation.shape[1]):
+        for i in range(self.rotation.shape[1]):
             l.append('rot_{}'.format(i))
         return l
 
@@ -205,10 +214,29 @@ class GaussianBaseModule(nn.Module):
         el = PlyElement.describe(elements, 'vertex')
         PlyData([el]).write(path)      
 
+    def load_ply(self, path):
+        plydata = PlyData.read(path)
+        plydata = plydata['vertex']
+
+        xyz = torch.tensor(np.array([plydata[attribute] for attribute in ['x', 'y', 'z']]).T, device=self.xyz.device)
+        normals = torch.tensor(np.array([plydata[attribute] for attribute in ['nx', 'ny', 'nz']]).T, device=self.xyz.device)
+        f_dc = torch.tensor(np.array([plydata[attribute] for attribute in plydata.data.dtype.names if 'f_dc' in attribute]).T, device=self.xyz.device)
+        f_rest = torch.tensor(np.array([plydata[attribute] for attribute in plydata.data.dtype.names if 'f_rest' in attribute]).T, device=self.xyz.device)
+        opacities = torch.tensor(plydata['opacity'], device=self.xyz.device).unsqueeze(1)
+        scale = torch.tensor(np.array([plydata[attribute] for attribute in plydata.data.dtype.names if 'scale' in attribute]).T, device=self.xyz.device)
+        rotation = torch.tensor(np.array([plydata[attribute] for attribute in plydata.data.dtype.names if 'rot' in attribute]).T, device=self.xyz.device)
+
+        self.xyz = xyz
+        self.features_dc = f_dc
+        self.features_rest = f_rest
+        self.opacity = opacities
+        self.scales = scale
+        self.rotation = rotation
+
     def save_ply(self, path):
         dir = os.path.dirname(path)
         name = os.path.basename(path)
-        os.mkdir(dir, exist_ok=True)
+        os.makedirs(dir, exist_ok=True)
 
         # Re-initialize the buffers
         # self.get_feature
@@ -218,6 +246,11 @@ class GaussianBaseModule(nn.Module):
 
         xyz = self.xyz.detach().cpu().numpy()
         normals = np.zeros_like(xyz)
+        # In case use color mlp to learn the color, set the default feature
+        if self.features_dc.shape[0] == 0:
+            self.features_dc = torch.ones((self.xyz.shape[0], 1, 3), device=self.xyz.device)
+        if self.features_rest.shape[0] == 0:
+            self.features_rest = torch.ones((self.xyz.shape[0], 1, 3), device=self.xyz.device)
         f_dc = self.features_dc.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
         f_rest = self.features_rest.detach().transpose(1, 2).flatten(start_dim=1).contiguous().cpu().numpy()
         opacities = self.opacity.detach().cpu().numpy()
@@ -393,4 +426,3 @@ class GaussianBaseModule(nn.Module):
         self.xyz_gradient_accum[update_filter] += torch.norm(viewspace_point_tensor.grad[update_filter,:2], dim=-1, keepdim=True)
         self.denom[update_filter] += 1
  
-

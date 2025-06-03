@@ -47,7 +47,15 @@ gaussianheadmodule:
   dist_threshold_far: 0.25
   deform_scale: 0.3
   attributes_scale: 0.2
-
+  densify: False
+  densification_interval: 100
+  opacity_reset_interval: 3_000
+  densify_from_iter: 500
+  densify_until_iter: 15_000
+  densify_grad_threshold: 0.0002
+  opacity_reg_from_iter: 30_000
+  gaussian_pruning_threshold: 0.5
+  
 recorder:
   debug_tool: 'wandb' # 'tensorboard' or 'wandb'
   name: 'gaussianhead_NeRSemble031'

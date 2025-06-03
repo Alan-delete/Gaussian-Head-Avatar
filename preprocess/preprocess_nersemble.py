@@ -48,26 +48,34 @@ def ResizeImage(target_size, source_size, image=None, K=None):
 def extract_frames(id_list):
 
     for id in id_list:
-        camera_path = os.path.join(DATA_SOURCE, 'camera_params', id, 'camera_params.json')
+        # camera_path = os.path.join(DATA_SOURCE, 'camera_params', id, 'camera_params.json')
+        camera_path = os.path.join(DATA_SOURCE, id, 'calibration', 'camera_params.json')
         with open(camera_path, 'r') as f:
             camera = json.load(f)
 
         fids = {}
         for camera_id in camera['world_2_cam'].keys():
             fids[camera_id] = 0
-            background_path = os.path.join(DATA_SOURCE, 'sequence_BACKGROUND_part-1', id, 'BACKGROUND', 'image_%s.jpg' % camera_id)
+            # background_path = os.path.join(DATA_SOURCE, 'sequence_BACKGROUND_part-1', id, 'BACKGROUND', 'image_%s.jpg' % camera_id)
+            background_path = os.path.join(DATA_SOURCE, id, 'sequences','BACKGROUND', 'image_%s.jpg' % camera_id)
             background = cv2.imread(background_path)
             background, _ = CropImage(LEFT_UP, CROP_SIZE, background, None)
             background, _ = ResizeImage(SIZE, CROP_SIZE, background, None)
             os.makedirs(os.path.join(DATA_OUTPUT, id, 'background'), exist_ok=True)
             cv2.imwrite(os.path.join(DATA_OUTPUT, id, 'background', 'image_' + camera_id + '.jpg'), background)
         
-        video_folders = glob.glob(os.path.join(DATA_SOURCE, '*', id, '*'))
+        # video_folders = glob.glob(os.path.join(DATA_SOURCE, '*', id, '*'))
+        video_folders = glob.glob(os.path.join(DATA_SOURCE, id, 'sequences', '*', "*"))
         for video_folder in video_folders:
             if ('tongue' in video_folder) or ('GLASSES' in video_folder) or ('FREE' in video_folder) or ('BACKGROUND' in video_folder):
                 continue
             video_paths = glob.glob(os.path.join(video_folder, 'cam_*'))
-            for video_path in video_paths:
+            
+            # only care about the /EXP-1-head and /HAIR
+            # should've only downloaded the head and hair folders
+            # video_paths = [video_path for video_path in video_paths if 'head' in video_path or 'HAIR' in video_path]
+            video_paths = [video_path for video_path in video_paths if 'head' in video_path ]
+            for idx, video_path in enumerate(video_paths):
                 camera_id = video_path[-13:-4]
                 extrinsic = np.array(camera['world_2_cam'][camera_id][:3])
                 intrinsic = np.array(camera['intrinsics'])
@@ -102,11 +110,13 @@ def extract_frames(id_list):
                     
 
 if __name__ == "__main__":
+    # TODO: left up should be ajusted
     LEFT_UP = [-200, 304]
     CROP_SIZE = [2600, 2600]
     SIZE = [2048, 2048]
     SIZE_LOWRES = [256, 256]
-    DATA_SOURCE = 'path/to/raw_NeRSemble/'
-    DATA_OUTPUT = '../datasets/NeRSemble'
+    DATA_SOURCE = '../datasets/NeRSemble'
+    DATA_OUTPUT = '../datasets/mini_demo_dataset'
     # DATA_OUTPUT = '../NeRSemble'
-    extract_frames(['031', '036'])
+    # extract_frames(['031', '036'])
+    extract_frames(['100'])

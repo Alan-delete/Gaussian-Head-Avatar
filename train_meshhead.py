@@ -14,11 +14,16 @@ from lib.trainer.MeshHeadTrainer import MeshHeadTrainer
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s1_N031.yaml')
+    parser.add_argument('--dataroot', type=str, default='')
     arg = parser.parse_args()
 
     cfg = config_train()
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
+
+    if arg.dataroot != '':
+        arg_cfg = ['dataroot', arg.dataroot]
+        cfg.dataset.merge_from_list(arg_cfg)
 
     dataset = MeshDataset(cfg.dataset)
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 

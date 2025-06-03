@@ -1,0 +1,87 @@
+sdf_chamfer: {
+      "mesh_outer_hair": "./implicit-hair-data/data/DATASET_TYPE/CASE_NAME/hair_outer.ply",
+      "mesh_outer_hair_remeshed": "./implicit-hair-data/data/DATASET_TYPE/CASE_NAME/hair_outer_remeshed.ply",
+      "num_points": 10_000,
+      }
+      
+textured_strands: {
+      "path_to_mesh": "./implicit-hair-data/data/DATASET_TYPE/CASE_NAME/head_prior.obj",
+      "decoder_checkpoint_path": "",
+      "num_strands": 10_000,
+      "max_num_strands": 50_000,
+      "texture_size": 256,
+      "geometry_descriptor_size": 64,
+      "appearance_descriptor_size": 65, # 4_752
+      "cut_scalp": True
+  }
+
+diffusion_prior: {
+      "use_diffusion": True,
+      "start_denoise": 1,
+      "diffuse_mask": "./implicit-hair-data/data/DATASET_TYPE/CASE_NAME/dif_mask.png",
+      "diffuse_bs": 32,
+      "dif_path": "",  
+       model: {
+          "type": "image_v1",
+          "input_channels": 64,
+          "input_size": [32, 32],
+          "patch_size": 1,
+          "mapping_out": 256,
+          "depths": [2, 4, 4],
+          "channels": [128, 256, 512],
+          "mapping_cond_dim": 0,
+          "unet_cond_dim": 0,
+          "cross_cond_dim": 0,
+          "cross_attn_depths": None,
+          "self_attn_depths": [false, false, false],
+          "has_variance": true,
+          "dropout_rate": 0.05,
+          "skip_stages": 0,
+          "augment_wrapper": false,
+          "augment_prob": 0.12,
+          "sigma_data": 0.5,
+          "sigma_min": 0.02,
+          "sigma_max": 40,
+          "sigma_sample_density": {
+              "type": "lognormal",
+                "mean": -1.2,
+                "std": 1.2
+            }
+      }
+  }
+
+general: {
+    "lrs": {
+      "theta": 0.005,
+      "beta":  0.01,
+      "G_raw": 0.001,
+      "G_superres": 0.001,
+      "G_res": 0.001,
+    },
+    # "milestones": {
+    #   "theta": [1_000, 16_000],
+    #   "G_raw": [1_000, 16_000],
+    #   "G_superres": [1_000, 16_000],
+    #   "beta":  [2_000, 16_000],
+    #   "G_res": [2_000, 16_000],
+    # }   
+    "milestones": {
+      "theta": [0, 15_000],
+      "G_raw": [0, 15_000],
+      "G_superres": [0, 15_000],
+      "beta":  [1_000, 15_000],
+      "G_res": [1_000, 15_000],
+    }
+  }
+
+extra_args: {
+    "num_strands": 10_140,
+    "strand_length": 100,
+    "simplify_strands": False,
+    "aspect_ratio": 1,
+    "quantile": 1,
+    "train_directions": False,
+    "train_features_rest": False,
+    "train_width": False,
+    "train_opacity": False,
+}

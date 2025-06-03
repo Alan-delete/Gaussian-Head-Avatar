@@ -16,11 +16,16 @@ from lib.trainer.GaussianHeadTrainer import GaussianHeadTrainer
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s2_N031.yaml')
+    parser.add_argument('--dataroot', type=str, default='')
     arg = parser.parse_args()
 
     cfg = config_train()
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
+
+    if arg.dataroot != '':
+        arg_cfg = ['dataroot', arg.dataroot]
+        cfg.dataset.merge_from_list(arg_cfg)
 
     dataset = GaussianDataset(cfg.dataset)
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
@@ -86,6 +91,6 @@ if __name__ == '__main__':
 
     optimizer = torch.optim.Adam(optimized_parameters)
     gaussianhead.optimizer = optimizer  
-    trainer = GaussianHeadTrainer(dataloader, delta_poses, gaussianhead, supres, camera, optimizer, recorder, cfg.gpu_id)
-    trainer.train(0, 1000)
+    trainer = GaussianHeadTrainer(dataloader, delta_poses, gaussianhead, supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
+    trainer.train(0, cfg.num_epochs)
 

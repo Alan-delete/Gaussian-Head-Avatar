@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -6,7 +7,7 @@ import lpips
 
 
 class GaussianHeadTrainer():
-    def __init__(self, dataloader, delta_poses, gaussianhead, supres, camera, optimizer, recorder, gpu_id):
+    def __init__(self, dataloader, delta_poses, gaussianhead, supres, camera, optimizer, recorder, gpu_id, cfg = None):
         self.dataloader = dataloader
         self.delta_poses = delta_poses
         self.gaussianhead = gaussianhead
@@ -16,26 +17,49 @@ class GaussianHeadTrainer():
         self.recorder = recorder
         self.device = torch.device('cuda:%d' % gpu_id)
         self.fn_lpips = lpips.LPIPS(net='vgg').to(self.device)
+        # TODO: check which member of cfg is used in the code and only pass those
+        self.cfg = cfg
 
     def train(self, start_epoch=0, epochs=1):
+        dataset = self.dataloader.dataset
         for epoch in range(start_epoch, epochs):
             for idx, data in tqdm(enumerate(self.dataloader)):
-                
-                # prepare data
-                to_cuda = ['images', 'masks', 'visibles', 'images_coarse', 'masks_coarse', 'visibles_coarse', 
-                           'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
-                           'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id']
+                iteration = epoch * len(self.dataloader) + idx
+                # # prepare data
+                # to_cuda = ['images', 'masks', 'visibles', 'images_coarse', 'masks_coarse', 'visibles_coarse', 
+                #            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
+                #            'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id']
+                to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
+                            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
+                            'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','poses_history', 'optical_flow','optical_flow_confidence',
+                            'optical_flow_coarse','optical_flow_confidence_coarse', 'orient_angle_coarse']
+
+
+                if iteration % self.recorder.show_freq == 0:
+                    # random pick the view from back(1) and front(25)
+                    i = np.random.choice(self.cfg.dataset.test_camera_ids)
+                    data = dataset.__getitem__(idx, i)
+                    
+                    for data_item in to_cuda:
+                        data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+                        data[data_item] = data[data_item].unsqueeze(0)
+
                 for data_item in to_cuda:
                     data[data_item] = data[data_item].to(device=self.device)
 
                 images = data['images']
                 visibles = data['visibles']
-                if self.supres is None:
-                    images_coarse = images
-                    visibles_coarse = visibles
-                else:
-                    images_coarse = data['images_coarse']
-                    visibles_coarse = data['visibles_coarse']
+
+                # if self.cfg.use_supres:
+                #     images_coarse = data['images_coarse']
+                #     visibles_coarse = data['visibles_coarse']
+                # else:
+                #     images_coarse = images
+                #     visibles_coarse = visibles
+
+                # 512x512
+                images_coarse = data['images_coarse']
+                visibles_coarse = data['visibles_coarse']
 
                 resolution_coarse = images_coarse.shape[2]
                 resolution_fine = images.shape[2]
@@ -56,8 +80,8 @@ class GaussianHeadTrainer():
                 cropped_render_images, cropped_images, cropped_visibles = self.random_crop(render_images, images, visibles, scale_factor, resolution_coarse, resolution_fine)
                 data['cropped_images'] = cropped_images
                 
-                # generate super resolution images
-                supres_images = self.supres(cropped_render_images)
+                # generate super resolution images, 512*512 -> 2048*2048
+                supres_images = self.supres(cropped_render_images) if self.cfg.use_supres else cropped_images
                 data['supres_images'] = supres_images
 
                 # loss functions
@@ -73,29 +97,30 @@ class GaussianHeadTrainer():
                 self.optimizer.step()
 
                 # Densification
-                with torch.no_grad():
-                    opacity_reset_interval = 3000
-                    densify_from_iter = 500 
-                    densify_until_iter = 15_000
-                    densify_grad_threshold = 0.0002
-                    opacity_reset_interval = 3_000
-                    # TODO: By printing the value of Gaussian Hair cut. Need to get this value in this project
-                    cameras_extent = 4.907987451553345
-                    iteration = idx + epoch * len(self.dataloader)
-                    if iteration <= densify_until_iter:
-                        # Keep track of max radii in image-space for pruning
-                        # TODO: visibility_filter and radii here is batched(with batchsize=1), confict with the original code
-                        visibility_filter = visibility_filter[0]
-                        radii = radii[0]
-                        self.gaussianhead.max_radii2D[visibility_filter] = torch.max(self.gaussianhead.max_radii2D[visibility_filter], radii[visibility_filter])
-                        self.gaussianhead.add_densification_stats(viewspace_point_tensor, visibility_filter)
+                # if self.cfg.gaussianheadmodule.densify:
+                #     with torch.no_grad():
+                #         opacity_reset_interval = 3000
+                #         densify_from_iter = 500 
+                #         densify_until_iter = 15_000
+                #         densify_grad_threshold = 0.0002
+                #         opacity_reset_interval = 3_000
+                #         # TODO: By printing the value of Gaussian Hair cut. Need to get this value in this project
+                #         cameras_extent = 4.907987451553345
+                #         iteration = idx + epoch * len(self.dataloader)
+                #         if iteration <= densify_until_iter :
+                #             # Keep track of max radii in image-space for pruning
+                #             # TODO: visibility_filter and radii here is batched(with batchsize=1), confict with the original code
+                #             visibility_filter = visibility_filter[0]
+                #             radii = radii[0]
+                #             self.gaussianhead.max_radii2D[visibility_filter] = torch.max(self.gaussianhead.max_radii2D[visibility_filter], radii[visibility_filter])
+                #             self.gaussianhead.add_densification_stats(viewspace_point_tensor, visibility_filter)
 
-                        if iteration >= densify_from_iter and iteration % 2000 == 0:
-                            size_threshold = 20 if iteration > opacity_reset_interval else None
-                            self.gaussianhead.densify_and_prune(densify_grad_threshold, 0.005, cameras_extent, size_threshold)
-                        
-                        if iteration % opacity_reset_interval == 0 :
-                            self.gaussianhead.reset_opacity()
+                #             if iteration >= densify_from_iter and iteration % 2000 == 0:
+                #                 size_threshold = 20 if iteration > opacity_reset_interval else None
+                #                 self.gaussianhead.densify_and_prune(densify_grad_threshold, 0.005, cameras_extent, size_threshold)
+                            
+                #             if iteration % opacity_reset_interval == 0 :
+                #                 self.gaussianhead.reset_opacity()
 
                 log = {
                     'data': data,
@@ -106,7 +131,7 @@ class GaussianHeadTrainer():
                     'loss_rgb_hr' : loss_rgb_hr,
                     'loss_vgg' : loss_vgg,
                     'epoch' : epoch,
-                    'iter' : idx + epoch * len(self.dataloader)
+                    'iter' : idx + epoch * len(self.dataloader) 
                 }
                 self.recorder.log(log)
 

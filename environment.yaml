@@ -1,4 +1,4 @@
-name: gha
+name: gha2
 # channels:
 #   - bottler
 #   - iopath
@@ -151,6 +151,8 @@ dependencies:
   - pip:
     - wandb
     - open3d
+    - ninja
+    - rtree
     - pysdf
     - trimesh
     - clean-fid
@@ -163,7 +165,7 @@ dependencies:
     - ext/perm
     # - ext/NeuralHaircut/npbgpp
     - ext/simple-knn
-    - ext/diff_gaussian_rasterization_hair
+    - ext/diff_gaussian_rasterization
     - ext/kaolin
     - prefetch-generator==1.0.3
     - lpips==0.1.4

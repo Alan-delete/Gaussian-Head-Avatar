@@ -2,11 +2,16 @@ import torch
 import kaolin
 import math
 from diff_gaussian_rasterization import GaussianRasterizationSettings, GaussianRasterizer
-
+from torch.nn import functional as F
 
 class CameraModule():
     def __init__(self):
-        self.bg_color = torch.tensor([1.0] * 32).float()
+        # TODO: Currently it's fine, but don't forget to add extra bg_color if using segmentation or depth
+        self.bg_color = torch.tensor([0.0] * 32).float()
+        # segment -- [1,0,0]
+        self.bg_color[3] = 1
+        self.bg_color[4] = 0
+        self.bg_color[5] = 0
         self.scale_modifier = 1.0
 
     def perspective_camera(self, points, camera_proj):
@@ -140,7 +145,14 @@ class CameraModule():
             pass
 
         render_images = []
+        render_segments = []
+        render_orient = []
+        render_velocity  = []
         radii = []
+
+        if 'bg_rgb_color' in data:
+            self.bg_color[:3] = data['bg_rgb_color']
+
         for b in range(B):
 
             tanfovx = math.tan(fovx[b] * 0.5)
@@ -176,28 +188,48 @@ class CameraModule():
                 scales = scales[b],
                 rotations = rotations[b])
             
-            # renders, _radii = rasterizer(
-            #     means3D = means3D,
-            #     means2D = means2D_precomp,
-            #     shs = None,
-            #     colors_precomp = colors_precomp,
-            #     opacities = opacity,
-            #     scales = None,
-            #     rotations = None,
-            #     cov3D_precomp = cov3D_precomp,
-            #     conic_precomp = conic_precomp)
-            # rendered_image, rendered_mask, rendered_cov2D, rendered_orient_conf, rendered_depth = renders.split([3, 2, 3, 1, 1], dim=0)
-            # seg + dir2d + depth +  = 3 + 1 + 1
-            rendered_image, rendered_segment_map, rendered_orient_conf, rendered_depth = render_images_b.split([32, 3, 1, 1], dim=0)
+            # rendered_image, rendered_segment_map, rendered_orient_conf, rendered_depth = render_images_b.split([32, 3, 1, 1], dim=0)
+            # rendered_image= render_images_b[:3]
+            rendered_image= render_images_b
+            rendered_segment = render_images_b[3:6]
+            rendered_cov2D = render_images_b[6:9]
+            rendered_velocity = render_images_b[9:12]
+            
+            # sometimes error occurs here: CUDA error: an illegal memory access was encountered
+            rendered_dir2D = F.normalize(rendered_cov2D[:2], dim=0)
+            to_mirror = torch.ones_like(rendered_dir2D[[0]])
+            to_mirror[rendered_dir2D[[0]] < 0] *= -1
+            # shouldn't be (pi - x)? or because the reverse of the y axis on the screen
+            rendered_orient_angle = torch.acos(rendered_dir2D[[1]].clamp(-1 + 1e-3, 1 - 1e-3) * to_mirror) / math.pi
+            rendered_orient_angle = 1 - rendered_orient_angle
+
+            # 3, resolution, resolution -> 2, resolution, resolution
+            rendered_velocity_angle = rendered_velocity[:2]
+
+            # # 3, resolution, resolution -> 1, resolution, resolution
+            # rendered_velocity = F.normalize(rendered_velocity[:2], dim=0)
+            # to_mirror = torch.ones_like(rendered_velocity[[0]])
+            # to_mirror[rendered_velocity[[0]] < 0] *= -1
+            # rendered_velocity_angle = torch.acos(rendered_velocity[[1]].clamp(-1 + 1e-3, 1 - 1e-3) * to_mirror) / math.pi
 
             # render_images.append(render_images_b)
             render_images.append(rendered_image)
+            render_segments.append(rendered_segment)
+            render_orient.append(rendered_orient_angle)
+            # TODO: should also consider maginitude of the velocity
+            render_velocity.append(rendered_velocity_angle)
             radii.append(radii_b)
 
         render_images = torch.stack(render_images)
+        render_segments = torch.stack(render_segments)
+        render_orient = torch.stack(render_orient)
+        render_velocity = torch.stack(render_velocity)
         radii = torch.stack(radii)
         data['render_images'] = render_images
         data['viewspace_points'] =  screenspace_points
         data['visibility_filter'] = radii > 0
         data['radii'] = radii
+        data['render_segments'] = render_segments
+        data['render_orient'] = render_orient
+        data['render_velocity'] = render_velocity
         return data
