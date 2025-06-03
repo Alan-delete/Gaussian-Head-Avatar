@@ -45,8 +45,13 @@ class Reenactment_hair():
         hair_color = None
 
         highlight_strands_idx = torch.arange(0, self.gaussianhair.num_strands, 300, device= self.device)
-        highlight_color = torch.rand(highlight_strands_idx.shape[0], 3, device=self.device).unsqueeze(1).repeat(1, 99, 1).unsqueeze(0)
+        gen = torch.Generator(device=self.device)
+        gen.manual_seed(77)
+        highlight_color = torch.rand(highlight_strands_idx.shape[0], 3, generator=gen, device=self.device).unsqueeze(1).repeat(1, 99, 1).unsqueeze(0)
             
+        init_flame_pose = dataset.__getitem__(0, self.camera_id)['flame_pose']
+        init_flame_pose = torch.as_tensor( init_flame_pose, device=self.device).unsqueeze(0) 
+
         # for i in tqdm(range(frame_num, 0, -1)):
         for i in tqdm(range(frame_num)):
             
@@ -69,7 +74,8 @@ class Reenactment_hair():
 
                 if self.gaussianhair is not None:
                     self.gaussianhair.generate_hair_gaussians(poses_history = data['poses_history'][0], 
-                                                            global_pose = data['flame_pose'][0],
+                                                            global_pose = init_flame_pose[0],
+                                                            # global_pose = data['flame_pose'][0], 
                                                             global_scale = data['flame_scale'][0])
                     hair_data = self.gaussianhair.generate(data)
                     
@@ -97,7 +103,7 @@ class Reenactment_hair():
                         # data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
                         data[key] = hair_data[key]
 
-                data = self.camera.render_gaussian(data, 512)
+                data = self.camera.render_gaussian(data, 2048)
                 render_images = data['render_images'][: ,:3, ...]
                 gt_images = data['images'][:, :3, ...]
                 gt_video.append(gt_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())

@@ -79,17 +79,11 @@ if __name__ == '__main__':
     
     gaussians = FlameGaussianModel(0, disable_flame_static_offset = cfg.gaussianhairmodule.enable , n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
     # process meshes
-    T = len(dataset.samples)
-
     if gaussians.binding != None:
         gaussians.load_meshes(train_meshes=dataset.train_meshes,
-                              test_meshes={},
-                              tgt_train_meshes = {},
-                              tgt_test_meshes = {})
-        cameras_extent = 4.907987451553345
-        gaussians.create_from_pcd(None, cameras_extent)
-
-        gaussians.training_setup(cfg.flame_gaussian_module)
+                            test_meshes={},
+                            tgt_train_meshes = {},
+                            tgt_test_meshes = {})
         
 
     # create hair gaussian, 
@@ -110,28 +104,39 @@ if __name__ == '__main__':
     # load_state_dict() does not interfere with autograd, it just overwrites the .data of parameters.
     if cfg.resume_training:
         start_epoch = 13
-        # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest' % (recorder.checkpoint_path, recorder.name)
-        # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest' % (recorder.checkpoint_path, recorder.name)
-        gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-        gaussianhead_checkpoint =  'checkpoints/gaussianhead_renderme_single/gaussianhead_latest_174757976374'
+        # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
+        gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest_%d' % (recorder.checkpoint_path, recorder.name, checkpoint_seed)
 
-        gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-        gaussianhair_checkpoint =  'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_epoch_13'
-        gaussianhair_checkpoint =  'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_174757976374'
+        # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
+        # gaussianhair_checkpoint =  'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_epoch_13'
+        # gaussianhair_checkpoint =  'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_174757976374'
+        gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest_%d' % (recorder.checkpoint_path, recorder.name, checkpoint_seed)
 
-        gaussians_ply_checkpoint =  f'%s/%s/020000_head.ply' % (recorder.checkpoint_path, recorder.name)
+        # gaussians_ply_checkpoint =  f'%s/%s/020000_head.ply' % (recorder.checkpoint_path, recorder.name)
+        # gaussians_ply_checkpoint =  f'%s/%s/head_latest_174766867582.ply'% (recorder.checkpoint_path, recorder.name)
+        gaussians_ply_checkpoint =  f'%s/%s/head_latest_%d.ply' % (recorder.checkpoint_path, recorder.name, checkpoint_seed)
         
-        if os.path.exists(gaussians_ply_checkpoint):
+        # first check if the direct load checkpoint path exists
+        if cfg.gaussianheadmodule.load_gaussianhead_checkpoint != '':
+            gaussianhead_checkpoint = cfg.gaussianheadmodule.load_gaussianhead_checkpoint
+        if cfg.gaussianhairmodule.load_gaussianhair_checkpoint != '':
+            gaussianhair_checkpoint = cfg.gaussianhairmodule.load_gaussianhair_checkpoint
+        if cfg.flame_gaussian_module.load_flame_gaussian_checkpoint != '':
+            gaussians_ply_checkpoint = cfg.flame_gaussian_module.load_flame_gaussian_checkpoint
+
+
+        if not cfg.flame_gaussian_module.enable and os.path.exists(gaussianhead_checkpoint):
+            gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
+            print(f'load gaussianhead from {gaussianhead_checkpoint}')
+
+        if cfg.flame_gaussian_module.enable and os.path.exists(gaussians_ply_checkpoint):
             gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
             gaussians.training_setup(cfg.flame_gaussian_module)
             print(f'load gaussians from {gaussians_ply_checkpoint}')
+        
         if os.path.exists(gaussianhair_checkpoint):
             gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
             print(f'load gaussianhair from {gaussianhair_checkpoint}')
-        
-        if os.path.exists(gaussianhead_checkpoint):
-            gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
-            print(f'load gaussianhead from {gaussianhead_checkpoint}')
         
         # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
         start_epoch += 1
@@ -139,6 +144,10 @@ if __name__ == '__main__':
     else:
         # only reset points_raw if not resume training, otherwise gaussianhair.transform will be backpropagated wrongly
         gaussianhair.reset_strands()
+        
+        cameras_extent = 4.907987451553345
+        gaussians.create_from_pcd(None, cameras_extent)
+        gaussians.training_setup(cfg.flame_gaussian_module)
 
     # gaussians.select_mesh_by_timestep(0)
     # breakpoint()

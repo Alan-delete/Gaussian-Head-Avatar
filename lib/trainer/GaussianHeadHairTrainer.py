@@ -92,7 +92,7 @@ class GaussianHeadHairTrainer():
     def train(self, start_epoch=0, epochs=1):
         # iteration = start_epoch * len(self.dataloader) * 128
         # iteration = 24001
-        iteration = 120001
+        iteration = 1
         end_iteration = iteration + 50000
         dataset = self.dataloader.dataset
         static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
@@ -443,6 +443,8 @@ class GaussianHeadHairTrainer():
         supres_images = self.supres(cropped_render_images) if self.cfg.use_supres else cropped_images
         data['supres_images'] = supres_images
 
+        visibles_coarse = visibles_coarse * intersect_hair_mask
+
         psnr_train = psnr(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
         ssim_train = ssim(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
         loss_ssim = 1.0 - ssim(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
@@ -489,7 +491,7 @@ class GaussianHeadHairTrainer():
         if iteration < self.cfg.static_training_util_iter:
             loss_deform_reg = loss_deform_reg * 50.
 
-        # random_point = torch.rand(1, 3, device=self.device) * 2 - 1
+        # random_point = torch.as_tensor([0,0,0]).unsqueeze(0).to(self.device) 
         # strand_end_points = self.gaussianhair.get_strand_points_posed.view(-1, 100, 3)[:, -1 , :]
         # loss_debug = (strand_end_points - random_point).norm(2, dim=1).mean() * 1e3
 
@@ -542,6 +544,7 @@ class GaussianHeadHairTrainer():
             'loss_elastic' : loss_elastic,
             'loss_flame_gaussian_reg' : loss_flame_gaussian_reg,
             'loss_deform_reg' : loss_deform_reg,
+            # 'loss_debug' : loss_debug,
             'epoch' : epoch,
             # 'iter' : idx + epoch * len(self.dataloader)
             'iter' : iteration

@@ -578,8 +578,8 @@ class GaussianDataset(Dataset):
         flame_scale = torch.from_numpy(flame_param['scale']).float()
         flame_scale = flame_scale.view(-1)
 
-        # DEBUG: fix the pose to the first frame
-        flame_pose = self.pose 
+        # # DEBUG: fix the pose to the first frame
+        # flame_pose = self.pose 
 
         # shape of 59
         # flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()

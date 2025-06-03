@@ -10,7 +10,7 @@ optimize_pose: False
 use_supres: False
 train_segment: True
 resume_training: False
-checkpoint_seed: 17480941716 
+checkpoint_seed: 17480233800 
 static_scene_init: True
 static_training_util_iter: 50000
 start_epoch: 0
@@ -21,8 +21,8 @@ dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
   camera_ids: []
   test_camera_ids: []
-  selected_frames: ['0099']
-  # selected_frames: ['0000']
+  # selected_frames: ['0099']
+  selected_frames: ['0000']
   original_resolution: 2048
   resolution: 2048
   coarse_scale_factor: 1.0

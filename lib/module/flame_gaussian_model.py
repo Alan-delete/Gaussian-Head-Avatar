@@ -419,14 +419,6 @@ class FlameGaussianModel(GaussianModel):
         # data['exp_deform'] = exp_deform
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
 
-        # # dir2D = torch.stack(dir2D, dim=0)
-        # dir2D = torch.ones_like(xyz) 
-        # color[..., 6:9] = dir2D
-
-        # velocity2D = torch.ones_like(xyz) 
-        # color[..., 9:12] = velocity2D
-
-        # TODO: use delta_xyz after pose as the 3D optical flow property sent to differentiable renderer 
 
         data['xyz'] = xyz
         data['color'] = color
