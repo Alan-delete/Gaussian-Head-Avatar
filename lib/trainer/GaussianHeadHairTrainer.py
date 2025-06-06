@@ -443,7 +443,7 @@ class GaussianHeadHairTrainer():
         supres_images = self.supres(cropped_render_images) if self.cfg.use_supres else cropped_images
         data['supres_images'] = supres_images
 
-        # visibles_coarse = visibles_coarse * intersect_hair_mask
+        visibles_coarse = visibles_coarse * intersect_hair_mask
 
         psnr_train = psnr(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
         ssim_train = ssim(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)

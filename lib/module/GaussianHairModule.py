@@ -430,7 +430,7 @@ class GaussianHairModule(GaussianBaseModule):
         self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
         self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
         
-        self.pose_embedding_dim = 63
+        self.pose_embedding_dim = 54
         self.pose_deform_dim = 54
         self.pose_query_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
         self.pose_key_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
@@ -1146,11 +1146,7 @@ class GaussianHairModule(GaussianBaseModule):
         # # L, 54
         # all_pose_embedding = self.pos_embedding(all_pose)
 
-        # L, 1
-        timestep = torch.arange(len(all_pose)).cuda()[:, None]
-        # L, 6 -> L, 7
-        all_pose = torch.cat([all_pose, timestep], dim=1)
-        # L, 7 -> L, 63
+        # L, 6 -> L, 54
         all_pose_embedding = self.pos_embedding(all_pose)
         cur_pose_embedding = all_pose_embedding[-1:]
 
@@ -1173,9 +1169,9 @@ class GaussianHairModule(GaussianBaseModule):
 
         elif self.pose_deform_method == 'mlp':
             # select the last 3 poses
-            # 3, 63 ->  1, 3 * 63
+            # 3, 54 ->  1, 3 * 54
             selected_pose = all_pose_embedding[-3:].flatten(0, 1)[None]
-            #  63 ->  54
+            #  54 ->  54
             pose_features = self.pose_mlp(selected_pose)
             pose_deform_embedding = pose_features
 
