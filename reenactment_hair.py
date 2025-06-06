@@ -138,7 +138,7 @@ if __name__ == '__main__':
         gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
         print('load gaussianhead checkpoint from %s' % gaussianhead_checkpoint)
     if os.path.exists(gaussianhair_checkpoint):
-        gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
+        gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage), strict=False)
         print('load gaussianhair checkpoint from %s' % gaussianhair_checkpoint)
 
     if cfg.flame_gaussian_module.enable and os.path.exists(gaussians_ply_checkpoint):

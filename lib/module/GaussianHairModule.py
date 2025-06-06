@@ -21,7 +21,7 @@ from pytorch3d.loss import point_mesh_face_distance #, point_face_distance, face
 import open3d as o3d
 import kaolin
 
-from lib.utils.general_utils import inverse_sigmoid, eval_sh,RGB2SH
+from lib.utils.general_utils import inverse_sigmoid, eval_sh, eval_sh_bases ,RGB2SH
 from lib.module.GaussianBaseModule import GaussianBaseModule
 from lib.network.MLP import MLP
 from lib.network.PositionalEmbedding import get_embedder
@@ -460,6 +460,30 @@ class GaussianHairModule(GaussianBaseModule):
         # self.pose_prior_mlp.apply(init_weights)
 
     
+        # self.color_mlp = MLP([9, 128, 128, 3], last_op=nn.Sigmoid())
+        self.sh_embed = lambda dir: eval_sh_bases(self.active_sh_degree, dir) [..., 1:]
+        self.use_xyz = True
+        self.use_dir = True
+        self.use_sh = True
+        color_in_dim = 0
+        
+        if self.use_xyz:
+            color_in_dim += (2 * cfg.pos_freq + 1 ) * 3 # xyz embedding
+        if self.use_dir:
+            color_in_dim += (2 * cfg.pos_freq + 1 ) * 3 # hair dir embedding
+        if self.use_sh:
+            color_in_dim += (self.active_sh_degree + 1) ** 2 - 1 # SH embedding
+
+        self.color_mlp = nn.Sequential(
+            nn.Linear(color_in_dim, 256),
+            nn.ReLU(),
+            nn.Linear(256, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, 3),
+            nn.Sigmoid()
+        )
 
 
         self.transform = nn.Parameter(torch.eye(4).cuda())
@@ -479,6 +503,7 @@ class GaussianHairModule(GaussianBaseModule):
             {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
             {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
             {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
+            {'params': self.color_mlp.parameters(), 'lr': 1e-4, "name": "color_mlp"},
         ]
 
         l_static = [{'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"}]
@@ -1645,11 +1670,18 @@ class GaussianHairModule(GaussianBaseModule):
             color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0)
             dir_camera.append(dir_pp_normalized) 
 
-        dir_camera = torch.stack(dir_camera, dim=0)
-        # TODO: use network to simulate the hair color(BRDF)
-        # INPUT: dir, dir_camera, xyz
-        # color_input = torch.cat([dir, dir_camera, xyz], dim=-1)  # [B, N, 9]
-        
+        # dir_camera = torch.stack(dir_camera, dim=0)
+        # # TODO: use network to simulate the hair color(BRDF)
+        # # INPUT: dir, dir_camera, xyz
+        # sh_embedding = self.sh_embed(dir_camera)  # [B, N, 81]  
+        # dir_embedding = self.pos_embedding(dir)  # [B, N, 81]
+        # pos_embedding = self.pos_embedding(xyz)  # [B, N, 81]
+        # color_input = torch.cat([sh_embedding, dir_embedding, pos_embedding], dim=-1)  # [B, N, 243]
+        # # color_input = torch.cat([dir, dir_camera, xyz], dim=-1)  # [B, N, 9]        
+        # # color_input = self.pos_embedding(color_input)  # [B, N, 81]
+        # color[..., :3] = self.color_mlp(color_input)
+
+
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
         opacity = self.get_opacity.unsqueeze(0).repeat(B, 1, 1)
 

@@ -66,7 +66,7 @@ class Reenactment_hair():
                 data[data_item].requires_grad = False
             
             # data['poses_history'] = [None]
-            data['bg_rgb_color'] = torch.as_tensor([0.0, 0.0, 0.0]).cuda()
+            data['bg_rgb_color'] = torch.as_tensor([1.0, 1.0, 1.0]).cuda()
             # TODO: select a few strands, color and enlarge them. Then render them
 
             with torch.no_grad():

@@ -201,7 +201,7 @@ class CameraModule():
             to_mirror[rendered_dir2D[[0]] < 0] *= -1
             # shouldn't be (pi - x)? or because the reverse of the y axis on the screen
             rendered_orient_angle = torch.acos(rendered_dir2D[[1]].clamp(-1 + 1e-3, 1 - 1e-3) * to_mirror) / math.pi
-            rendered_orient_angle = 1 - rendered_orient_angle
+            # rendered_orient_angle = 1 - rendered_orient_angle
 
             # 3, resolution, resolution -> 2, resolution, resolution
             rendered_velocity_angle = rendered_velocity[:2]
