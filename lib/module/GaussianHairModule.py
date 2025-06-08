@@ -474,16 +474,16 @@ class GaussianHairModule(GaussianBaseModule):
         if self.use_sh:
             color_in_dim += (self.active_sh_degree + 1) ** 2 - 1 # SH embedding
 
-        self.color_mlp = nn.Sequential(
-            nn.Linear(color_in_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, 3),
-            nn.Sigmoid()
-        )
+        # self.color_mlp = nn.Sequential(
+        #     nn.Linear(color_in_dim, 256),
+        #     nn.ReLU(),
+        #     nn.Linear(256, 128),
+        #     nn.ReLU(),
+        #     nn.Linear(128, 64),
+        #     nn.ReLU(),
+        #     nn.Linear(64, 3),
+        #     nn.Sigmoid()
+        # )
 
 
         self.transform = nn.Parameter(torch.eye(4).cuda())
@@ -503,7 +503,7 @@ class GaussianHairModule(GaussianBaseModule):
             {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
             {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
             {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
-            {'params': self.color_mlp.parameters(), 'lr': 1e-4, "name": "color_mlp"},
+            # {'params': self.color_mlp.parameters(), 'lr': 1e-4, "name": "color_mlp"},
         ]
 
         l_static = [{'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"}]
@@ -691,15 +691,6 @@ class GaussianHairModule(GaussianBaseModule):
 
         return dir2D
     
-    # TODO: backward twice error?
-    def mesh_distance_loss(self):
-        return 0
-        # strand_num, 3
-        roots = self.origins_raw.view(-1, 3)
-        vecrtices = self.FLAME_mesh.verts_packed()
-        square_dist = ((roots[:, None] - vecrtices[None])**2).sum(dim=-1)
-        square_dist = square_dist.min(dim=-1)[0]
-        return square_dist.mean()
     
     def sign_distance_loss(self, max_num_points = 10000):
         # negative relu
@@ -748,7 +739,6 @@ class GaussianHairModule(GaussianBaseModule):
         distance[distance < 1e-5] = 0
         dist_loss = distance.mean()
 
-        
 
         # For posed points
         points = self.points_posed.reshape(-1, 3)[indices]
@@ -806,15 +796,6 @@ class GaussianHairModule(GaussianBaseModule):
             optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, opacity_raw, "opacity")
             self.opacity_raw = optimizable_tensors["opacity"]
         
-
-    # should better be called when training the raw data, instead of prior
-    def remove_transparent(self):
-
-        # Option 1, remove the whole strand according to mean opacity or root opacity
-
-        # Option 2, from root to top, remove the transparent part and keep the rest while making the last point root
-        pass
-
 
     # TODO: dirpath and flame_mesh_dir should be provided instead of hardcoded
     def update_mesh_alignment_transform(self, R, T, S, dir_path = None, flame_mesh_path = 'datasets/mini_demo_dataset/031/FLAME_params/0000/mesh_0.obj'):
@@ -1073,38 +1054,32 @@ class GaussianHairModule(GaussianBaseModule):
         return 
 
 
-    def elastic_potential_loss(self,  poses_history):
+    def smoothness_loss(self):
+        direction = self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]
+        direction = direction.view(-1, self.strand_length - 1, 3)
+        direction_unit = direction / direction.norm(dim=-1, keepdim=True)
         
-        strands_idx = torch.arange(self.num_strands)
-        num_strands = self.num_strands
+        consecutive_diff = direction_unit[:, 1:] - direction_unit[:, :-1]
+        consecutive_diff_norm = consecutive_diff.norm(dim=-1, keepdim=True)
+        
+        smoothness_loss = consecutive_diff_norm.mean()
+        
+        return smoothness_loss
+    
 
-        # TODO: this part only needs to be done once
-        origins = self.origins_raw[strands_idx] 
-        if self.train_directions:
-            direction = self.dir_raw.view(self.num_strands, self.strand_length - 1, 3)[strands_idx].view(-1, 3)
-            points_origins = torch.cumsum(torch.cat([
-                origins, 
-                direction.view(num_strands, self.strand_length -1, 3)
-            ], dim=1), dim=1)
-            points = points_origins[:, 1:]
-        else:
-            points = self.points_raw[strands_idx]
-            points_origins = torch.cat([origins, points], dim=1)
-            direction = (points_origins[:, 1:] - points_origins[:, :-1]).view(-1, 3)
-        
+    # https://arxiv.org/pdf/2412.10061
+    def elastic_potential_loss(self, poses_history = None):
+            
+        points_origins = self.points_origins
+        direction = (points_origins[:, 1:] - points_origins[:, :-1]).view(-1, 3)
+
         direction_rest = direction.view(-1, 3)
         direction_rest_norm = direction_rest.norm(dim=-1, keepdim=True)
         direction_rest_unit = direction_rest / direction_rest_norm
 
         
-        # TODO: no need to calculate, can be directly gained from generate_hair_gaussians
-        if poses_history is not None:
-            pose_deform = self.get_pose_deform(poses_history)
-
-            points = points + pose_deform.view(self.num_strands, self.strand_length - 1, 3)
-
-            points_origins = torch.cat([origins, points], dim=1)
-            direction = (points_origins[:, 1:] - points_origins[:, :-1]).view(-1, 3)
+        points_origins = self.points_origins_posed
+        direction = (points_origins[:, 1:] - points_origins[:, :-1]).view(-1, 3)
 
         # 1/2 * k * sum(||direction - direction_raw||^2)
 
@@ -1118,7 +1093,8 @@ class GaussianHairModule(GaussianBaseModule):
         Stretch_loss = (direction_norm - direction_rest_norm) ** 2
         Stretch_loss = Stretch_loss.sum(dim=-1).mean()
 
-        loss = Cosserat_loss + Stretch_loss
+        # loss = Cosserat_loss + Stretch_loss
+        loss = Stretch_loss
 
         return loss
 

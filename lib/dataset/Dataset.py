@@ -230,7 +230,7 @@ class GaussianDataset(Dataset):
         orientation_confidence_folder = os.path.join(self.dataroot, 'orientation_confidence_maps')
         frames = sorted(os.listdir(image_folder)) if len(self.selected_frames) == 0 else self.selected_frames
         # decrease the number of frames for debugging 
-        frames = frames[::5] if len(self.selected_frames) == 0 else frames
+        frames = frames[::2] if len(self.selected_frames) == 0 else frames
         
         self.num_exp_id = 0
         params_path_history = []

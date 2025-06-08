@@ -10,12 +10,12 @@ optimize_pose: False
 use_supres: False
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 17490397531 
-resume_training: False
+checkpoint_seed: 174933925949 
+resume_training: True 
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
-static_training_util_iter: 25000   
+static_training_util_iter: 20000   
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
@@ -66,6 +66,7 @@ supresmodule:
 
 gaussianheadmodule:
   # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_latest_174766867582'
+  # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_iter_20000'
   num_add_mouth_points: 3000
   # exp_color_mlp: [192, 256, 256, 32]
   # pose_color_mlp: [182, 128, 32]

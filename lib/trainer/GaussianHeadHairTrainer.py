@@ -92,7 +92,7 @@ class GaussianHeadHairTrainer():
     def train(self, start_epoch=0, epochs=1):
         # iteration = start_epoch * len(self.dataloader) * 128
         # iteration = 24001
-        iteration = 1
+        iteration = 20001
         end_iteration = iteration + 50000
         dataset = self.dataloader.dataset
         static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
@@ -179,6 +179,7 @@ class GaussianHeadHairTrainer():
 
     def train_step(self, iteration, epoch, data, grad_accumulation = 1):
 
+        static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
 
         images = data['images']
         visibles = data['visibles']
@@ -334,6 +335,7 @@ class GaussianHeadHairTrainer():
         loss_strand_feature = 0
         loss_flame_gaussian_reg = 0
         loss_deform_reg = 0
+        loss_smoothness = 0
 
 
         # sgement loss
@@ -366,7 +368,6 @@ class GaussianHeadHairTrainer():
         intersect_hair_mask = gt_hair_mask * segment_clone[:, 2].detach()
 
 
-
         if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2 and iteration > 7000:
             gt_optical_flow = data['optical_flow_coarse']
             gt_optical_flow_confidence = data['optical_flow_confidence_coarse']
@@ -381,8 +382,6 @@ class GaussianHeadHairTrainer():
             loss_optical_flow = 0
             loss_optical_flow_hair_reg = 0
             loss_optical_flow_head_reg = 0
-
-
 
         
         # TODO: try mesh distance loss, also try knn color regularization
@@ -400,21 +399,18 @@ class GaussianHeadHairTrainer():
 
             loss_sign_distance = self.gaussianhair.sign_distance_loss()
 
-            loss_transform_reg = 0 #F.mse_loss(self.gaussianhair.init_transform, self.gaussianhair.transform) 
-
-            loss_mesh_dist = 0 #self.gaussianhair.mesh_distance_loss()
-
             loss_knn_feature = 0 # self.gaussianhair.knn_feature_loss()
 
             loss_strand_feature = 0 #self.gaussianhair.strand_feature_loss()
 
             loss_deform_reg = self.gaussianhair.deform_regularization_loss()
 
+            loss_smoothness = self.gaussianhair.smoothness_loss() * 10
 
-            if True or backprop_into_prior:
+            if backprop_into_prior or iteration <= static_training_util_iter:
                 loss_elastic = 0
             else:
-                loss_elastic = self.gaussianhair.elastic_potential_loss(data['poses_history'][0])
+                loss_elastic = self.gaussianhair.elastic_potential_loss() * 50 
         
 
             #  default [4000, 15000], during that period, use strand raw data to rectify the prior 
@@ -490,6 +486,8 @@ class GaussianHeadHairTrainer():
         # in static training, keep the deformation small
         if iteration < self.cfg.static_training_util_iter:
             loss_deform_reg = loss_deform_reg * 50.
+        
+        loss_smoothness = loss_smoothness * 1e-3
 
         # random_point = torch.as_tensor([0,0,0]).unsqueeze(0).to(self.device) 
         # strand_end_points = self.gaussianhair.get_strand_points_posed.view(-1, 100, 3)[:, -1 , :]
@@ -512,7 +510,8 @@ class GaussianHeadHairTrainer():
                 loss_elastic +
                 loss_optical_flow + 
                 loss_flame_gaussian_reg +
-                loss_deform_reg 
+                loss_deform_reg + 
+                loss_smoothness 
         )
 
         loss = loss / grad_accumulation
@@ -529,9 +528,7 @@ class GaussianHeadHairTrainer():
             'loss_rgb_hr' : loss_rgb_hr,
             'loss_vgg' : loss_vgg,
             'loss_segment' : loss_segment,
-            'loss_transform_reg' : loss_transform_reg,
             'loss_dir' : loss_dir,
-            'loss_mesh_dist' : loss_mesh_dist,
             'loss_knn_feature' : loss_knn_feature,
             'loss_ssim' : loss_ssim,
             'loss_orient' : loss_orient,
@@ -543,6 +540,7 @@ class GaussianHeadHairTrainer():
             'loss_landmarks' : loss_landmarks,
             'loss_elastic' : loss_elastic,
             'loss_flame_gaussian_reg' : loss_flame_gaussian_reg,
+            'loss_smoothness' : loss_smoothness,
             'loss_deform_reg' : loss_deform_reg,
             # 'loss_debug' : loss_debug,
             'epoch' : epoch,
