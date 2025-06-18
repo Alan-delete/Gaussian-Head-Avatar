@@ -292,6 +292,8 @@ def main(args):
         os.makedirs(mask_folder, exist_ok=True)
         mask_folder = os.path.join(f'{data_dir}/NeuralHaircut_masks/face', frame)
         os.makedirs(mask_folder, exist_ok=True)
+        mask_folder = os.path.join(f'{data_dir}/NeuralHaircut_masks/head', frame)
+        os.makedirs(mask_folder, exist_ok=True)
 
 
     # there may be legacy mask images in image folder, so we need to filter out those by using image_[0-9]*.
@@ -309,14 +311,14 @@ def main(args):
     device = torch.device('cuda')
     modnet.eval().to(device)
     
-    # Create silh masks
-    silh_list = []
-    for i in tqdm(range(len(images))):
-        data = T.ToTensor()(Image.open(images[i]))
-        silh_mask = obtain_modnet_mask(data, modnet, 512)
-        silh_list.append(silh_mask)
-        cv2.imwrite(images[i].replace('images', 'NeuralHaircut_masks/body'), postprocess_mask(silh_mask)[0].astype(np.uint8))
-        # cv2.imwrite(images[i].replace('image_', 'mask_'), postprocess_mask(silh_mask)[0].astype(np.uint8))
+    # # Create silh masks
+    # silh_list = []
+    # for i in tqdm(range(len(images))):
+    #     data = T.ToTensor()(Image.open(images[i]))
+    #     silh_mask = obtain_modnet_mask(data, modnet, 512)
+    #     silh_list.append(silh_mask)
+    #     cv2.imwrite(images[i].replace('images', 'NeuralHaircut_masks/body'), postprocess_mask(silh_mask)[0].astype(np.uint8))
+    #     # cv2.imwrite(images[i].replace('image_', 'mask_'), postprocess_mask(silh_mask)[0].astype(np.uint8))
     
     print("Start calculating hair masks!")
 #     load CDGNet for hair masks
@@ -338,8 +340,6 @@ def main(args):
         elif 'module.' + key in state_dict_old.keys():
             nkey = 'module.' + key
             state_dict[key] = deepcopy(state_dict_old[nkey])
-    
-
 
 
     # for key, nkey in zip(state_dict_old.keys(), state_dict.keys()):
@@ -356,27 +356,37 @@ def main(args):
     # basenames = sorted([s.split('.')[0] for s in os.listdir(os.path.join(args.scene_path, 'image'))])
     input_size = (1024, 1024)
     filepaths = sorted(glob.glob(os.path.join(data_dir, 'images', '*', f'image_*.{args.image_format}')))
-    raw_images = []
-    images = []
-    masks = []
-    for image in tqdm(filepaths):
-        img = Image.open(image)
-        raw_images.append(np.asarray(img))
-        img = transform(img.resize(input_size))[None]
-        img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
-        mask = np.asarray(Image.open(image.replace('images', 'NeuralHaircut_masks/body')))
-        mask = cv2.resize(mask, input_size)
-        images.append(img)
-        masks.append(mask)
+    filepaths_blocks = [ filepaths[i:i+5000] for i in range(0, len(filepaths), 5000) ]
 
-    # image_size = (mask.shape[1], mask.shape[0])
-    image_size = input_size
-    parsing_preds, hpredLst, wpredLst = valid(model, images, input_size, image_size, len(images), gpus=1)
+    for filepaths in filepaths_blocks:
+        raw_images = []
+        images = []
+        masks = []
+        for image in tqdm(filepaths):
+            img = Image.open(image)
+            raw_images.append(np.asarray(img))
+            img = transform(img.resize(input_size))[None]
+            img = torch.cat([img, torch.flip(img, dims=[-1])], dim=0)
+            mask = np.asarray(Image.open(image.replace('images', 'NeuralHaircut_masks/body')))
+            mask = cv2.resize(mask, input_size)
+            images.append(img)
+            masks.append(mask)
 
-    for i in range(len(images)):
-        hair_mask = np.asarray(Image.fromarray((parsing_preds[i] == 2)).resize(image_size, Image.BICUBIC))
-        hair_mask = hair_mask * masks[i]
-        Image.fromarray(hair_mask).save(filepaths[i].replace('images', 'NeuralHaircut_masks/hair'))
+        # image_size = (mask.shape[1], mask.shape[0])
+        image_size = input_size
+        parsing_preds, hpredLst, wpredLst = valid(model, images, input_size, image_size, len(images), gpus=1)
+
+        for i in range(len(images)):
+            hair_mask = np.asarray(Image.fromarray((parsing_preds[i] == 2)).resize(image_size, Image.BICUBIC))
+            hair_mask = hair_mask * masks[i]
+
+            face_mask = np.asarray(Image.fromarray((parsing_preds[i] == 13)).resize(image_size, Image.BICUBIC))
+            face_mask = face_mask * masks[i]
+
+            head_mask = face_mask | hair_mask
+            Image.fromarray(head_mask).save(filepaths[i].replace('images', 'NeuralHaircut_masks/head'))
+
+            Image.fromarray(hair_mask).save(filepaths[i].replace('images', 'NeuralHaircut_masks/hair'))
    
     print('Results saved in folder: ', os.path.join(data_dir, 'NeuralHaircut_masks'))
         

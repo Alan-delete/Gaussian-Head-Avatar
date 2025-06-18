@@ -41,7 +41,8 @@ if __name__ == '__main__':
         cfg.dataset.merge_from_list(arg_cfg)
     
     # debug select frames is to only load a few frames for debugging
-    dataset = GaussianDataset(cfg.dataset)
+    # dataset = GaussianDataset(cfg.dataset, split_strategy='all')
+    dataset = GaussianDataset(cfg.dataset, split_strategy='test')
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True) 
 
     # test_dataset = GaussianDataset(cfg.dataset, train=False) 
@@ -114,14 +115,10 @@ if __name__ == '__main__':
     if cfg.checkpoint_seed != -1:
         random_seed = str(cfg.checkpoint_seed)
 
-    gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
     gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest_%s' % (recorder.checkpoint_path, recorder.name, random_seed)
 
-    gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
     gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest_%s' % (recorder.checkpoint_path, recorder.name, random_seed)
 
-    gaussians_ply_checkpoint =  f'%s/%s/head_latest.ply' % (recorder.checkpoint_path, recorder.name)
-    gaussians_ply_checkpoint =  f'%s/%s/020000_head.ply' % (recorder.checkpoint_path, recorder.name)
     gaussians_ply_checkpoint =  f'%s/%s/head_latest_%s.ply' % (recorder.checkpoint_path, recorder.name, random_seed)
     
 

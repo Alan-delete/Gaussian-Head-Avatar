@@ -218,11 +218,15 @@ class GaussianHeadTrainRecorder():
 
                 images = data['images']
                 visibles = data['visibles']
-                images_coarse = images
-                visibles_coarse = visibles
+                images_coarse = data['images_coarse']
+                visibles_coarse = data['visibles_coarse']
+
 
                 resolution_coarse = images_coarse.shape[2]
                 resolution_fine = images.shape[2]
+
+                image = images[0] * visibles[0]
+                image_coarse = images_coarse[0] * visibles_coarse[0]
 
                 # render coarse images
                 head_data = log_data['gaussianhead'].generate(data)
@@ -235,47 +239,65 @@ class GaussianHeadTrainRecorder():
                 data = log_data['camera'].render_gaussian(data, resolution_coarse)
 
 
+            images = data['images']
+            visibles = data['visibles']
+            images_coarse = data['images_coarse']
+            visibles_coarse = data['visibles_coarse']
 
-            image = data['images'][0].permute(1, 2, 0).detach().cpu().numpy()
+            image = images[0].permute(1, 2, 0).detach().cpu().numpy()
             image = (image * 255).astype(np.uint8)[:,:,::-1]
 
-            images_coarse = data['images_coarse'][0].permute(1, 2, 0).detach().cpu().numpy()
+            images_coarse = images_coarse[0].permute(1, 2, 0).detach().cpu().numpy()
             images_coarse = (images_coarse * 255).astype(np.uint8)[:,:,::-1]
 
-            resolution_fine = image.shape[0]
-            resolution_coarse = images_coarse.shape[0]
 
             render_image = data['render_images'][0, 0:3].permute(1, 2, 0).clamp(0, 1).detach().cpu().numpy()
             render_image = (render_image * 255).astype(np.uint8)[:,:,::-1]
-
-            # cropped_image = data['cropped_images'][0].permute(1, 2, 0).detach().cpu().numpy()
-            # cropped_image = (cropped_image * 255).astype(np.uint8)[:,:,::-1]
-
-            # supres_image = data['supres_images'][0].permute(1, 2, 0).detach().cpu().numpy()
-            # supres_image = (supres_image * 255).astype(np.uint8)[:,:,::-1]
-
             render_image = cv2.resize(render_image, (image.shape[0], image.shape[1]))
-            # result = np.hstack((image, render_image, cropped_image, supres_image))
-            result = np.hstack((image, render_image))
+
+            cropped_image = data['cropped_images'][0].permute(1, 2, 0).detach().cpu().numpy()
+            cropped_image = (cropped_image * 255).astype(np.uint8)[:,:,::-1]
+
+            supres_image = data['supres_images'][0].permute(1, 2, 0).detach().cpu().numpy()
+            supres_image = (supres_image * 255).astype(np.uint8)[:,:,::-1]
+
+            
+            result = np.hstack((image, render_image, cropped_image, supres_image))
+            # result = np.hstack((image, render_image))
 
 
             if self.debug_tool == 'wandb':
                 images = []
 
-                # result = cv2.cvtColor(result, cv2.COLOR_BGR2RGB)
-                # result = cv2.resize(result, (image.shape[0] * 2, image.shape[1]))
-                # images.append(wandb.Image(result, caption="rendered"))
-                image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-                image = cv2.resize(image, (render_image.shape[0], render_image.shape[1]))
-                images.append(wandb.Image(image, caption="gt_image_supres"))
+                # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+                # image = cv2.resize(image, (render_image.shape[0], render_image.shape[1]))
+                # images.append(wandb.Image(image, caption="gt_image_supres"))
 
                 images_coarse = cv2.cvtColor(images_coarse, cv2.COLOR_BGR2RGB)
                 images_coarse = cv2.resize(images_coarse, (render_image.shape[0], render_image.shape[1]))
                 images.append(wandb.Image(images_coarse, caption="gt_image_coarse"))
 
+                if 'supres' in log_data and log_data['supres'] is not None:
+                    cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
+                    cropped_image = cv2.resize(cropped_image, (render_image.shape[0], render_image.shape[1]))
+                    images.append(wandb.Image(cropped_image, caption="gt_cropped_image"))
+
                 render_image = cv2.cvtColor(render_image, cv2.COLOR_BGR2RGB)
                 render_image = cv2.resize(render_image, (render_image.shape[0], render_image.shape[1]))
                 images.append(wandb.Image(render_image, caption="rendered_image_coarse"))
+
+                if 'supres' in log_data and log_data['supres'] is not None:
+                    supres_image = cv2.cvtColor(supres_image, cv2.COLOR_BGR2RGB)
+                    supres_image = cv2.resize(supres_image, (render_image.shape[0], render_image.shape[1]))
+                    images.append(wandb.Image(supres_image, caption="rendered_supres_image"))
+
+
+                if 'visibles' in data:
+                    visibles = data['visibles'][0].permute(1, 2, 0).detach().cpu().numpy()
+                    visibles = (visibles * 255).astype(np.uint8)
+                    visibles = cv2.resize(visibles, (image.shape[0], image.shape[1]))
+                    images.append(wandb.Image(visibles, caption="visibility"))
+
 
                 if 'gt_segment' in data:
                     segment_vis = data['gt_segment'][0]

@@ -185,7 +185,7 @@ class MeshDataset(Dataset):
 # TODO: use same model to predict mask and hair mask, and put them in unified folder.
 class GaussianDataset(Dataset):
 
-    def __init__(self, cfg, train=True, debug_select_frames = []):
+    def __init__(self, cfg, split_strategy = "train", debug_select_frames = []):
         super(GaussianDataset, self).__init__()
 
         self.dataroot = cfg.dataroot
@@ -196,10 +196,12 @@ class GaussianDataset(Dataset):
         if len(self.camera_ids) == 0:
             image_paths = sorted(glob.glob(os.path.join(self.dataroot, 'images', '*', 'image_[0-9]*.jpg')))
             self.camera_ids = set([os.path.basename(image_path).split('_')[1].split('.')[0] for image_path in image_paths])
-        if train:
-            self.camera_ids =[camera_id for camera_id in self.camera_ids if camera_id not in cfg.test_camera_ids]
-        else:
-            self.camera_ids = cfg.test_camera_ids
+        
+        # if train:
+        #     self.camera_ids =[camera_id for camera_id in self.camera_ids if camera_id not in cfg.test_camera_ids]
+        # else:
+        #     self.camera_ids = cfg.test_camera_ids
+        
         self.camera_ids = sorted(self.camera_ids)
 
         self.original_resolution = cfg.original_resolution
@@ -222,16 +224,35 @@ class GaussianDataset(Dataset):
         # else:
         #     hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
         # hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
-        hair_mask_folder = os.path.join(mask_folder, 'hair')
 
         flame_param_folder = os.path.join(self.dataroot, 'FLAME_params')
         optical_flow_folder = os.path.join(self.dataroot, 'optical_flow')
         orientation_folder = os.path.join(self.dataroot, 'orientation_maps')
         orientation_confidence_folder = os.path.join(self.dataroot, 'orientation_confidence_maps')
         frames = sorted(os.listdir(image_folder)) if len(self.selected_frames) == 0 else self.selected_frames
-        # decrease the number of frames for debugging 
-        frames = frames[::2] if len(self.selected_frames) == 0 else frames
         
+        # split the frames into training and testing
+        # decrease the number of frames for debugging 
+        if split_strategy == "train":
+            # frames = frames[::2] if len(self.selected_frames) == 0 else frames
+            
+            # exclude 0.6 to 0.75 frames for training
+            # frames = frames[: int(len(frames) * 0.6)] \
+            #         + [frames[int(len(frames) * 0.6)]] * 4 + [frames[int(len(frames) * 0.75)]] * 4\
+            #         + frames[int(len(frames) * 0.75):] if len(self.selected_frames) == 0 else frames
+
+            frames = frames[:int(len(frames) * 0.6)] if len(self.selected_frames) == 0 else frames
+        
+        elif split_strategy == "test":
+            # frames = frames[1::2] if len(self.selected_frames) == 0 else frames
+            # from 0.6 to 0.75
+            # frames = frames[ int(len(frames) * 0.6): int(len(frames) * 0.75)] if len(self.selected_frames) == 0 else frames
+            frames = frames[ int(len(frames) * 0.6): ] if len(self.selected_frames) == 0 else frames
+        elif split_strategy == "all":
+            frames = frames 
+        else:
+            raise ValueError('Unknown split strategy: %s, need to be one of string : train, test or all' % split_strategy)
+
         self.num_exp_id = 0
         params_path_history = []
         self.poses_history = []
@@ -248,10 +269,13 @@ class GaussianDataset(Dataset):
             # mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
 
-            hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
+            hair_mask_path = [os.path.join(mask_folder,'hair', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
             # hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
+
+            head_mask_path = [os.path.join(mask_folder, 'head', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
             
             
+            # visible_paths = [os.path.join(flame_param_folder, frame, 'visible_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             visible_paths = [os.path.join(image_folder, frame, 'visible_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             camera_paths = [os.path.join(camera_folder, frame, 'camera_%s.npz' % camera_id) for camera_id in self.camera_ids]
             param_path = os.path.join(param_folder, frame, 'params.npz')
@@ -264,7 +288,7 @@ class GaussianDataset(Dataset):
             # TODO: use dict instead of tuple
             sample = (image_paths, mask_paths, visible_paths, camera_paths, 
                       param_path, landmarks_3d_path, vertices_path, self.num_exp_id, 
-                      params_path_history, hair_mask_path, optical_flow_path, orientation_path, orientation_confidence_path, flame_param_path)
+                      params_path_history, hair_mask_path, optical_flow_path, orientation_path, orientation_confidence_path, flame_param_path, head_mask_path)
             
             # the optical flow of t_1 is (position_1 - position_0), which is stored in the folder of t_0
             optical_flow_path = [os.path.join(optical_flow_folder, frame, 'image_%s.npy' % camera_id) for camera_id in self.camera_ids]
@@ -345,40 +369,9 @@ class GaussianDataset(Dataset):
         T = pose[None, 3:]
         S = torch.from_numpy(param['scale']).float()
 
-        # generic_model_path = os.path.join('./assets/FLAME/generic_model.pkl')
-        # import pickle
-        # np.bool = np.bool_
-        # np.int = np.int_
-        # np.float = np.float_
-        # np.complex = np.complex_
-        # np.object = np.object_
-        # np.unicode = np.unicode_
-        # np.str = np.str_
-        # with open(generic_model_path, 'rb') as f:
-        #     generic_model = pickle.load(f, encoding='latin1')
-        # v_template = generic_model['v_template']
-        # f = generic_model['f']
-        # import open3d as o3d
-        # generic_mesh = o3d.geometry.TriangleMesh()
-        # generic_mesh.vertices = o3d.utility.Vector3dVector(v_template)
-        # generic_mesh.triangles = o3d.utility.Vector3iVector(f)
-        # generic_mesh.compute_vertex_normals()
-        # o3d.io.write_triangle_mesh("./generic_model.ply", generic_mesh)
 
-        # init_landmarks_3d = torch.cat([init_landmarks_3d, init_vertices[::100]], 0)
-
-        # import open3d as o3d
-        # f = "/local/home/haonchen/Gaussian-Head-Avatar/assets/FLAME/flame2023.pkl"
-        # with open(f, 'rb') as f:
-        #     generic_model_2023 = pickle.load(f, encoding='latin1')
         self.init_landmarks_3d_neutral = (torch.matmul(init_landmarks_3d- T, R)) / S
         self.init_flame_model = (torch.matmul(init_vertices- T, R)) / S
-        # import open3d as o3d
-        # landmarks_3d_points = o3d.geometry.TriangleMesh()
-        # landmarks_3d_points.vertices = o3d.utility.Vector3dVector(self.init_landmarks_3d_neutral.cpu().numpy())
-        # landmarks_3d_points.compute_vertex_normals()
-        # o3d.io.write_triangle_mesh("./landmarks_3d_neutral.ply", landmarks_3d_points)
-
         # color -- random color from red, green, blue, white and black
         self.random_color = [torch.as_tensor([1.0, 0.0, 0.0]), torch.as_tensor([0.0, 1.0, 0.0]), torch.as_tensor([0.0, 0.0, 1.0]), torch.as_tensor([1.0, 1.0, 1.0]), torch.as_tensor([0.0, 0.0, 0.0])]
         self.bg_rgb_color = [self.random_color[np.random.randint(0, 5)] for _ in range(len(frames))]
@@ -410,11 +403,18 @@ class GaussianDataset(Dataset):
         else:
             raise ValueError('Hair mask not found')
 
+        head_mask_path = sample[14][view]
+        if os.path.exists(head_mask_path):
+            head_mask = cv2.resize(io.imread(head_mask_path), (self.original_resolution, self.original_resolution))[:, :, None] / 255
+        else:
+            head_mask = np.ones_like(mask)
+
         visible_path = sample[2][view]
         if os.path.exists(visible_path):
             visible = cv2.resize(io.imread(visible_path), (self.original_resolution, self.original_resolution))[:, :, 0:1] / 255
         else:
-            visible = np.ones_like(image)
+            visible = np.ones_like(mask)
+        visible = visible * head_mask
 
         camera = np.load(sample[3][view])
         extrinsic = torch.from_numpy(camera['extrinsic']).float()

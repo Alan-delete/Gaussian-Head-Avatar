@@ -630,7 +630,6 @@ if __name__ == "__main__":
                                                         estimated_flow_numpy[:, :, 1]).astype(np.uint8)
                 warped_images.append(warped_image)
 
-                # save the optical flow
                 flow = estimated_flow.detach().cpu().numpy()
                 np.save(camera[idx].replace('images', 'optical_flow').replace('.jpg', '.npy'), flow)
 

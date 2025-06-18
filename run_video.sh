@@ -1,4 +1,4 @@
-export GPU="6"
+export GPU="5"
 export CAMERA="PINHOLE"
 export EXP_NAME_1="stage1"
 export EXP_NAME_2="stage2"
@@ -11,7 +11,7 @@ export EXP_PATH_1=$DATA_PATH/3d_gaussian_splatting/$EXP_NAME_1
 # Manual steps for now:
 PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
 SUBJECT="100"
-DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
+DATA_PATH1="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
 
 # renderme
 # /local/home/haonchen/Gaussian-Head-Avatar/datasets/RenderMe/raw/0322_h1_4bn_raw.smc
@@ -38,8 +38,9 @@ eval "$(conda shell.bash hook)"
 # PREPROCESSING #
 #################
 
-# Donwload NeRsemble dataset
-# nersemble-data download datasets/NeRSemble/ --participant 17,18 --sequence 'HAIR','EXP-1-head'
+# # Donwload NeRsemble dataset
+# conda activate gha2   
+# nersemble-data download datasets/NeRSemble/ --participant 258 --sequence 'HAIR','EXP-1-head'
 
 # conda deactivate && conda activate gha2
 # cd $PROJECT_DIR/preprocess
@@ -82,15 +83,19 @@ eval "$(conda shell.bash hook)"
 
 
 
+# conda activate sapiens_lite 
+# cd $PROJECT_DIR/src/preprocessing && ./depth.sh
+
+
 # # landmark detection and FLAME fitting
 # cd $PROJECT_DIR/preprocess
 # conda deactivate && conda activate mv-3dmm-fitting
-# # CUDA_VISIBLE_DEVICES="$GPU" python detect_landmarks.py \
-# #     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks --image_size 2048
-# # CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
-# #     --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml \
-# #     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
-# #     --param_folder $DATA_PATH/FLAME_params --camera_folder $DATA_PATH/cameras --image_size 2048
+# CUDA_VISIBLE_DEVICES="$GPU" python detect_landmarks.py \
+#     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks --image_size 2048
+# CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
+#     --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml \
+#     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
+#     --param_folder $DATA_PATH/FLAME_params --camera_folder $DATA_PATH/cameras --image_size 2048
     
 # CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
 #     --config $PROJECT_DIR/config/BFM_fitting_NeRSemble_031.yaml \
@@ -107,6 +112,22 @@ eval "$(conda shell.bash hook)"
 # # CUDA_VISIBLE_DEVICES="$GPU" python calc_optical_flow.py --model GLUNet_GOCor --pre_trained_model dynamic --img_dir $DATA_PATH/images --optical_flow_dir $DATA_PATH/optical_flow
 # CUDA_VISIBLE_DEVICES="$GPU" python calc_optical_flow.py --model PDCNet_plus --pre_trained_model megadepth --img_dir $DATA_PATH/images --optical_flow_dir $DATA_PATH/optical_flow
 
+
+# # SMPLX tracking
+# conda activate multihmr
+# source .multihmr/bin/activate
+# cp $PROJECT_DIR/preprocess/smplx_tracking.py $PROJECT_DIR/ext/multi-hmr/
+# cd $PROJECT_DIR/ext/multi-hmr
+# # python3.9 smplx_tracking.py \
+# #     --img_folder $DATA_PATH1/images \
+# #     --out_folder $DATA_PATH1/smplx \
+# #     --extra_views 0 \
+# #     --model_name multiHMR_896_L
+# python3.9 demo.py \
+#     --img_folder example_data \
+#     --out_folder demo_out \
+#     --extra_views 0 \
+#     --model_name multiHMR_896_L
 
 # conda activate depth-pro 
 # cd $PROJECT_DIR/preprocess
@@ -234,12 +255,12 @@ conda activate gha2
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N$SUBJECT\_Simplified.yaml
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme_single.yaml --dataroot $DATA_PATH
-# CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_renderme.yaml --dataroot $DATA_PATH
+CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_renderme.yaml --dataroot $DATA_PATH
 
 # CUDA_VISIBLE_DEVICES="$GPU" python train_opticalflow.py --config config/train_gaussianhead_hair_renderme_optical_flow.yaml --dataroot $DATA_PATH
 
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme_mlp.yaml --dataroot $DATA_PATH
-CUDA_VISIBLE_DEVICES="$GPU" python reenactment_hair.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH --test_camera_id 0 
+# CUDA_VISIBLE_DEVICES="$GPU" python reenactment_hair.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH --test_camera_id 25 
 # CUDA_VISIBLE_DEVICES="$GPU" python reenactment_hair.py --config config/train_gaussianhead_hair_renderme_single.yaml --dataroot $DATA_PATH --test_camera_id 25
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_flame_gaussian_renderme.yaml --dataroot $DATA_PATH
 

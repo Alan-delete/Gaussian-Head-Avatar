@@ -5,55 +5,8 @@ from tqdm import tqdm
 import random
 import lpips
 
-import math
-def gaussian(window_size, sigma):
-    gauss = torch.Tensor([math.exp(-(x - window_size // 2) ** 2 / float(2 * sigma ** 2)) for x in range(window_size)])
-    return gauss / gauss.sum()
 
-def create_window(window_size, channel):
-    _1D_window = gaussian(window_size, 1.5).unsqueeze(1)
-    _2D_window = _1D_window.mm(_1D_window.t()).float().unsqueeze(0).unsqueeze(0)
-    window = torch.autograd.Variable(_2D_window.expand(channel, 1, window_size, window_size).contiguous())
-    return window
-
-def ssim(img1, img2, window_size=11):
-    channel = img1.size(-3)
-    window = create_window(window_size, channel)
-
-    if img1.is_cuda:
-        window = window.cuda(img1.get_device())
-    window = window.type_as(img1)
-
-    return _ssim(img1, img2, window, window_size, channel, size_average=True)
-
-def _ssim(img1, img2, window, window_size, channel, size_average=True):
-    mu1 = F.conv2d(img1, window, padding=window_size // 2, groups=channel)
-    mu2 = F.conv2d(img2, window, padding=window_size // 2, groups=channel)
-
-    mu1_sq = mu1.pow(2)
-    mu2_sq = mu2.pow(2)
-    mu1_mu2 = mu1 * mu2
-
-    sigma1_sq = F.conv2d(img1 * img1, window, padding=window_size // 2, groups=channel) - mu1_sq
-    sigma2_sq = F.conv2d(img2 * img2, window, padding=window_size // 2, groups=channel) - mu2_sq
-    sigma12 = F.conv2d(img1 * img2, window, padding=window_size // 2, groups=channel) - mu1_mu2
-
-    C1 = 0.01 ** 2
-    C2 = 0.03 ** 2
-
-    ssim_map = ((2 * mu1_mu2 + C1) * (2 * sigma12 + C2)) / ((mu1_sq + mu2_sq + C1) * (sigma1_sq + sigma2_sq + C2))
-
-    if size_average:
-        return ssim_map.mean()
-    else:
-        return ssim_map.mean(1).mean(1).mean(1)
-
-def mse(img1, img2):
-    return (((img1 - img2)) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
-
-def psnr(img1, img2):
-    mse = (((img1 - img2)) ** 2).view(img1.shape[0], -1).mean(1, keepdim=True)
-    return 20 * torch.log10(1.0 / torch.sqrt(mse))
+from lib.utils.general_utils import ssim, psnr
 
 def or_loss(network_output, gt, confs = None, weight = None, mask = None):
     weight = torch.ones_like(gt[:1]) if weight is None else weight
@@ -68,10 +21,7 @@ def or_loss(network_output, gt, confs = None, weight = None, mask = None):
     if mask is not None:
         loss = (loss * mask).sum() / mask.sum()
     return loss.mean()
-    # if weight is not None:
-    #     return (loss * weight).sum() / weight.sum()
-    # else:
-    #     return loss * weight
+
 
 
 class GaussianHeadHairTrainer():
@@ -91,11 +41,13 @@ class GaussianHeadHairTrainer():
 
     def train(self, start_epoch=0, epochs=1):
         # iteration = start_epoch * len(self.dataloader) * 128
-        # iteration = 24001
-        iteration = 20001
+        iteration = 0
+        # iteration = 40001
         end_iteration = iteration + 50000
         dataset = self.dataloader.dataset
         static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
+        
+        cameraidx_to_show = 0
         
         # prepare data
         to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
@@ -114,7 +66,9 @@ class GaussianHeadHairTrainer():
                 # if this iteration is to save, use predefined view
                 if iteration % self.recorder.show_freq == 0:
                     # view 22 or 25 are good for visualization
-                    i = np.random.choice([0, 25])
+                    # i = np.random.choice([0, 25])
+                    i = self.cfg.dataset.test_camera_ids[cameraidx_to_show]
+                    cameraidx_to_show = (cameraidx_to_show + 1) % len(self.cfg.dataset.test_camera_ids)
                     data = dataset.__getitem__(0, i)
                 else:
                     data = dataset[0]
@@ -140,22 +94,25 @@ class GaussianHeadHairTrainer():
             print('Disable static training, start dynamic training')
 
 
-        for epoch in range(start_epoch, epochs):
- 
+        # for epoch in range(start_epoch, epochs):
+        while iteration < end_iteration:
+
             self.gaussianhair.epoch_start()
 
-            if iteration > end_iteration:
-                break
+            # if iteration > end_iteration:
+            #     break
 
             # for idx, data in tqdm(enumerate(range(len(dataset)))):
-            for idx in (range(len(dataset))):
+            for idx in tqdm(range(len(dataset))):
 
                 self.gaussianhair.frame_start()
-                for _ in tqdm(range(128)):
+                for _ in range(4):
 
                     if iteration % self.recorder.show_freq == 0:
                         # random pick the view from back(1) and front(25)
-                        i = np.random.choice([0, 25])
+                        # i = np.random.choice([0, 25])
+                        i = self.cfg.dataset.test_camera_ids[cameraidx_to_show]
+                        cameraidx_to_show = (cameraidx_to_show + 1) % len(self.cfg.dataset.test_camera_ids)
                         data = dataset.__getitem__(idx, i)
                         
                         for data_item in to_cuda:
@@ -172,7 +129,7 @@ class GaussianHeadHairTrainer():
                     for data_item in to_cuda:
                         data[data_item] = data[data_item].to(device=self.device)
                     
-                    self.train_step(iteration, epoch, data, grad_accumulation = 1)
+                    self.train_step(iteration, epoch, data, grad_accumulation = 32)
                     iteration += 1
 
 
@@ -189,12 +146,6 @@ class GaussianHeadHairTrainer():
         gt_hair_mask = data['hair_masks_coarse']
         gt_mask = data['masks_coarse']
 
-        # if self.cfg.use_supres:
-        #     images_coarse = data['images_coarse']
-        #     visibles_coarse = data['visibles_coarse']
-        # else:
-        #     images_coarse = images
-        #     visibles_coarse = visibles
         
         images_coarse = data['images_coarse']
         # only learn hair rgb
@@ -353,7 +304,8 @@ class GaussianHeadHairTrainer():
             return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.7
         
         # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
-        loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+        # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+        loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
         # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
         
         # step decay for segment loss
@@ -405,12 +357,12 @@ class GaussianHeadHairTrainer():
 
             loss_deform_reg = self.gaussianhair.deform_regularization_loss()
 
-            loss_smoothness = self.gaussianhair.smoothness_loss() * 10
+            loss_smoothness = 0 #self.gaussianhair.smoothness_loss() * 10
 
             if backprop_into_prior or iteration <= static_training_util_iter:
                 loss_elastic = 0
             else:
-                loss_elastic = self.gaussianhair.elastic_potential_loss() * 50 
+                loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 
         
 
             #  default [4000, 15000], during that period, use strand raw data to rectify the prior 
@@ -439,7 +391,7 @@ class GaussianHeadHairTrainer():
         supres_images = self.supres(cropped_render_images) if self.cfg.use_supres else cropped_images
         data['supres_images'] = supres_images
 
-        visibles_coarse = visibles_coarse * intersect_hair_mask
+        # visibles_coarse = visibles_coarse * intersect_hair_mask
 
         psnr_train = psnr(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
         ssim_train = ssim(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
@@ -488,10 +440,6 @@ class GaussianHeadHairTrainer():
             loss_deform_reg = loss_deform_reg * 50.
         
         loss_smoothness = loss_smoothness * 1e-3
-
-        # random_point = torch.as_tensor([0,0,0]).unsqueeze(0).to(self.device) 
-        # strand_end_points = self.gaussianhair.get_strand_points_posed.view(-1, 100, 3)[:, -1 , :]
-        # loss_debug = (strand_end_points - random_point).norm(2, dim=1).mean() * 1e3
 
         loss = ( 
                 loss_rgb_hr +
@@ -542,7 +490,6 @@ class GaussianHeadHairTrainer():
             'loss_flame_gaussian_reg' : loss_flame_gaussian_reg,
             'loss_smoothness' : loss_smoothness,
             'loss_deform_reg' : loss_deform_reg,
-            # 'loss_debug' : loss_debug,
             'epoch' : epoch,
             # 'iter' : idx + epoch * len(self.dataloader)
             'iter' : iteration

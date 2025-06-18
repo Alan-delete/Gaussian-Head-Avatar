@@ -1,5 +1,6 @@
 import os
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
+# os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
 import sys
 import torch
 import argparse
@@ -169,7 +170,7 @@ class Fitter():
                 else:
                     pprev_loss = prev_loss
                     prev_loss = loss.item()
-                if i % 100 == 0:
+                if i % 500 == 0:
                     print('iter: %d, loss: %.4f, pro_loss: %.4f, reg_loss: %.4f' % (i, loss.item(), pro_loss.item(), reg_loss.item()))
                 
                 # if i == 10000 :
@@ -185,6 +186,7 @@ class Fitter():
                 #     self.recorder.log(log)
 
         log = {
+            'fitter': self,
             'frames': frames,
             'landmarks_gt': landmarks_gt,
             'landmarks_2d': landmarks_2d.detach(),
@@ -192,6 +194,9 @@ class Fitter():
             'intrinsics': intrinsics0,
             'extrinsics': extrinsics0,
             'valid_cameras': self.dataset.valid_cameras,
+            'all_cameras': self.dataset.all_cameras,
+            'all_extrinsics': torch.from_numpy(self.dataset.all_extrinsics).float().to(self.device),
+            'all_intrinsics': torch.from_numpy(self.dataset.all_intrinsics).float().to(self.device),
         }
         self.recorder.log(log)
 
@@ -230,6 +235,8 @@ class LandmarkDataset():
             selected_cameras.append(( conf, camera_ids[v]))
         selected_cameras = sorted(selected_cameras, key=lambda x: x[0], reverse=True)
         selected_cameras = [item[1] for item in selected_cameras]
+        self.all_cameras = selected_cameras
+        
         num_cameras = min(32, len(selected_cameras))
         selected_cameras = selected_cameras[:num_cameras]
         selected_cameras = sorted(selected_cameras)
@@ -241,7 +248,7 @@ class LandmarkDataset():
             extrinsics_ = []
             intrinsics_ = []
             # camera_ids = [item.split('_')[-1][:-4] for item in sorted(os.listdir(os.path.join(self.landmark_folder, frame)))]
-            for camera_id in selected_cameras:
+            for camera_id in self.all_cameras:
                 if os.path.exists(os.path.join(self.landmark_folder, frame, 'lmk_%s.npy' % camera_id)):
                     landmark = np.load(os.path.join(self.landmark_folder, frame, 'lmk_%s.npy' % camera_id))
                     landmark = np.vstack([landmark[0:48], landmark[49:54], landmark[55:68]])
@@ -250,7 +257,7 @@ class LandmarkDataset():
                 else:
                     landmark = np.zeros([66, 3], dtype=np.float32)
                     extrinsic = np.ones([3, 4], dtype=np.float32)
-                    intrinsic = np.ones([3, 3], dtype=np.float32)
+                    intrinsic = np.ones([3, 3], dtype=np.float32)   
                 landmarks_.append(landmark)
                 extrinsics_.append(extrinsic)
                 intrinsics_.append(intrinsic)
@@ -260,9 +267,14 @@ class LandmarkDataset():
             landmarks.append(landmarks_)
             extrinsics.append(extrinsics_)
             intrinsics.append(intrinsics_)
-        landmarks = np.stack(landmarks)
-        extrinsics = np.stack(extrinsics)
-        intrinsics = np.stack(intrinsics)
+
+        self.all_landmarks = np.stack(landmarks)
+        self.all_extrinsics = np.stack(extrinsics)
+        self.all_intrinsics = np.stack(intrinsics)
+
+        landmarks = self.all_landmarks[:, 0:num_cameras, :, :]
+        extrinsics = self.all_extrinsics[:, 0:num_cameras, :, :]
+        intrinsics = self.all_intrinsics[:, 0:num_cameras, :, :]
 
         return landmarks, extrinsics, intrinsics, self.frames
     
@@ -287,12 +299,22 @@ class Recorder():
     def log(self, log_data):
         frames = log_data['frames']
         face_model = log_data['face_model']
-        intrinsics = log_data['intrinsics']
-        extrinsics = log_data['extrinsics']
+        intrinsics = log_data['all_intrinsics']
+        extrinsics = log_data['all_extrinsics']
      
         with torch.no_grad():
             vertices, landmarks = log_data['face_model']()
         
+            vertices_3d = vertices.unsqueeze(1).repeat(1, len(log_data['all_cameras']), 1, 1)
+            vertices_3d = rearrange(vertices_3d, 'b v x y -> (b v) x y')
+
+            extrinsics_merged = rearrange(extrinsics, 'b v x y -> (b v) x y')
+            intrinsics_merged = rearrange(intrinsics, 'b v x y -> (b v) x y')
+            vertices_2d =  log_data['fitter'].project(vertices_3d, intrinsics_merged, extrinsics_merged)
+            # frame_num, cam_num, h, w
+            vertices_2d = rearrange(vertices_2d, '(b v) x y -> b v x y', b=landmarks.shape[0])
+
+
         for n, frame in enumerate(frames):
             os.makedirs(os.path.join(self.save_folder, frame), exist_ok=True)
             
@@ -303,14 +325,15 @@ class Recorder():
 
             faces = log_data['face_model'].faces.cpu().numpy()
             mesh_trimesh = trimesh.Trimesh(vertices=vertices[n].cpu().numpy(), faces=faces)
-            # # save the trimesh
-            # mesh_trimesh.export('%s/mesh_%d.obj' % (os.path.join(self.save_folder, frame), n))
+            # save the trimesh
+            mesh_trimesh.export('%s/mesh_%d.obj' % (os.path.join(self.save_folder, frame), n))
+
 
             # valid_cameras = [28, 56, 22, 31, 25, 57, 27, 34, 35, 55, 32, 18, 19, 21]
             if self.visualize:
                 # img_paths = sorted(glob.glob(os.path.join(self.img_folder, frame, 'image_*.jpg')))
 
-                for v, camera_id in enumerate(log_data['valid_cameras']):
+                for v, camera_id in enumerate(log_data['all_cameras']):
                     img_paths = os.path.join(self.img_folder, frame, 'image_%s.jpg' % camera_id)
                     
                     origin_image = cv2.imread(img_paths)[:,:,::-1]
@@ -318,17 +341,18 @@ class Recorder():
                     
                     mesh = pyrender.Mesh.from_trimesh(mesh_trimesh)
                     self.camera.init_renderer(intrinsic=intrinsics[n, v], extrinsic=extrinsics[n, v])
-                    render_image = self.camera.render(mesh)
+                    render_image = origin_image.copy()
+                    # render_image = self.camera.render(mesh)
 
-                    # merge the original image and the render image
-                    render_image = cv2.resize(render_image, (self.camera.image_size, self.camera.image_size))
+                    # # merge the original image and the render image
+                    # render_image = cv2.resize(render_image, (self.camera.image_size, self.camera.image_size))
 
-                    # dark_mask = render_image < 50
-                    # # add background from orginal image to rendered image
-                    # render_image[dark_mask] = origin_image[dark_mask]
-                    # alpha blending
-                    alpha = 0.65
-                    render_image = cv2.addWeighted(render_image, alpha, origin_image, 1 - alpha, 0)
+                    # # dark_mask = render_image < 50
+                    # # # add background from orginal image to rendered image
+                    # # render_image[dark_mask] = origin_image[dark_mask]
+                    # # alpha blending
+                    # alpha = 0.65
+                    # render_image = cv2.addWeighted(render_image, alpha, origin_image, 1 - alpha, 0)
 
                     N = landmarks[n].shape[0]
 
@@ -351,6 +375,25 @@ class Recorder():
                         v_ = int(V[i].item())
                         cv2.circle(origin_image, (u_, v_), 5, (0, 255, 0), -1)
 
+
+                    vertices_2d_cur = vertices_2d[n, v].cpu().numpy()
+                    # find bounding box of the vertices
+                    min_x = int(np.min(vertices_2d_cur[:, 0]))
+                    max_x = int(np.max(vertices_2d_cur[:, 0]))
+                    min_y = int(np.min(vertices_2d_cur[:, 1]))
+                    max_y = int(np.max(vertices_2d_cur[:, 1]))
+                    # further lift the bounding box a little bit
+                    max_y = max_y * 0.9
+                    # draw bounding box
+                    cv2.rectangle(origin_image, (min_x, min_y), (max_x, max_y), (255, 0, 0), 2)
+
+                    # remove the image below the bounding box
+                    render_image[max_y:, :, :] = 0
+
+                    mask = np.ones_like(render_image, dtype=np.uint8) * 255
+                    mask[max_y:, :, :] = 0
+                    # save the mask
+                    cv2.imwrite('%s/visible_%s.jpg' % (os.path.join(self.save_folder, frame), camera_id), mask)
 
                     render_image = np.concatenate([origin_image, render_image], axis=1)
 

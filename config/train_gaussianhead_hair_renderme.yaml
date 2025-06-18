@@ -10,8 +10,8 @@ optimize_pose: False
 use_supres: False
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 174933925949 
-resume_training: True 
+checkpoint_seed: 175020227267 
+resume_training: False 
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
@@ -20,7 +20,7 @@ static_training_util_iter: 20000
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
   camera_ids: []
-  test_camera_ids: []
+  test_camera_ids: [0, 25]
   selected_frames: []
   # selected_frames: ['0000', '0099']
   # selected_frames: ['0000', '0042' , '0048', '0054']
@@ -42,7 +42,7 @@ loss_weights:
   strand_feature: 0.01
   transform_reg: 10.
   vgg: 0.1
-  deform_reg: 1e-5
+  deform_reg: 0.0
 
 meshheadmodule:
   geo_mlp: [27, 256, 256, 256, 256, 256, 132]
@@ -67,6 +67,7 @@ supresmodule:
 gaussianheadmodule:
   # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_latest_174766867582'
   # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_iter_20000'
+  # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_iter_20000 copy'
   num_add_mouth_points: 3000
   # exp_color_mlp: [192, 256, 256, 32]
   # pose_color_mlp: [182, 128, 32]
@@ -98,9 +99,11 @@ gaussianheadmodule:
   gaussian_pruning_threshold: 0.5
 
 gaussianhairmodule:
+  # enable: False
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_latest_174766867582'
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_17480233800' 
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000' 
+  # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000 copy' 
   pose_deform_method: 'mlp' # 'attention'
   pose_point_mlp: [81, 256, 3]
   pose_prior_mlp: [54, 54] 
@@ -161,7 +164,7 @@ gaussianhairmodule:
 flame_gaussian_module:
   # load_flame_gaussian_checkpoint: 'checkpoints/gaussianhead_renderme_single/head_latest_17480233800.ply'
   # load_flame_gaussian_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/head_latest_174777888919.ply' 
-  enable: False 
+  enable: True
   iterations: 600_000  # 30_000 (original)
   position_lr_init: 0.005  # (scaled up according to mean triangle scale)  #0.00016 (original)
   position_lr_final: 0.00005  # (scaled up according to mean triangle scale) # 0.0000016 (original)
@@ -178,7 +181,7 @@ flame_gaussian_module:
   densify_until_iter: 60_000 #600_000  # 15_000 (original)
   densify_grad_threshold: 0.0002
   # GaussianAvatars
-  flame_expr_lr: 1e-3
+  flame_expr_lr: 1e-4
   flame_trans_lr: 1e-6
   flame_pose_lr: 1e-5
   percent_dense: 0.01

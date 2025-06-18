@@ -60,7 +60,7 @@ class config_train(config_base):
         self.cfg.dataset = CN()
         self.cfg.dataset.dataroot = ''                          # root of the dataset
         self.cfg.dataset.camera_ids = []                        # which cameras are used
-        self.cfg.dataset.test_camera_ids = [0, 25]                   # which cameras are used for testing
+        self.cfg.dataset.test_camera_ids = [0]                   # which cameras are used for testing
         self.cfg.dataset.original_resolution = 2048             # original image resolution, should match the intrinsic
         self.cfg.dataset.resolution = 512                       # image resolution for rendering
         self.cfg.dataset.coarse_scale_factor = 0.25                # scale factor for coarse image

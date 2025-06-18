@@ -107,13 +107,8 @@ if __name__ == '__main__':
         # gaussianhead_checkpoint =  f'%s/%s/gaussianhead_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
         gaussianhead_checkpoint =  f'%s/%s/gaussianhead_latest_%d' % (recorder.checkpoint_path, recorder.name, checkpoint_seed)
 
-        # gaussianhair_checkpoint =  f'%s/%s/gaussianhair_epoch_%d' % (recorder.checkpoint_path, recorder.name, start_epoch)
-        # gaussianhair_checkpoint =  'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_epoch_13'
-        # gaussianhair_checkpoint =  'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_174757976374'
         gaussianhair_checkpoint =  f'%s/%s/gaussianhair_latest_%d' % (recorder.checkpoint_path, recorder.name, checkpoint_seed)
 
-        # gaussians_ply_checkpoint =  f'%s/%s/020000_head.ply' % (recorder.checkpoint_path, recorder.name)
-        # gaussians_ply_checkpoint =  f'%s/%s/head_latest_174766867582.ply'% (recorder.checkpoint_path, recorder.name)
         gaussians_ply_checkpoint =  f'%s/%s/head_latest_%d.ply' % (recorder.checkpoint_path, recorder.name, checkpoint_seed)
         
         # first check if the direct load checkpoint path exists
