@@ -376,24 +376,23 @@ class Recorder():
                         cv2.circle(origin_image, (u_, v_), 5, (0, 255, 0), -1)
 
 
-                    vertices_2d_cur = vertices_2d[n, v].cpu().numpy()
-                    # find bounding box of the vertices
-                    min_x = int(np.min(vertices_2d_cur[:, 0]))
-                    max_x = int(np.max(vertices_2d_cur[:, 0]))
-                    min_y = int(np.min(vertices_2d_cur[:, 1]))
-                    max_y = int(np.max(vertices_2d_cur[:, 1]))
-                    # further lift the bounding box a little bit
-                    max_y = max_y * 0.9
-                    # draw bounding box
-                    cv2.rectangle(origin_image, (min_x, min_y), (max_x, max_y), (255, 0, 0), 2)
+                    # vertices_2d_cur = vertices_2d[n, v].cpu().numpy()
+                    # # find bounding box of the vertices
+                    # min_x = int(np.min(vertices_2d_cur[:, 0]))
+                    # max_x = int(np.max(vertices_2d_cur[:, 0]))
+                    # min_y = int(np.min(vertices_2d_cur[:, 1]))
+                    # max_y = int(np.max(vertices_2d_cur[:, 1]))
+                    # # further lift the bounding box a little bit
+                    # # draw bounding box
+                    # cv2.rectangle(origin_image, (min_x, min_y), (max_x, max_y), (255, 0, 0), 2)
 
-                    # remove the image below the bounding box
-                    render_image[max_y:, :, :] = 0
+                    # # remove the image below the bounding box
+                    # render_image[max_y:, :, :] = 0
 
-                    mask = np.ones_like(render_image, dtype=np.uint8) * 255
-                    mask[max_y:, :, :] = 0
-                    # save the mask
-                    cv2.imwrite('%s/visible_%s.jpg' % (os.path.join(self.save_folder, frame), camera_id), mask)
+                    # mask = np.ones_like(render_image, dtype=np.uint8) * 255
+                    # mask[max_y:, :, :] = 0
+                    # # save the mask
+                    # cv2.imwrite('%s/visible_%s.jpg' % (os.path.join(self.save_folder, frame), camera_id), mask)
 
                     render_image = np.concatenate([origin_image, render_image], axis=1)
 

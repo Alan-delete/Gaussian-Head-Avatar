@@ -61,16 +61,18 @@ if __name__ == '__main__':
 
         # contraint the number of vertices to 100000, otherwise out of memory for 24GB
         select_indices = torch.randperm(data['verts'].shape[0])[:50000]
+        # use all 
+        select_indices = range(data['verts'].shape[0])
         gaussianhead = GaussianHeadModule(cfg.gaussianheadmodule, 
                                           xyz=data['verts'][select_indices].cpu(),
                                           feature=torch.atanh(data['verts_feature'][select_indices].cpu()), 
-                                        #   landmarks_3d_neutral=meshhead.landmarks_3d_neutral.detach().cpu(),
-                                          landmarks_3d_neutral=dataset.init_landmarks_3d_neutral,
+                                          landmarks_3d_neutral=meshhead.landmarks_3d_neutral.detach().cpu(),
+                                        #   landmarks_3d_neutral=dataset.init_landmarks_3d_neutral,
                                           add_mouth_points=True).to(device)
-        # gaussianhead.exp_color_mlp.load_state_dict(meshhead.exp_color_mlp.state_dict())
-        # gaussianhead.pose_color_mlp.load_state_dict(meshhead.pose_color_mlp.state_dict())
-        # gaussianhead.exp_deform_mlp.load_state_dict(meshhead.exp_deform_mlp.state_dict())
-        # gaussianhead.pose_deform_mlp.load_state_dict(meshhead.pose_deform_mlp.state_dict())
+        gaussianhead.exp_color_mlp.load_state_dict(meshhead.exp_color_mlp.state_dict())
+        gaussianhead.pose_color_mlp.load_state_dict(meshhead.pose_color_mlp.state_dict())
+        gaussianhead.exp_deform_mlp.load_state_dict(meshhead.exp_deform_mlp.state_dict())
+        gaussianhead.pose_deform_mlp.load_state_dict(meshhead.pose_deform_mlp.state_dict())
         
         # release memory
         meshhead = meshhead.cpu()

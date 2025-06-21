@@ -1,169 +1,3 @@
-# import sys
-# # sys.path.append('../../ext/Matte-Anything')
-# sys.path.append('../ext/Matte-Anything')
-# from matte_anything import generate_trimap, generate_checkerboard_image, convert_pixels
-# from PIL import Image
-# import numpy as np
-# import torch
-# import glob
-# from matplotlib import pyplot as plt
-# import os
-# import cv2
-# import torch
-# import numpy as np
-# import gradio as gr
-# from PIL import Image
-# from torchvision.ops import box_convert
-# from detectron2.config import LazyConfig, instantiate
-# from detectron2.checkpoint import DetectionCheckpointer
-# from segment_anything import sam_model_registry, SamPredictor
-# import groundingdino.datasets.transforms as T
-# from groundingdino.util.inference import load_model as dino_load_model, predict as dino_predict, annotate as dino_annotate
-# import argparse
-# import pathlib
-# import pickle as pkl
-# from torchvision.transforms import Resize, InterpolationMode
-# import tqdm
-# import warnings
-# warnings.filterwarnings("ignore", category=FutureWarning) 
-# warnings.filterwarnings("ignore", category=UserWarning) 
-
-
-# def init_segment_anything(model_type):
-#     """
-#     Initialize the segmenting anything with model_type in ['vit_b', 'vit_l', 'vit_h']
-#     """
-    
-#     sam = sam_model_registry[model_type](checkpoint=models[model_type]).to(device)
-#     predictor = SamPredictor(sam)
-
-#     return predictor
-
-# def init_vitmatte(model_type):
-#     """
-#     Initialize the vitmatte with model_type in ['vit_s', 'vit_b']
-#     """
-#     cfg = LazyConfig.load(vitmatte_config[model_type])
-#     vitmatte = instantiate(cfg.model)
-#     vitmatte.to(device)
-#     vitmatte.eval()
-#     DetectionCheckpointer(vitmatte).load(vitmatte_models[model_type])
-
-#     return vitmatte
-
-# def run_inference(input_x, selected_points, erode_kernel_size, dilate_kernel_size, fg_box_threshold, fg_text_threshold, fg_caption, 
-#                     tr_box_threshold, tr_text_threshold, tr_caption = "glass, lens, crystal, diamond, bubble, bulb, web, grid"):
-    
-#     predictor.set_image(input_x)
-
-#     dino_transform = T.Compose(
-#     [
-#         T.RandomResize([800], max_size=1333),
-#         T.ToTensor(),
-#         T.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-#     ])
-#     image_transformed, _ = dino_transform(Image.fromarray(input_x), None)
-    
-#     if len(selected_points) != 0:
-#         points = torch.Tensor([p for p, _ in selected_points]).to(device).unsqueeze(1)
-#         labels = torch.Tensor([int(l) for _, l in selected_points]).to(device).unsqueeze(1)
-#         transformed_points = predictor.transform.apply_coords_torch(points, input_x.shape[:2])
-#         print(points.size(), transformed_points.size(), labels.size(), input_x.shape, points)
-#         point_coords=transformed_points.permute(1, 0, 2)
-#         point_labels=labels.permute(1, 0)
-#     else:
-#         transformed_points, labels = None, None
-#         point_coords, point_labels = None, None
-    
-#     if fg_caption is not None and fg_caption != "": # This section has benefited from the contributions of neuromorph,thanks! 
-#         fg_boxes, logits, phrases = dino_predict(
-#             model=grounding_dino,
-#             image=image_transformed,
-#             caption=fg_caption,
-#             box_threshold=fg_box_threshold,
-#             text_threshold=fg_text_threshold,
-#             device=device)
-#         if fg_boxes.shape[0] == 0:
-#             # no fg object detected
-#             transformed_boxes = None
-#         else:
-#             h, w, _ = input_x.shape
-#             fg_boxes = torch.Tensor(fg_boxes).to(device)
-#             fg_boxes = fg_boxes * torch.Tensor([w, h, w, h]).to(device)
-#             fg_boxes = box_convert(boxes=fg_boxes, in_fmt="cxcywh", out_fmt="xyxy")
-#             transformed_boxes = predictor.transform.apply_boxes_torch(fg_boxes, input_x.shape[:2])
-#     else:
-#         transformed_boxes = None
-                
-#     # predict segmentation according to the boxes
-#     masks, scores, logits = predictor.predict_torch(
-#         point_coords = point_coords,
-#         point_labels = point_labels,
-#         boxes = transformed_boxes,
-#         multimask_output = False,
-#     )
-#     masks = masks.cpu().detach().numpy()
-#     mask_all = np.ones((input_x.shape[0], input_x.shape[1], 3))
-#     for ann in masks:
-#         color_mask = np.random.random((1, 3)).tolist()[0]
-#         for i in range(3):
-#             mask_all[ann[0] == True, i] = color_mask[i]
-#     img = input_x / 255 * 0.3 + mask_all * 0.7
-    
-#     # generate alpha matte
-#     torch.cuda.empty_cache()
-#     mask = (masks[0][0] * 255).astype(np.uint8)
-#     trimap = generate_trimap(mask, erode_kernel_size, dilate_kernel_size).astype(np.float32)
-#     trimap[trimap==128] = 0.5
-#     trimap[trimap==255] = 1
-    
-#     boxes, logits, phrases = dino_predict(
-#         model=grounding_dino,
-#         image=image_transformed,
-#         caption= tr_caption,
-#         box_threshold=tr_box_threshold,
-#         text_threshold=tr_text_threshold,
-#         device=device)
-#     annotated_frame = dino_annotate(image_source=input_x, boxes=boxes, logits=logits, phrases=phrases)
-    
-#     annotated_frame = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
-
-#     if boxes.shape[0] == 0:
-#         # no transparent object detected
-#         pass
-#     else:
-#         h, w, _ = input_x.shape
-#         boxes = boxes * torch.Tensor([w, h, w, h])
-#         xyxy = box_convert(boxes=boxes, in_fmt="cxcywh", out_fmt="xyxy").numpy()
-#         trimap = convert_pixels(trimap, xyxy)
-
-#     input = {
-#         "image": torch.from_numpy(input_x).permute(2, 0, 1).unsqueeze(0)/255,
-#         "trimap": torch.from_numpy(trimap).unsqueeze(0).unsqueeze(0),
-#     }
-
-#     torch.cuda.empty_cache()
-#     alpha = vitmatte(input)['phas'].flatten(0,2)
-#     alpha = alpha.detach().cpu().numpy()
-    
-#     # get a green background
-#     background = generate_checkerboard_image(input_x.shape[0], input_x.shape[1], 8)
-
-#     # calculate foreground with alpha blending
-#     foreground_alpha = input_x * np.expand_dims(alpha, axis=2).repeat(3,2)/255 + background * (1 - np.expand_dims(alpha, axis=2).repeat(3,2))/255
-
-#     # calculate foreground with mask
-#     foreground_mask = input_x * np.expand_dims(mask/255, axis=2).repeat(3,2)/255 + background * (1 - np.expand_dims(mask/255, axis=2).repeat(3,2))/255
-
-#     foreground_alpha[foreground_alpha>1] = 1
-#     foreground_mask[foreground_mask>1] = 1
-
-#     # return img, mask_all
-#     trimap[trimap==1] == 0.999
-
-#     return  mask, alpha, foreground_mask, foreground_alpha
-
-
 
 import cv2 as cv
 import os 
@@ -175,7 +9,6 @@ import cv2
 import glob
 import sys
 import pathlib
-import matplotlib.pyplot as plt
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
@@ -311,14 +144,14 @@ def main(args):
     device = torch.device('cuda')
     modnet.eval().to(device)
     
-    # # Create silh masks
-    # silh_list = []
-    # for i in tqdm(range(len(images))):
-    #     data = T.ToTensor()(Image.open(images[i]))
-    #     silh_mask = obtain_modnet_mask(data, modnet, 512)
-    #     silh_list.append(silh_mask)
-    #     cv2.imwrite(images[i].replace('images', 'NeuralHaircut_masks/body'), postprocess_mask(silh_mask)[0].astype(np.uint8))
-    #     # cv2.imwrite(images[i].replace('image_', 'mask_'), postprocess_mask(silh_mask)[0].astype(np.uint8))
+    # Create silh masks
+    silh_list = []
+    for i in tqdm(range(len(images))):
+        data = T.ToTensor()(Image.open(images[i]))
+        silh_mask = obtain_modnet_mask(data, modnet, 512)
+        silh_list.append(silh_mask)
+        cv2.imwrite(images[i].replace('images', 'NeuralHaircut_masks/body'), postprocess_mask(silh_mask)[0].astype(np.uint8))
+        # cv2.imwrite(images[i].replace('image_', 'mask_'), postprocess_mask(silh_mask)[0].astype(np.uint8))
     
     print("Start calculating hair masks!")
 #     load CDGNet for hair masks
@@ -432,6 +265,48 @@ if __name__ == '__main__':
     from CDGNet.networks.CDGNet import Res_Deeplab
     import os
     from copy import deepcopy
+
+    # sys.path.append(os.path.join(args.ext_dir, 'BiRefNet'))
+    # # Use codes locally
+    # from models.birefnet import BiRefNet
+
+    # # Load weights from Hugging Face Models
+    # birefnet = BiRefNet.from_pretrained('ZhengPeng7/BiRefNet')
+    # torch.set_float32_matmul_precision(['high', 'highest'][0])
+    # birefnet.to('cuda')
+    # birefnet.eval()
+    # birefnet.half()
+
+    # def extract_object(birefnet, imagepath):
+    #     # Data settings
+    #     image_size = (1024, 1024)
+    #     transform_image = transforms.Compose([
+    #         transforms.Resize(image_size),
+    #         transforms.ToTensor(),
+    #         transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
+    #     ])
+
+    #     image = Image.open(imagepath)
+    #     input_images = transform_image(image).unsqueeze(0).to('cuda').half()
+
+    #     # Prediction
+    #     with torch.no_grad():
+    #         preds = birefnet(input_images)[-1].sigmoid().cpu()
+    #     pred = preds[0].squeeze()
+    #     pred_pil = transforms.ToPILImage()(pred)
+    #     mask = pred_pil.resize(image.size)
+    #     image.putalpha(mask)
+    #     breakpoint()
+    #     # save the mask
+    #     mask = np.array(mask)
+    #     mask = cv.resize(mask, image_size, interpolation=cv.INTER_NEAREST)
+        
+    #     Image.fromarray(mask).save('test.png')
+    #     return image, mask
+    
+    # # Visualization
+    # image, mask = extract_object(birefnet, imagepath='/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/100/images/0003/image_222200036.jpg')[0]
+
 
     main(args)
     sys.exit(0)

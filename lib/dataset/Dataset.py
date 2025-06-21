@@ -258,6 +258,7 @@ class GaussianDataset(Dataset):
         self.poses_history = []
         self.flame_mesh_path = os.path.join(flame_param_folder, '0000', 'mesh_0.obj')
         optical_flow_path = ['void_path' for _ in self.camera_ids]
+        flame_param_paths = []
         for frame in frames:
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             
@@ -301,13 +302,12 @@ class GaussianDataset(Dataset):
             pre_param = np.load(flame_param_path)
             pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
             self.poses_history.append(pre_pose)
+            flame_param_paths.append(flame_param_path)
 
         self.poses_history = torch.stack(self.poses_history)
 
         param_folder = os.path.join(self.dataroot, 'FLAME_params')
         param = np.load(os.path.join(param_folder, frames[0], 'params.npz'))
-        init_landmarks_3d = torch.from_numpy(np.load(os.path.join(param_folder, frames[0], 'lmk_3d.npy'))).float()
-        init_vertices = torch.from_numpy(np.load(os.path.join(param_folder, frames[0], 'vertices.npy'))).float()
 
 
 
@@ -316,9 +316,8 @@ class GaussianDataset(Dataset):
         self.shape_dims = 100
         self.exp_dims = 50
         
-        for i, sample in enumerate(self.samples):
+        for i, flame_param_paths in enumerate(flame_param_paths):
             mesh = {}
-            flame_param_path = sample[13]
             flame_param = np.load(flame_param_path)
 
             # scale is around 0.995
@@ -369,9 +368,14 @@ class GaussianDataset(Dataset):
         T = pose[None, 3:]
         S = torch.from_numpy(param['scale']).float()
 
+        
+        if os.path.exists(os.path.join(param_folder, frames[0], 'lmk_3d.npy')) and os.path.exists(os.path.join(param_folder, frames[0], 'vertices.npy')):
+            init_landmarks_3d = torch.from_numpy(np.load(os.path.join(param_folder, frames[0], 'lmk_3d.npy'))).float()
+            init_vertices = torch.from_numpy(np.load(os.path.join(param_folder, frames[0], 'vertices.npy'))).float()
 
-        self.init_landmarks_3d_neutral = (torch.matmul(init_landmarks_3d- T, R)) / S
-        self.init_flame_model = (torch.matmul(init_vertices- T, R)) / S
+            self.init_landmarks_3d_neutral = (torch.matmul(init_landmarks_3d- T, R)) / S
+            self.init_flame_model = (torch.matmul(init_vertices- T, R)) / S
+
         # color -- random color from red, green, blue, white and black
         self.random_color = [torch.as_tensor([1.0, 0.0, 0.0]), torch.as_tensor([0.0, 1.0, 0.0]), torch.as_tensor([0.0, 0.0, 1.0]), torch.as_tensor([1.0, 1.0, 1.0]), torch.as_tensor([0.0, 0.0, 0.0])]
         self.bg_rgb_color = [self.random_color[np.random.randint(0, 5)] for _ in range(len(frames))]

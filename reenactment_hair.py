@@ -68,6 +68,7 @@ if __name__ == '__main__':
 
         # contraint the number of vertices to 100000, otherwise out of memory for 24GB
         select_indices = torch.randperm(data['verts'].shape[0])[:50000]
+        select_indices = range(data['verts'].shape[0])
         gaussianhead = GaussianHeadModule(cfg.gaussianheadmodule, 
                                           xyz=data['verts'][select_indices].cpu(),
                                           feature=torch.atanh(data['verts_feature'][select_indices].cpu()), 
