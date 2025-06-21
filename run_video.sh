@@ -1,4 +1,4 @@
-export GPU="6"
+export GPU="5"
 export CAMERA="PINHOLE"
 export EXP_NAME_1="stage1"
 export EXP_NAME_2="stage2"
@@ -7,16 +7,6 @@ export EXP_PATH_1=$DATA_PATH/3d_gaussian_splatting/$EXP_NAME_1
 
 
 # Manual steps for now:
-
-# NeRSemble dataset
-PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
-SUBJECT="258"
-SUBJECT="100"
-SEQUENCE="HAIR"
-SEQUENCE="EXP-1-head"
-DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
-
-
 
 # # Renderme dataset
 # SUBJECT="0018_e0_raw"
@@ -29,6 +19,16 @@ DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/
 # SUBJECT="0322_h1_4bn_raw"
 # SUBJECT="0094_h1_3bn_raw"
 # DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/RenderMe/$SUBJECT"
+
+
+# NeRSemble dataset
+PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
+SUBJECT="258"
+# SUBJECT="100"
+SEQUENCE="HAIR"
+SEQUENCE="EXP-1-head"
+DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
+
 
 #
 # Ensure that the following environment variables are accessible to the script:
@@ -43,9 +43,15 @@ eval "$(conda shell.bash hook)"
 #################
 
 
-# Run VHAP tracking 
+
+# Input data path
 DATA_ROOT="$PROJECT_DIR/datasets/NeRSemble"
+
+# Output data path
 DATA_PATH="$DATA_ROOT/$SUBJECT/sequences/${SEQUENCE}"
+# DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
+
+# temporary output folders
 TRACK_OUTPUT_FOLDER="$PROJECT_DIR/datasets/output/nersemble_v2/${SUBJECT}_${SEQUENCE}_v16_DS4_wBg_staticOffset"
 EXPORT_OUTPUT_FOLDER="$PROJECT_DIR/datasets/export/nersemble_v2/${SUBJECT}_${SEQUENCE}_v16_DS4_whiteBg_staticOffset_maskBelowLine"
 
@@ -53,12 +59,12 @@ EXPORT_OUTPUT_FOLDER="$PROJECT_DIR/datasets/export/nersemble_v2/${SUBJECT}_${SEQ
 conda activate gha2   
 # # nersemble-data download datasets/NeRSemble/ --participant 258 --sequence 'HAIR','EXP-1-head'
 cd  $PROJECT_DIR/preprocess
-# python preprocess_nersemble.py --data_source $DATA_ROOT --data_output $DATA_PATH --id_list $SUBJECT
+python preprocess_nersemble.py --data_source $DATA_ROOT --data_output $DATA_PATH --id_list $SUBJECT
 
 
+# Run VHAP tracking 
 conda activate VHAP
 cd $PROJECT_DIR/ext/VHAP
-
 
 CUDA_VISIBLE_DEVICES="$GPU" python vhap/preprocess_video.py \
 --input ${DATA_ROOT}/${SUBJECT}/sequences/${SEQUENCE}* \
@@ -78,7 +84,6 @@ CUDA_VISIBLE_DEVICES="$GPU" python vhap/export_as_nerf_dataset.py \
 
 # Convert structure to images | frame_id | image_camera_id.jpg 
 cd  $PROJECT_DIR/preprocess
-DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
 python convert_nersemble.py --data_source ${EXPORT_OUTPUT_FOLDER} --data_output ${DATA_PATH} 
 
 
@@ -111,17 +116,17 @@ python convert_nersemble.py --data_source ${EXPORT_OUTPUT_FOLDER} --data_output 
 # CUDA_VISIBLE_DEVICES="$GPU" python face_parse.py --model resnet34 --weight $PROJECT_DIR/ext/face-parsing/weights/resnet34.pt --input $DATA_PATH/images  --output $DATA_PATH/face-parsing
 
 
-# # face mask from neural haircut
-# cd $PROJECT_DIR/preprocess
-# conda deactivate && conda activate matte_anything
-# # conda deactivate && conda activate gha2
-# CUDA_VISIBLE_DEVICES="$GPU" python calc_masks.py \
-#     --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --img_size 2048\
-#     --kernel_size 5 \
-#     --MODNET_ckpt $PROJECT_DIR/assets/MODNet/modnet_photographic_portrait_matting.ckpt \
-#     --CDGNET_ckpt $PROJECT_DIR/assets/CDGNet/LIP_epoch_149.pth \
-#     --ext_dir $PROJECT_DIR/ext/
-#     # --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --img_size 512 \
+# face mask from neural haircut
+cd $PROJECT_DIR/preprocess
+conda deactivate && conda activate matte_anything
+# conda deactivate && conda activate gha2
+CUDA_VISIBLE_DEVICES="$GPU" python calc_masks.py \
+    --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --img_size 2048\
+    --kernel_size 5 \
+    --MODNET_ckpt $PROJECT_DIR/assets/MODNet/modnet_photographic_portrait_matting.ckpt \
+    --CDGNET_ckpt $PROJECT_DIR/assets/CDGNet/LIP_epoch_149.pth \
+    --ext_dir $PROJECT_DIR/ext/
+    # --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --img_size 512 \
 
 
 
@@ -129,20 +134,20 @@ python convert_nersemble.py --data_source ${EXPORT_OUTPUT_FOLDER} --data_output 
 # cd $PROJECT_DIR/src/preprocessing && ./depth.sh
 
 
-# # landmark detection and FLAME fitting
-# cd $PROJECT_DIR/preprocess
-# conda deactivate && conda activate mv-3dmm-fitting
-# # CUDA_VISIBLE_DEVICES="$GPU" python detect_landmarks.py \
-# #     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks --image_size 2048
-# CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
-#     --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml \
-#     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
-#     --param_folder $DATA_PATH/FLAME_params --camera_folder $DATA_PATH/cameras --image_size 2048
+# landmark detection and FLAME fitting
+cd $PROJECT_DIR/preprocess
+conda deactivate && conda activate mv-3dmm-fitting
+CUDA_VISIBLE_DEVICES="$GPU" python detect_landmarks.py \
+    --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks --image_size 2048
+CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
+    --config $PROJECT_DIR/config/FLAME_fitting_NeRSemble_031.yaml \
+    --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
+    --param_folder $DATA_PATH/FLAME_params --camera_folder $DATA_PATH/cameras --image_size 2048
     
-# CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
-#     --config $PROJECT_DIR/config/BFM_fitting_NeRSemble_031.yaml \
-#     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
-#     --param_folder $DATA_PATH/params --camera_folder $DATA_PATH/cameras --image_size 2048
+CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
+    --config $PROJECT_DIR/config/BFM_fitting_NeRSemble_031.yaml \
+    --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
+    --param_folder $DATA_PATH/params --camera_folder $DATA_PATH/cameras --image_size 2048
 
 
 
@@ -294,7 +299,7 @@ conda activate gha2
 # CUDA_LAUNCH_BLOCKING=1 CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_N031.yaml
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_N$SUBJECT.yaml
 
-# CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N$SUBJECT\_Simplified.yaml
+# CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N$SUBJECT.yaml --dataroot $DATA_PATH
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme_single.yaml --dataroot $DATA_PATH
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_renderme.yaml --dataroot $DATA_PATH

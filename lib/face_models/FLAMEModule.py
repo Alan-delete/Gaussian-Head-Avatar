@@ -421,7 +421,8 @@ class FLAMEModule(nn.Module):
         self.id_coeff = nn.Parameter(torch.zeros(1, self.shape_dims, dtype=torch.float32))
         self.exp_coeff = nn.Parameter(torch.zeros(self.batch_size, self.exp_dims + 9, dtype=torch.float32)) # include expression_params, jaw_pose, eye_pose
         self.pose = nn.Parameter(torch.zeros(batch_size, 6, dtype=torch.float32))
-        self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32))
+        # self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32))
+        self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32), requires_grad=True)
         self.global_translation = nn.Parameter(torch.zeros(1, 1, 3, dtype=torch.float32))
 
         self.register_buffer('neck_pose', torch.zeros(self.batch_size, 3, dtype=torch.float32)) # not optimized
@@ -429,6 +430,10 @@ class FLAMEModule(nn.Module):
         self.register_buffer('global_rotation', torch.zeros(self.batch_size, 3, dtype=torch.float32))
         # self.global_rotation = nn.Parameter(torch.zeros(self.batch_size, 3, dtype=torch.float32), requires_grad=True)
         self.register_buffer('faces', self.flame.faces_tensor)
+
+    # 'exp_coeff' -- 'expr' + 'jaw_pose' + 'eyes_pose'
+    # 'pose' -- 'rotation'(with respect to origin) + 'translation'
+    # 'id_coeff' -- 'shape'
 
     def forward(self):
         expression_params = self.exp_coeff[:, : self.exp_dims]

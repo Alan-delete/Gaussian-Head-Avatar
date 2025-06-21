@@ -162,7 +162,7 @@ if __name__ == "__main__":
         # camera_id = mask_name.split('_')[1]
         # frame_id should be at most 4 digits
         frame_id = '%04d' % int(frame_id)
-        tar_mask_path = os.path.join(tar_mask_folder, frame_id, 'image_' + camera_id + '.jpg')
+        tar_mask_path = os.path.join(tar_mask_folder, 'body', frame_id, 'image_' + camera_id + '.jpg')
         os.makedirs(os.path.dirname(tar_mask_path), exist_ok=True)
         
         mask = cv2.imread(src_mask_path)

@@ -65,8 +65,8 @@ def extract_frames(id_list):
             background = cv2.imread(background_path)
             background, _ = CropImage(LEFT_UP, CROP_SIZE, background, None)
             background, _ = ResizeImage(SIZE, CROP_SIZE, background, None)
-            os.makedirs(os.path.join(DATA_OUTPUT, id, 'background'), exist_ok=True)
-            cv2.imwrite(os.path.join(DATA_OUTPUT, id, 'background', 'image_' + camera_id + '.jpg'), background)
+            os.makedirs(os.path.join(DATA_OUTPUT, 'background'), exist_ok=True)
+            cv2.imwrite(os.path.join(DATA_OUTPUT, 'background', 'image_' + camera_id + '.jpg'), background)
         
         # video_folders = glob.glob(os.path.join(DATA_SOURCE, '*', id, '*'))
         video_folders = glob.glob(os.path.join(DATA_SOURCE, id, 'sequences', '*', "*"))
@@ -77,7 +77,7 @@ def extract_frames(id_list):
                 or ('EMO' in video_folder):
                 continue
             
-            video_paths = glob.glob(os.path.join(video_folder, 'cam_*'))
+            video_paths = glob.glob(os.path.join(video_folder, 'cam_*.mp4'))
             
             # only care about the /EXP-1-head and /HAIR
             # should've only downloaded the head and hair folders
