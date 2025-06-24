@@ -113,9 +113,9 @@ def main(args):
         os.makedirs(os.path.join(args.vis_img_dir, frame), exist_ok=True)
 
     # img_dir: 'datasets/mini_demo_dataset/031/images'
-    filepaths = sorted(glob.glob(os.path.join(args.img_dir, '*', f'image_[0-9]*')))
+    filepaths = sorted(glob.glob(os.path.join(args.img_dir, '*', f'image_[0-9]*.jpg')))
     # '/datasets/mini_demo_dataset/031/masks/hair'
-    mask_paths = sorted(glob.glob(os.path.join(args.mask_dir, '*', f'image_[0-9]*')))
+    mask_paths = sorted(glob.glob(os.path.join(args.mask_dir, '*', f'image_[0-9]*.jpg')))
     assert len(filepaths) == len(mask_paths)
 
     # img_list = sorted(os.listdir(args.mask_paths))
@@ -150,6 +150,9 @@ def main(args):
         
         rad = orientation_map
         mask = np.asarray(Image.open(mask_path)) / 255.
+        # resize mask to match the orientation map size
+        mask = np.asarray(Image.fromarray(mask).resize((orientation_map.shape[1], orientation_map.shape[0]), Image.BICUBIC))
+
         red = np.clip(1 - np.abs(rad -  0.) / 45., a_min=0, a_max=1) + np.clip(1 - np.abs(rad - 180.) / 45., a_min=0, a_max=1)
         green = np.clip(1 - np.abs(rad - 90.) / 45., a_min=0, a_max=1)
         magenta = np.clip(1 - np.abs(rad - 45.) / 45., a_min=0, a_max=1)
@@ -164,7 +167,7 @@ def main(args):
         # b = np.zeros_like(r)
         norm = np.ones_like(rgb[..., 0])
 
-        vis_img = np.clip(rgb / norm[..., None], a_min=0, a_max=1) * mask[..., None] * 255.
+        # vis_img = np.clip(rgb / norm[..., None], a_min=0, a_max=1) * mask[..., None] * 255.
 
         cv2.imwrite( os.path.join(args.orient_dir, flame, f'{basename}.png'), orientation_map.astype('uint8'))
         np.save( os.path.join(args.conf_dir, flame, f'{basename}.npy'), confidence_map.astype('float16'))

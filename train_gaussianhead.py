@@ -39,7 +39,7 @@ if __name__ == '__main__':
                                           xyz=gaussianhead_state_dict['xyz'], 
                                           feature=gaussianhead_state_dict['feature'],
                                           landmarks_3d_neutral=gaussianhead_state_dict['landmarks_3d_neutral']).to(device)
-        gaussianhead.load_state_dict(gaussianhead_state_dict)
+        gaussianhead.load_state_dict(gaussianhead_state_dict, strict=False)
     else:
         meshhead_state_dict = torch.load(cfg.load_meshhead_checkpoint, map_location=lambda storage, loc: storage)
         meshhead = MeshHeadModule(cfg.meshheadmodule, meshhead_state_dict['landmarks_3d_neutral']).to(device)

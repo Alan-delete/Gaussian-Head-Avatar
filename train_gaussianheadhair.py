@@ -8,6 +8,7 @@ from config.config import config_train
 from lib.dataset.Dataset import GaussianDataset
 from lib.dataset.DataLoaderX import DataLoaderX
 from lib.module.MeshHeadModule import MeshHeadModule
+from lib.module.GaussianBaseModule import GaussianBaseModule
 from lib.module.GaussianHeadModule import GaussianHeadModule
 from lib.module.GaussianHairModule import GaussianHairModule
 from lib.module.SuperResolutionModule import SuperResolutionModule
@@ -17,12 +18,14 @@ from lib.recorder.Recorder import GaussianHeadTrainRecorder
 from lib.trainer.GaussianHeadTrainer import GaussianHeadTrainer
 from lib.trainer.GaussianHeadHairTrainer import GaussianHeadHairTrainer
 
+
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s2_N031.yaml')
     parser.add_argument('--dataroot', type=str, default='')
+    parser.add_argument('--dataroot_list', type=str, nargs='+', default=[])
     arg = parser.parse_args()
 
     cfg = config_train()
@@ -34,9 +37,18 @@ if __name__ == '__main__':
         arg_cfg = ['dataroot', arg.dataroot]
         cfg.dataset.merge_from_list(arg_cfg)
     
+    datasets = []
+    if len(arg.dataroot_list) > 0:
+        for dataroot in arg.dataroot_list:
+            arg_cfg = ['dataroot', dataroot]
+            cfg.dataset.merge_from_list(arg_cfg)
+            dataset = GaussianDataset(cfg.dataset)
+            datasets.append(dataset)
+            
+    
     # debug select frames is to only load a few frames for debugging
     dataset = GaussianDataset(cfg.dataset)
-    dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True) 
+    dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
 
     # test_dataset = GaussianDataset(cfg.dataset, train=False) 
     # test_dataloader = DataLoaderX(test_dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True)
@@ -44,20 +56,26 @@ if __name__ == '__main__':
     device = torch.device('cuda:%d' % cfg.gpu_id)
     torch.cuda.set_device(cfg.gpu_id)
     
-    if os.path.exists(cfg.load_gaussianhead_checkpoint):
-        gaussianhead_state_dict = torch.load(cfg.load_gaussianhead_checkpoint, map_location=lambda storage, loc: storage)
-        gaussianhead = GaussianHeadModule(cfg.gaussianheadmodule, 
-                                          xyz=gaussianhead_state_dict['xyz'], 
-                                          feature=gaussianhead_state_dict['feature'],
-                                          landmarks_3d_neutral=gaussianhead_state_dict['landmarks_3d_neutral']).to(device)
-        gaussianhead.load_state_dict(gaussianhead_state_dict)
-    else:
-        meshhead_state_dict = torch.load(cfg.load_meshhead_checkpoint, map_location=lambda storage, loc: storage)
-        meshhead = MeshHeadModule(cfg.meshheadmodule, meshhead_state_dict['landmarks_3d_neutral']).to(device)
-        meshhead.load_state_dict(meshhead_state_dict)
-        meshhead.subdivide()
-        with torch.no_grad():
-            data = meshhead.reconstruct_neutral()
+    supres = SuperResolutionModule(cfg.supresmodule).to(device)
+    if os.path.exists(cfg.load_supres_checkpoint):
+        supres.load_state_dict(torch.load(cfg.load_supres_checkpoint, map_location=lambda storage, loc: storage))
+    optimized_parameters = [{'params' : supres.parameters(), 'lr' : cfg.lr_net, 'name' : 'supres'},]
+
+    if cfg.gaussianheadmodule.enable and not cfg.flame_gaussian_module.enable:
+        if os.path.exists(cfg.load_gaussianhead_checkpoint):
+            gaussianhead_state_dict = torch.load(cfg.load_gaussianhead_checkpoint, map_location=lambda storage, loc: storage)
+            gaussianhead = GaussianHeadModule(cfg.gaussianheadmodule, 
+                                            xyz=gaussianhead_state_dict['xyz'], 
+                                            feature=gaussianhead_state_dict['feature'],
+                                            landmarks_3d_neutral=gaussianhead_state_dict['landmarks_3d_neutral']).to(device)
+            gaussianhead.load_state_dict(gaussianhead_state_dict)
+        else:
+            meshhead_state_dict = torch.load(cfg.load_meshhead_checkpoint, map_location=lambda storage, loc: storage)
+            meshhead = MeshHeadModule(cfg.meshheadmodule, meshhead_state_dict['landmarks_3d_neutral']).to(device)
+            meshhead.load_state_dict(meshhead_state_dict)
+            meshhead.subdivide()
+            with torch.no_grad():
+                data = meshhead.reconstruct_neutral()
 
         # contraint the number of vertices to 100000, otherwise out of memory for 24GB
         select_indices = torch.randperm(data['verts'].shape[0])[:50000]
@@ -78,6 +96,38 @@ if __name__ == '__main__':
         meshhead = meshhead.cpu()
         del meshhead
         torch.cuda.empty_cache()
+
+        # TODO: move the gaussianhead optimizer into the gaussianhead module
+
+        gaussianhead_optimized_parameters = [{'params' : gaussianhead.xyz, 'lr' : cfg.lr_net * 0.1, 'name' : 'xyz'},
+                                {'params' : gaussianhead.feature, 'lr' : cfg.lr_net * 0.1, 'name' : 'feature'},
+                                {'params' : gaussianhead.exp_color_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_color_mlp'},
+                                {'params' : gaussianhead.pose_color_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_color_mlp'},
+                                {'params' : gaussianhead.exp_deform_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_deform_mlp'},
+                                {'params' : gaussianhead.pose_deform_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_deform_mlp'},
+                                {'params' : gaussianhead.exp_attributes_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_attributes_mlp'},
+                                {'params' : gaussianhead.pose_attributes_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_attributes_mlp'},
+                                {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 0.3, 'name' : 'scales'},
+                                {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.1, 'name' : 'rotation'},
+                                {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net, 'name' : 'opacity'},
+                                # {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 3, 'name' : 'scales'},
+                                # {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.5, 'name' : 'rotation'},
+                                # {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net * 10, 'name' : 'opacity'},
+                                {'params' : gaussianhead.seg_label, 'lr' : cfg.lr_net , 'name' : 'seg_label'},
+                                {'params' : gaussianhead.features_dc, 'lr' : cfg.lr_net * 50, 'name' : 'features_dc'},
+                                {'params' : gaussianhead.features_rest, 'lr' : cfg.lr_net * 50, 'name' : 'features_rest'},
+                                ]
+
+
+        gaussianhead.optimizer = torch.optim.Adam(gaussianhead_optimized_parameters)
+        # gaussianhead.scheduler_args = get_expon_lr_func(lr_init=cfg.position_lr_init*0.1*self.spatial_lr_scale,
+        #                                                 lr_final=cfg.position_lr_final*self.spatial_lr_scale,
+        #                                                 lr_delay_mult=cfg.position_lr_delay_mult,
+        #                                                 max_steps=cfg.position_lr_max_steps)
+
+    else:
+        gaussianhead = GaussianBaseModule().to(device)
+
     
     gaussians = FlameGaussianModel(0, disable_flame_static_offset = cfg.gaussianhairmodule.enable , n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
     # process meshes
@@ -92,14 +142,11 @@ if __name__ == '__main__':
     gaussianhair = GaussianHairModule(cfg.gaussianhairmodule).to(device)
     gaussianhair.update_mesh_alignment_transform(dataset.R, dataset.T, dataset.S, flame_mesh_path = dataset.flame_mesh_path)
 
-    supres = SuperResolutionModule(cfg.supresmodule).to(device)
-    if os.path.exists(cfg.load_supres_checkpoint):
-        supres.load_state_dict(torch.load(cfg.load_supres_checkpoint, map_location=lambda storage, loc: storage))
 
     camera = CameraModule()
     recorder = GaussianHeadTrainRecorder(cfg)
 
-    torch.autograd.set_detect_anomaly(True)
+    # torch.autograd.set_detect_anomaly(True)
     start_epoch = cfg.start_epoch
     checkpoint_seed = cfg.checkpoint_seed
 
@@ -150,34 +197,6 @@ if __name__ == '__main__':
     # breakpoint()
 
     
-    # TODO: move the gaussianhead optimizer into the gaussianhead module
-    optimized_parameters = [{'params' : supres.parameters(), 'lr' : cfg.lr_net, 'name' : 'supres'},]
-
-    gaussianhead_optimized_parameters = [{'params' : gaussianhead.xyz, 'lr' : cfg.lr_net * 0.1, 'name' : 'xyz'},
-                            {'params' : gaussianhead.feature, 'lr' : cfg.lr_net * 0.1, 'name' : 'feature'},
-                            {'params' : gaussianhead.exp_color_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_color_mlp'},
-                            {'params' : gaussianhead.pose_color_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_color_mlp'},
-                            {'params' : gaussianhead.exp_deform_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_deform_mlp'},
-                            {'params' : gaussianhead.pose_deform_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_deform_mlp'},
-                            {'params' : gaussianhead.exp_attributes_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'exp_attributes_mlp'},
-                            {'params' : gaussianhead.pose_attributes_mlp.parameters(), 'lr' : cfg.lr_net, 'name' : 'pose_attributes_mlp'},
-                            {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 0.3, 'name' : 'scales'},
-                            {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.1, 'name' : 'rotation'},
-                            {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net, 'name' : 'opacity'},
-                            # {'params' : gaussianhead.scales, 'lr' : cfg.lr_net * 3, 'name' : 'scales'},
-                            # {'params' : gaussianhead.rotation, 'lr' : cfg.lr_net * 0.5, 'name' : 'rotation'},
-                            # {'params' : gaussianhead.opacity, 'lr' : cfg.lr_net * 10, 'name' : 'opacity'},
-                            {'params' : gaussianhead.seg_label, 'lr' : cfg.lr_net , 'name' : 'seg_label'},
-                            {'params' : gaussianhead.features_dc, 'lr' : cfg.lr_net * 50, 'name' : 'features_dc'},
-                            {'params' : gaussianhead.features_rest, 'lr' : cfg.lr_net * 50, 'name' : 'features_rest'},
-                            ]
-
-
-    gaussianhead.optimizer = torch.optim.Adam(gaussianhead_optimized_parameters)
-    # gaussianhead.scheduler_args = get_expon_lr_func(lr_init=cfg.position_lr_init*0.1*self.spatial_lr_scale,
-    #                                                 lr_final=cfg.position_lr_final*self.spatial_lr_scale,
-    #                                                 lr_delay_mult=cfg.position_lr_delay_mult,
-    #                                                 max_steps=cfg.position_lr_max_steps)
 
     if os.path.exists(cfg.load_delta_poses_checkpoint):
         delta_poses = torch.load(cfg.load_delta_poses_checkpoint)

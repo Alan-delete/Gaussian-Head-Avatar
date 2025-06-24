@@ -131,13 +131,17 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--data_source', type=str, default='../datasets/NeRSemble')
+    parser.add_argument('--intermediate_data', type=str, default='../datasets/NeRSemble_v2')
     parser.add_argument('--data_output', type=str, default='../datasets/mini_demo_dataset/100')
     # parser.add_argument('--id_list', type=str, nargs='+', default=['258'])
     parser.add_argument('--subject', type=str, default='258')
     parser.add_argument('--sequence', type=str, default='EXP-1-head')
     arg = parser.parse_args()
 
-    transform_json_path = os.path.join(arg.data_source, 'transforms.json')
+    DATA_SOURCE =  arg.data_source
+    DATA_OUTPUT = arg.data_output
+
+    transform_json_path = os.path.join(arg.intermediate_data, 'transforms.json')
     if not os.path.exists(transform_json_path):
         print(f"Transform JSON file not found at {transform_json_path}. Please check the data source path.")
         exit(1)
@@ -146,23 +150,21 @@ if __name__ == "__main__":
 
 
 
-    src_mask_folder = os.path.join(arg.data_source, 'fg_masks')
+    src_mask_folder = os.path.join(arg.intermediate_data, 'fg_masks')
     src_mask_paths = sorted(glob.glob(os.path.join(src_mask_folder, '*.png')))
 
     tar_mask_folder = os.path.join(arg.data_output, 'masks')
-    os.makedirs(tar_mask_folder, exist_ok=True)
+    # os.makedirs(tar_mask_folder, exist_ok=True)
+    
     # datasets/export/nersemble_v2/258_HAIR_v16_DS4_whiteBg_staticOffset_maskBelowLine/fg_masks/00000_00.png
     # to data_folder/masks/0000/image_00.png
     for i, src_mask_path in tqdm(enumerate(src_mask_paths)):
         frame_info = transforms['frames'][i]
         camera_id = frame_info['camera_id']
         frame_id = frame_info['timestep_id']
-        # mask_name = os.path.basename(src_mask_path).replace('.png', '')
-        # frame_id = mask_name.split('_')[0]
-        # camera_id = mask_name.split('_')[1]
-        # frame_id should be at most 4 digits
         frame_id = '%04d' % int(frame_id)
-        tar_mask_path = os.path.join(tar_mask_folder, 'body', frame_id, 'image_' + camera_id + '.jpg')
+        # tar_mask_path = os.path.join(tar_mask_folder, 'body', frame_id, 'image_' + camera_id + '.jpg')
+        tar_mask_path = os.path.join(DATA_OUTPUT, 'images',  frame_id, 'mask_lowres_' + camera_id + '.jpg') 
         os.makedirs(os.path.dirname(tar_mask_path), exist_ok=True)
         
         mask = cv2.imread(src_mask_path)
@@ -175,9 +177,9 @@ if __name__ == "__main__":
         cv2.imwrite(tar_mask_path, mask)
 
 
-    scr_flame_folder = os.path.join(arg.data_source, 'flame_param')
+    scr_flame_folder = os.path.join(arg.intermediate_data, 'flame_param')
     src_flame_paths = glob.glob(os.path.join(scr_flame_folder, '*.npz'))
-    tar_flame_folder = os.path.join(arg.data_output, 'FLAME_params')
+    tar_flame_folder = os.path.join(arg.data_output, 'FLAME_params_VHAP')
     os.makedirs(tar_flame_folder, exist_ok=True)
     for src_flame_path in tqdm(src_flame_paths):
         flame_name = os.path.basename(src_flame_path).replace('.npz', '')
@@ -190,8 +192,47 @@ if __name__ == "__main__":
 
      
 
-    DATA_SOURCE =  arg.data_source
-    DATA_OUTPUT = arg.data_output
+
+
+    src_camera_path = os.path.join(DATA_SOURCE, arg.subject, 'calibration', 'camera_params.json')
+    with open(src_camera_path, 'r') as f:
+        camera = json.load(f)
+    
+    src_image_folder = os.path.join(DATA_SOURCE, arg.subject, 'sequences', arg.sequence, 'images' ,'cam_*.jpg')
+    src_image_paths = sorted(glob.glob(src_image_folder))
+
+    for i, src_image_path in tqdm(enumerate(src_image_paths)):
+        image_name = os.path.basename(src_image_path).replace('.jpg', '')
+        camera_id = image_name.split('_')[1]
+        frame_id = image_name.split('_')[2]
+        # frame_id should be at most 4 digits
+        frame_id = '%04d' % int(frame_id)
+
+
+        image = cv2.imread(src_image_path)
+        visible = (np.ones_like(image) * 255).astype(np.uint8)
+        image, _ = CropImage(LEFT_UP, CROP_SIZE, image, None)
+        image, _ = ResizeImage(SIZE, CROP_SIZE, image, None)
+        visible, _ = CropImage(LEFT_UP, CROP_SIZE, visible, None)
+        visible, _ = ResizeImage(SIZE, CROP_SIZE, visible, None)
+        image_lowres = cv2.resize(image, SIZE_LOWRES)
+        visible_lowres = cv2.resize(visible, SIZE_LOWRES)
+
+        os.makedirs(os.path.join(DATA_OUTPUT, 'images',  frame_id), exist_ok=True)
+        cv2.imwrite(os.path.join(DATA_OUTPUT, 'images',  frame_id, 'image_' + camera_id + '.jpg'), image)
+        cv2.imwrite(os.path.join(DATA_OUTPUT, 'images',  frame_id, 'image_lowres_' + camera_id + '.jpg'), image_lowres)
+        cv2.imwrite(os.path.join(DATA_OUTPUT, 'images',  frame_id, 'visible_' + camera_id + '.jpg'), visible)
+        cv2.imwrite(os.path.join(DATA_OUTPUT, 'images',  frame_id, 'visible_lowres_' + camera_id + '.jpg'), visible_lowres)
+        os.makedirs(os.path.join(DATA_OUTPUT, 'cameras',  frame_id), exist_ok=True)
+
+        extrinsic = np.array(camera['world_2_cam'][camera_id][:3])
+        intrinsic = np.array(camera['intrinsics'])
+        _, intrinsic = CropImage(LEFT_UP, CROP_SIZE, None, intrinsic)
+        _, intrinsic = ResizeImage(SIZE, CROP_SIZE, None, intrinsic)
+
+        os.makedirs(os.path.join(DATA_OUTPUT, 'cameras',  frame_id), exist_ok=True)
+        np.savez(os.path.join(DATA_OUTPUT, 'cameras',  frame_id, 'camera_' + camera_id + '.npz'), extrinsic=extrinsic, intrinsic=intrinsic)
+
 
     # # DATA_OUTPUT = '../NeRSemble'
     # # extract_frames(['031', '036'])

@@ -37,6 +37,7 @@ if __name__ == '__main__':
     output_folder = arg.landmark_folder
 
     frames = sorted(os.listdir(source_folder))
+    frames = [frame for frame in frames if os.path.isdir(os.path.join(source_folder, frame))]
     for frame in tqdm.tqdm(frames):
         if 'background' in frame:
             continue

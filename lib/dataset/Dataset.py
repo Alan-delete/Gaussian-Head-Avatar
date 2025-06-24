@@ -75,7 +75,8 @@ class MeshDataset(Dataset):
         param_folder = os.path.join(self.dataroot, 'params')
         camera_folder = os.path.join(self.dataroot, 'cameras')
         # frames = os.listdir(image_folder)
-        frames = os.listdir(image_folder) if len(self.selected_frames) == 0 else self.selected_frames
+        frames = [ frame for frame in os.listdir(image_folder) if os.path.isdir(os.path.join(image_folder, frame))] if len(self.selected_frames) == 0 else self.selected_frames
+        frames = sorted(frames)
         
         self.num_exp_id = 0
         for frame in frames:
@@ -218,6 +219,8 @@ class GaussianDataset(Dataset):
         mask_folder = os.path.join(self.dataroot, 'NeuralHaircut_masks')
         if not os.path.exists(mask_folder):
             mask_folder = os.path.join(self.dataroot, 'masks')
+        mask_folder = os.path.join(self.dataroot, 'masks')
+
         # as tested, face_parsing is more robust than matte anything, but less accurate
         # if os.path.exists(os.path.join(self.dataroot, 'face-parsing', 'hair')):
         #     hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
@@ -226,11 +229,12 @@ class GaussianDataset(Dataset):
         # hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
 
         flame_param_folder = os.path.join(self.dataroot, 'FLAME_params')
+        flame_param_VHAP_folder = os.path.join(self.dataroot, 'FLAME_params_VHAP')
         optical_flow_folder = os.path.join(self.dataroot, 'optical_flow')
         orientation_folder = os.path.join(self.dataroot, 'orientation_maps')
         orientation_confidence_folder = os.path.join(self.dataroot, 'orientation_confidence_maps')
-        frames = sorted(os.listdir(image_folder)) if len(self.selected_frames) == 0 else self.selected_frames
-        
+        frames = [ frame for frame in os.listdir(image_folder) if os.path.isdir(os.path.join(image_folder, frame))] if len(self.selected_frames) == 0 else self.selected_frames
+        frames = sorted(frames)
         # split the frames into training and testing
         # decrease the number of frames for debugging 
         if split_strategy == "train":
@@ -258,7 +262,7 @@ class GaussianDataset(Dataset):
         self.poses_history = []
         self.flame_mesh_path = os.path.join(flame_param_folder, '0000', 'mesh_0.obj')
         optical_flow_path = ['void_path' for _ in self.camera_ids]
-        flame_param_paths = []
+        VHAP_flame_param_paths = []
         for frame in frames:
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             
@@ -268,7 +272,8 @@ class GaussianDataset(Dataset):
             else:
                 mask_format = 'png'
             # mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
-            mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
+            # mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
+            mask_paths = [os.path.join(image_folder, frame, 'mask_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
 
             hair_mask_path = [os.path.join(mask_folder,'hair', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
             # hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
@@ -299,16 +304,17 @@ class GaussianDataset(Dataset):
             params_path_history.append(flame_param_path)
             self.num_exp_id += 1
 
-            pre_param = np.load(flame_param_path)
-            pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
+            VHAP_flame_param_path = os.path.join(flame_param_VHAP_folder, frame, 'params.npz')
+            VHAP_flame_param_paths.append(VHAP_flame_param_path)
+
+        for flame_param_path in params_path_history:
+            if os.path.exists(flame_param_path):
+                pre_param = np.load(flame_param_path)
+                pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
+            else:
+                pre_pose = torch.zeros(6, dtype=torch.float32)
             self.poses_history.append(pre_pose)
-            flame_param_paths.append(flame_param_path)
-
         self.poses_history = torch.stack(self.poses_history)
-
-        param_folder = os.path.join(self.dataroot, 'FLAME_params')
-        param = np.load(os.path.join(param_folder, frames[0], 'params.npz'))
-
 
 
         train_meshes = {}
@@ -316,57 +322,70 @@ class GaussianDataset(Dataset):
         self.shape_dims = 100
         self.exp_dims = 50
         
-        for i, flame_param_paths in enumerate(flame_param_paths):
+        for i, flame_param_path in enumerate(VHAP_flame_param_paths):
             mesh = {}
-            flame_param = np.load(flame_param_path)
+            if os.path.exists(flame_param_path):
+                flame_param = np.load(flame_param_path)
 
-            # scale is around 0.995
-            scale = flame_param['scale']
-            # (1, 100)
-            shape = flame_param['id_coeff']
-            # (1, 3)
-            # the rotation in GHA is not the same one in FLAME, so we just set it to 0
-            rotation = flame_param['pose'][:, :3]
-            # (1, 3)
-            translation = flame_param['pose'][:, 3:]
-            # (1, 59)
-            exp_coeff = flame_param['exp_coeff']
-            # (1, 3)
-            jaw_pose = exp_coeff[:, self.exp_dims: self.exp_dims + 3]
-            # (1, 6)
-            neck_pose = np.zeros((1, 3))
-            # (1, 3)
-            eyes_pose = exp_coeff[:, self.exp_dims + 3: self.exp_dims + 9]
-            expr = exp_coeff[:, :self.exp_dims]
+                # # scale is around 0.995
+                # scale = flame_param['scale']
+                # # (1, 100)
+                # shape = flame_param['id_coeff']
+                # # (1, 3)
+                # # the rotation in GHA is not the same one in FLAME, so we just set it to 0
+                # rotation = flame_param['pose'][:, :3]
+                # # (1, 3)
+                # translation = flame_param['pose'][:, 3:]
+                # # (1, 59)
+                # exp_coeff = flame_param['exp_coeff']
+                # # (1, 3)
+                # jaw_pose = exp_coeff[:, self.exp_dims: self.exp_dims + 3]
+                # # (1, 6)
+                # neck_pose = np.zeros((1, 3))
+                # # (1, 3)
+                # eyes_pose = exp_coeff[:, self.exp_dims + 3: self.exp_dims + 9]
+                # expr = exp_coeff[:, :self.exp_dims]
 
-            # the difference between FLAME and GHA is that the rotation in GHA is not the same one in FLAME
-            # Flame is with respect to the root joint, while GHA is with respect to world origin
-            rotation_mat = so3_exponential_map(torch.from_numpy(rotation)).detach().numpy()
-            # hard code the root joint position, usually it won't change much
-            J_0 = np.array([-0.0013, -0.1479, -0.0829], dtype=np.float32).reshape(1, 1, 3)
-            translation = translation - J_0 + np.matmul(rotation_mat, J_0.transpose(0, 2, 1)).transpose(0, 2, 1)
+                # # the difference between FLAME and GHA is that the rotation in GHA is not the same one in FLAME
+                # # Flame is with respect to the root joint, while GHA is with respect to world origin
+                # rotation_mat = so3_exponential_map(torch.from_numpy(rotation)).detach().numpy()
+                # # hard code the root joint position, usually it won't change much
+                # J_0 = np.array([-0.0013, -0.1479, -0.0829], dtype=np.float32).reshape(1, 1, 3)
+                # translation = translation - J_0 + np.matmul(rotation_mat, J_0.transpose(0, 2, 1)).transpose(0, 2, 1)
+                expr = flame_param['expr'][:, :self.exp_dims]
+                rotation = flame_param['rotation']
+                translation = flame_param['translation']
+                jaw_pose = flame_param['jaw_pose']
+                neck_pose = flame_param['neck_pose']
+                eyes_pose = flame_param['eyes_pose']
+                shape = flame_param['shape'][:self.shape_dims]
 
-            mesh['expr'] = expr
-            mesh['rotation'] = rotation
-            mesh['translation'] = translation
-            mesh['jaw_pose'] = jaw_pose
-            mesh['neck_pose'] = neck_pose
-            mesh['eyes_pose'] = eyes_pose
-            mesh['shape'] = shape
-            train_meshes[i] = mesh
+                mesh['expr'] = expr
+                mesh['rotation'] = rotation
+                mesh['translation'] = translation
+                mesh['jaw_pose'] = jaw_pose
+                mesh['neck_pose'] = neck_pose
+                mesh['eyes_pose'] = eyes_pose
+                mesh['shape'] = shape
+                train_meshes[i] = mesh
 
         self.train_meshes = train_meshes
 
 
-        pose = torch.from_numpy(param['pose'][0]).float()
-        self.R = so3_exponential_map(pose[None, :3])[0]
-        self.T = pose[None, 3:]
-        self.S = torch.from_numpy(param['scale']).float()
-        self.pose = pose
+        param_folder = os.path.join(self.dataroot, 'FLAME_params')
+        
+        if os.path.exists(params_path_history[0]):
+            param = np.load(params_path_history[0])
 
-        R = so3_exponential_map(pose[None, :3])[0]
-        T = pose[None, 3:]
-        S = torch.from_numpy(param['scale']).float()
+            pose = torch.from_numpy(param['pose'][0]).float()
+            self.R = so3_exponential_map(pose[None, :3])[0]
+            self.T = pose[None, 3:]
+            self.S = torch.from_numpy(param['scale']).float()
+            self.pose = pose
+
+            R = so3_exponential_map(pose[None, :3])[0]
+            T = pose[None, 3:]
+            S = torch.from_numpy(param['scale']).float()
 
         
         if os.path.exists(os.path.join(param_folder, frames[0], 'lmk_3d.npy')) and os.path.exists(os.path.join(param_folder, frames[0], 'vertices.npy')):
@@ -389,7 +408,7 @@ class GaussianDataset(Dataset):
 
         sample = self.samples[index]
         # randomly pick a view
-        view = random.sample(range(len(self.camera_ids)), 1)[0] if view is None else view
+        view = random.sample(range(len(self.camera_ids)), 1)[0] if view is None else view % len(self.camera_ids)
 
         image_path = sample[0][view]
         image = cv2.resize(io.imread(image_path), (self.original_resolution, self.original_resolution)) / 255
@@ -470,7 +489,11 @@ class GaussianDataset(Dataset):
         exp_coeff = torch.from_numpy(param['exp_coeff'][0]).float()
         
         landmarks_3d_path = sample[5]
-        landmarks_3d = torch.from_numpy(np.load(landmarks_3d_path)).float()
+        if os.path.exists(landmarks_3d_path):
+            landmarks_3d = torch.from_numpy(np.load(landmarks_3d_path)).float()
+        else:
+            landmarks_3d = torch.zeros(0, 3, dtype=torch.float32)
+
         # vertices_path = sample[6]
         # vertices = torch.from_numpy(np.load(vertices_path)).float()
         # landmarks_3d = torch.cat([landmarks_3d, vertices[::100]], 0)
@@ -577,10 +600,14 @@ class GaussianDataset(Dataset):
         # self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32))
         # ['id_coeff', 'exp_coeff', 'scale', 'pose']
         # for key in flame_param.files:
-        flame_param = np.load(flame_param_path)
-        flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
-        flame_scale = torch.from_numpy(flame_param['scale']).float()
-        flame_scale = flame_scale.view(-1)
+        if os.path.exists(flame_param_path):
+            flame_param = np.load(flame_param_path)
+            flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
+            flame_scale = torch.from_numpy(flame_param['scale']).float().view(-1)
+        else:
+            flame_pose = torch.zeros(6, dtype=torch.float32)
+            flame_scale = torch.ones(1, dtype=torch.float32)
+
 
         # # DEBUG: fix the pose to the first frame
         # flame_pose = self.pose 

@@ -213,6 +213,7 @@ class LandmarkDataset():
     def __init__(self, landmark_folder, camera_folder):
 
         self.frames = sorted(os.listdir(landmark_folder))
+        self.frames = [frame for frame in self.frames if os.path.isdir(os.path.join(landmark_folder, frame))]
         self.landmark_folder = landmark_folder
         self.camera_folder = camera_folder
         self.valid_cameras = []
@@ -314,14 +315,14 @@ class Recorder():
             # frame_num, cam_num, h, w
             vertices_2d = rearrange(vertices_2d, '(b v) x y -> b v x y', b=landmarks.shape[0])
 
-
-        for n, frame in enumerate(frames):
+        print('save per frame results to %s' % self.save_folder)
+        for n, frame in tqdm(enumerate(frames)):
             os.makedirs(os.path.join(self.save_folder, frame), exist_ok=True)
             
-            # face_model.save('%s/params.npz' % (os.path.join(self.save_folder, frame)), batch_id=n)
-            # np.save('%s/lmk_3d.npy' % (os.path.join(self.save_folder, frame)), landmarks[n].cpu().numpy())
-            # if self.save_vertices:
-            #     np.save('%s/vertices.npy' % (os.path.join(self.save_folder, frame)), vertices[n].cpu().numpy())
+            face_model.save('%s/params.npz' % (os.path.join(self.save_folder, frame)), batch_id=n)
+            np.save('%s/lmk_3d.npy' % (os.path.join(self.save_folder, frame)), landmarks[n].cpu().numpy())
+            if self.save_vertices:
+                np.save('%s/vertices.npy' % (os.path.join(self.save_folder, frame)), vertices[n].cpu().numpy())
 
             faces = log_data['face_model'].faces.cpu().numpy()
             mesh_trimesh = trimesh.Trimesh(vertices=vertices[n].cpu().numpy(), faces=faces)

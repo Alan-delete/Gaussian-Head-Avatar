@@ -47,9 +47,9 @@ def ResizeImage(target_size, source_size, image=None, K=None):
 
 
 
-def extract_frames(id_list):
+def extract_frames(id_list, sequence):
 
-    frame_step = 5
+    frame_step = 3
 
     for id in id_list:
         # camera_path = os.path.join(DATA_SOURCE, 'camera_params', id, 'camera_params.json')
@@ -70,6 +70,7 @@ def extract_frames(id_list):
         
         # video_folders = glob.glob(os.path.join(DATA_SOURCE, '*', id, '*'))
         video_folders = glob.glob(os.path.join(DATA_SOURCE, id, 'sequences', '*', "*"))
+        video_folders = glob.glob(os.path.join(DATA_SOURCE, id, 'sequences', sequence, "*"))
         for video_folder in video_folders:
            
             if ('tongue' in video_folder) or ('GLASSES' in video_folder) or \
@@ -138,6 +139,7 @@ if __name__ == "__main__":
     parser.add_argument('--data_source', type=str, default='../datasets/NeRSemble')
     parser.add_argument('--data_output', type=str, default='../datasets/mini_demo_dataset/258')
     parser.add_argument('--id_list', type=str, nargs='+', default=['258'])
+    parser.add_argument('--sequence', type=str, default='EXP-1-head')
     arg = parser.parse_args()
 
     DATA_SOURCE =  arg.data_source
@@ -145,4 +147,4 @@ if __name__ == "__main__":
 
     # DATA_OUTPUT = '../NeRSemble'
     # extract_frames(['031', '036'])
-    extract_frames(arg.id_list)
+    extract_frames(arg.id_list, arg.sequence)
