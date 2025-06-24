@@ -1,6 +1,7 @@
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 import torch
+from torch.utils.data import ConcatDataset
 import argparse
 
 from config.config import config_train
@@ -27,7 +28,7 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s2_N031.yaml')
-    parser.add_argument('--dataroot', type=str, default='')
+    parser.add_argument('--dataroot', type=str, nargs='+', default=[])
     parser.add_argument('--test_camera_id', type=int, default=23)
     arg = parser.parse_args()
 
@@ -40,9 +41,20 @@ if __name__ == '__main__':
         arg_cfg = ['dataroot', arg.dataroot]
         cfg.dataset.merge_from_list(arg_cfg)
     
+    if len(cfg.dataset.dataroot) > 0:
+        datasets = []
+        for dataroot in arg.dataroot:
+            arg_cfg = ['dataroot', dataroot]
+            cfg.dataset.merge_from_list(arg_cfg)
+            single_dataset = GaussianDataset(cfg.dataset, split_strategy='test')
+            datasets.append(single_dataset)
+        dataset = ConcatDataset(datasets)
+    else:
+        # debug select frames is to only load a few frames for debugging
+        dataset = GaussianDataset(cfg.dataset, split_strategy='test')
+
     # debug select frames is to only load a few frames for debugging
     # dataset = GaussianDataset(cfg.dataset, split_strategy='all')
-    dataset = GaussianDataset(cfg.dataset, split_strategy='test')
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True) 
 
     # test_dataset = GaussianDataset(cfg.dataset, train=False) 

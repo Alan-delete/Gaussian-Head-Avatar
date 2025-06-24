@@ -1,6 +1,7 @@
 import os
 os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:128"
 import torch
+from torch.utils.data import ConcatDataset
 import argparse
 
 from config.config import config_train
@@ -24,30 +25,25 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s2_N031.yaml')
-    parser.add_argument('--dataroot', type=str, default='')
-    parser.add_argument('--dataroot_list', type=str, nargs='+', default=[])
+    # parser.add_argument('--dataroot', type=str, default='')
+    parser.add_argument('--dataroot', type=str, nargs='+', default=[])
     arg = parser.parse_args()
 
     cfg = config_train()
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
-    # cfg_name = os.path.basename(arg.config).split('.')[0]
-    # cfg.recorder.name = cfg_name
-    if arg.dataroot != '':
-        arg_cfg = ['dataroot', arg.dataroot]
-        cfg.dataset.merge_from_list(arg_cfg)
     
-    datasets = []
-    if len(arg.dataroot_list) > 0:
-        for dataroot in arg.dataroot_list:
+    if len(cfg.dataset.dataroot) > 0:
+        datasets = []
+        for dataroot in arg.dataroot:
             arg_cfg = ['dataroot', dataroot]
             cfg.dataset.merge_from_list(arg_cfg)
-            dataset = GaussianDataset(cfg.dataset)
-            datasets.append(dataset)
-            
-    
-    # debug select frames is to only load a few frames for debugging
-    dataset = GaussianDataset(cfg.dataset)
+            single_dataset = GaussianDataset(cfg.dataset)
+            datasets.append(single_dataset)
+        dataset = ConcatDataset(datasets)
+    else:
+        # debug select frames is to only load a few frames for debugging
+        dataset = GaussianDataset(cfg.dataset)
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
 
     # test_dataset = GaussianDataset(cfg.dataset, train=False) 

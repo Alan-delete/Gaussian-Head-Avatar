@@ -1,5 +1,6 @@
 import os
 import torch
+from torch.utils.data import ConcatDataset
 import argparse
 
 from config.config import config_train
@@ -14,18 +15,25 @@ from lib.trainer.MeshHeadTrainer import MeshHeadTrainer
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s1_N031.yaml')
-    parser.add_argument('--dataroot', type=str, default='')
+    parser.add_argument('--dataroot', type=str, nargs='+', default=[])
     arg = parser.parse_args()
 
     cfg = config_train()
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
 
-    if arg.dataroot != '':
-        arg_cfg = ['dataroot', arg.dataroot]
-        cfg.dataset.merge_from_list(arg_cfg)
 
-    dataset = MeshDataset(cfg.dataset)
+    if len(cfg.dataset.dataroot) > 0:
+        datasets = []
+        for dataroot in arg.dataroot:
+            arg_cfg = ['dataroot', dataroot]
+            cfg.dataset.merge_from_list(arg_cfg)
+            single_dataset = MeshDataset(cfg.dataset)
+            datasets.append(single_dataset)
+        dataset = ConcatDataset(datasets)
+    else:
+        dataset = MeshDataset(cfg.dataset)
+        
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
 
     device = torch.device('cuda:%d' % cfg.gpu_id)

@@ -2,6 +2,7 @@ import os
 import torch
 import argparse
 
+from torch.utils.data import ConcatDataset
 from config.config import config_train
 
 from lib.dataset.Dataset import GaussianDataset
@@ -16,18 +17,26 @@ from lib.trainer.GaussianHeadTrainer import GaussianHeadTrainer
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s2_N031.yaml')
-    parser.add_argument('--dataroot', type=str, default='')
+    parser.add_argument('--dataroot', type=str, nargs='+', default=[])
     arg = parser.parse_args()
 
     cfg = config_train()
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
 
-    if arg.dataroot != '':
-        arg_cfg = ['dataroot', arg.dataroot]
-        cfg.dataset.merge_from_list(arg_cfg)
 
-    dataset = GaussianDataset(cfg.dataset)
+    if len(cfg.dataset.dataroot) > 0:
+        datasets = []
+        for dataroot in arg.dataroot:
+            arg_cfg = ['dataroot', dataroot]
+            cfg.dataset.merge_from_list(arg_cfg)
+            single_dataset = GaussianDataset(cfg.dataset)
+            datasets.append(single_dataset)
+        dataset = ConcatDataset(datasets)
+    else:
+        # debug select frames is to only load a few frames for debugging
+        dataset = GaussianDataset(cfg.dataset)
+
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
 
     device = torch.device('cuda:%d' % cfg.gpu_id)
