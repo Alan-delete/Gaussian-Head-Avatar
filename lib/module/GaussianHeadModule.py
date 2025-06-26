@@ -163,16 +163,6 @@ class GaussianHeadModule(GaussianBaseModule):
         pose_controlled = (dists > self.dist_threshold_near).squeeze(-1)
 
         color = torch.zeros([B, xyz.shape[1], self.exp_color_mlp.dims[-1]], device=xyz.device)
-        # # TODO: If we decide that hair only has diffuse color, then the following direction staff is not needed
-        # for b in range(B):
-        #     # view dependent/independent color
-        #     shs_view = self.get_features.transpose(1, 2).view(-1, 3, (self.max_sh_degree+1)**2)
-        #     dir_pp = (self.get_xyz - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
-        #     dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
-        #     sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
-        #     color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
-
-
         # dir2d + depth + seg = 1 + 1 + 3
         extra_feature = torch.zeros([B, xyz.shape[1], 5], device=xyz.device)
         delta_xyz = torch.zeros_like(xyz, device=xyz.device)
@@ -255,7 +245,7 @@ class GaussianHeadModule(GaussianBaseModule):
 
             scales = scales * S
 
-        # data['exp_deform'] = exp_deform
+        data['exp_deform'] = exp_deform
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
 
 

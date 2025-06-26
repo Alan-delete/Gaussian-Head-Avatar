@@ -99,55 +99,55 @@ class GaussianHeadHairTrainer():
 
             self.gaussianhair.epoch_start()
 
-            for idx in tqdm(range(len(dataset))):
+            # for idx in tqdm(range(len(dataset))):
 
-                self.gaussianhair.frame_start()
-                for _ in range(4):
+            #     self.gaussianhair.frame_start()
+            #     for _ in range(4):
 
-                    if iteration % self.recorder.show_freq == 0:
-                        # random pick the view from back(1) and front(25)
-                        # i = np.random.choice([0, 25])
-                        i = self.cfg.dataset.test_camera_ids[cameraidx_to_show]
-                        cameraidx_to_show = (cameraidx_to_show + 1) % len(self.cfg.dataset.test_camera_ids)
-                        data = dataset.__getitem__(idx, i)
+            #         if iteration % self.recorder.show_freq == 0:
+            #             # random pick the view from back(1) and front(25)
+            #             # i = np.random.choice([0, 25])
+            #             i = self.cfg.dataset.test_camera_ids[cameraidx_to_show]
+            #             cameraidx_to_show = (cameraidx_to_show + 1) % len(self.cfg.dataset.test_camera_ids)
+            #             data = dataset.__getitem__(idx, i)
                         
-                        for data_item in to_cuda:
-                            data[data_item] = torch.as_tensor(data[data_item], device=self.device)
-                            data[data_item] = data[data_item].unsqueeze(0)
+            #             for data_item in to_cuda:
+            #                 data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+            #                 data[data_item] = data[data_item].unsqueeze(0)
 
-                    else:
-                        data = dataset[idx]
+            #         else:
+            #             data = dataset[idx]
 
-                        for data_item in to_cuda:
-                            data[data_item] = torch.as_tensor(data[data_item], device=self.device)
-                            data[data_item] = data[data_item].unsqueeze(0)
+            #             for data_item in to_cuda:
+            #                 data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+            #                 data[data_item] = data[data_item].unsqueeze(0)
 
-                    # for data_item in to_cuda:
-                    #     data[data_item] = data[data_item].to(device=self.device)
+            #         # for data_item in to_cuda:
+            #         #     data[data_item] = data[data_item].to(device=self.device)
                     
-                    self.train_step(iteration, epoch, data, grad_accumulation = 32)
-                    iteration += 1
+            #         self.train_step(iteration, epoch, data, grad_accumulation = 32)
+            #         iteration += 1
             
 
-            # # dataloader way, add randomness
-            # for idx, data in enumerate(self.dataloader):
+            # dataloader way, add randomness
+            for idx, data in tqdm(enumerate(self.dataloader)):
 
-            #     if iteration % self.recorder.show_freq == 0:
-            #         # random pick the view from back(1) and front(25)
-            #         # i = np.random.choice([0, 25])
-            #         i = self.cfg.dataset.test_camera_ids[cameraidx_to_show]
-            #         cameraidx_to_show = (cameraidx_to_show + 1) % len(self.cfg.dataset.test_camera_ids)
-            #         data = dataset.__getitem__(idx, i)
+                if iteration % self.recorder.show_freq == 0:
+                    # random pick the view from back(1) and front(25)
+                    # i = np.random.choice([0, 25])
+                    i = self.cfg.dataset.test_camera_ids[cameraidx_to_show]
+                    cameraidx_to_show = (cameraidx_to_show + 1) % len(self.cfg.dataset.test_camera_ids)
+                    data = dataset.__getitem__(idx, i)
                     
-            #         for data_item in to_cuda:
-            #             data[data_item] = torch.as_tensor(data[data_item], device=self.device)
-            #             data[data_item] = data[data_item].unsqueeze(0)
+                    for data_item in to_cuda:
+                        data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+                        data[data_item] = data[data_item].unsqueeze(0)
                 
-            #     for data_item in to_cuda:
-            #         data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+                for data_item in to_cuda:
+                    data[data_item] = torch.as_tensor(data[data_item], device=self.device)
                 
-            #     self.train_step(iteration, epoch, data, grad_accumulation = 16)
-            #     iteration += 1
+                self.train_step(iteration, epoch, data, grad_accumulation = 16)
+                iteration += 1
 
 
 

@@ -187,6 +187,7 @@ class GaussianHeadTrainRecorder():
                 print('save gaussianhair to path: %s/%s/gaussianhair_iter_%d' % (self.checkpoint_path, self.name, log_data['iter']))
                 print('save gaussianhair to path: %s/%s/gaussianhair_latest_%s' % (self.checkpoint_path, self.name, self.random_seq))
 
+            # TODO: also render the flame
             if 'gaussianhead' in log_data and log_data['gaussianhead'] is not None:
                 # torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_epoch_%d' % (self.checkpoint_path, self.name, log_data['epoch']))
                 torch.save(log_data['gaussianhead'].state_dict(), '%s/%s/gaussianhead_iter_%d' % (self.checkpoint_path, self.name, log_data['iter']))
@@ -272,6 +273,37 @@ class GaussianHeadTrainRecorder():
                 # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 # image = cv2.resize(image, (render_image.shape[0], render_image.shape[1]))
                 # images.append(wandb.Image(image, caption="gt_image_supres"))
+
+                if 'gaussianhead' in log_data and log_data['gaussianhead'] is not None and hasattr(log_data['gaussianhead'], 'verts'):
+                    head_vertices_world_per_frame = log_data['gaussianhead'].verts
+                    faces = log_data['gaussianhead'].faces
+                    
+                    # # 4*4
+                    # transform = data['full_proj_transform'][0] #.cpu().numpy()
+                    # breakpoint()
+                    # vertices_hom_world = torch.cat([head_vertices_world_per_frame, torch.ones_like(head_vertices_world_per_frame[:, :1])], dim=1)
+                    # verts_ndc = vertices_hom_world @ transform.T 
+                    # verts_ndc /= verts_ndc[:, 3:4]
+                    # transformed_vertices = head_vertices_world_per_frame.reshape(-1, 3).detach().cpu().numpy() @ transform[:3, :3].T + transform[:3, 3]
+
+                    # render the mesh
+                    # mesh = trimesh.Trimesh(vertices= head_vertices_world_per_frame.reshape(-1, 3).detach().cpu().numpy(), faces=faces.cpu().numpy())
+
+                    # project the mesh to the image according to the camera parameters
+                    # mesh.apply_transform(data['full_proj_transform'][0].cpu().numpy())
+                    # visualize the gaussian head
+                    # mesh = o3d.geometry.TriangleMesh()
+                    # mesh.vertices = o3d.utility.Vector3dVector(head_vertices_world_per_frame.reshape(-1, 3).detach().cpu().numpy())
+                    # mesh.triangles = o3d.utility.Vector3iVector(faces.cpu().numpy())
+                    # import open3d.visualization.rendering as rendering
+                    # render = rendering.OffscreenRenderer(render_image.shape[0], render_image.shape[1])
+                    # render.scene.add_geometry("mesh", mesh)
+                    # render.setup_camera(60, 
+                    #                     data['camera_center'][0].cpu().numpy(),
+                    #                     data['camera_center'][0].cpu().numpy() + data['extrinsics'][0, :3, 2].cpu().numpy(),
+                    #                     data['extrinsics'][0, :3, 1].cpu().numpy())
+                    # image = render.render_to_image()
+                    # images.append(wandb.Image(image, caption="gaussian_head"))
 
                 images_coarse = cv2.cvtColor(images_coarse, cv2.COLOR_BGR2RGB)
                 images_coarse = cv2.resize(images_coarse, (render_image.shape[0], render_image.shape[1]))

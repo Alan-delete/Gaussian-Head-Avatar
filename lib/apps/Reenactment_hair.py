@@ -59,6 +59,8 @@ class Reenactment_hair():
         loss_rgb_arr = []
         psnr_test_arr = []
         ssim_test_arr = []
+        hair_psnr_test_arr = []
+        hair_ssim_test_arr = []
 
         # for i in tqdm(range(frame_num, 0, -1)):
         for i in tqdm(range(frame_num)):
@@ -111,20 +113,23 @@ class Reenactment_hair():
                         data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
                         # data[key] = hair_data[key]
 
-                data = self.camera.render_gaussian(data, 2048)
+                gt_hair_mask = data['hair_masks_coarse']
+                images_coarse = data['images_coarse']
+                visibles_coarse = data['visibles_coarse']
+                visibles_coarse = visibles_coarse * gt_hair_mask
+
+                data = self.camera.render_gaussian(data, images_coarse.shape[2])
                 render_images = data['render_images'][: ,:3, ...]
                 gt_images = data['images'][:, :3, ...]
                 gt_video.append(gt_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
                 video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
 
-                gt_hair_mask = data['hair_masks_coarse']
-                images_coarse = data['images_coarse']
-                visibles_coarse = data['visibles_coarse']
-                visibles_coarse = visibles_coarse * gt_hair_mask
                 psnr_test = psnr(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
                 ssim_test = ssim(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
                 loss_ssim = 1.0 - ssim(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
 
+                hair_psnr_test = psnr(render_images[:, :3, :, :] * gt_hair_mask, images_coarse * gt_hair_mask)
+                hair_ssim_test = ssim(render_images[:, :3, :, :] * gt_hair_mask, images_coarse * gt_hair_mask)
                 # loss functions
                 loss_rgb_lr = F.l1_loss(render_images[:, 0:3, :, :] * visibles_coarse, images_coarse * visibles_coarse)
 
@@ -185,6 +190,8 @@ class Reenactment_hair():
             loss_ssim_arr.append(loss_ssim.item())
             psnr_test_arr.append(psnr_test.item())
             ssim_test_arr.append(ssim_test.item())
+            hair_psnr_test_arr.append(hair_psnr_test.item())
+            hair_ssim_test_arr.append(hair_ssim_test.item())
 
         non_rigid_video = []
         for i in tqdm(range(frame_num)):
@@ -294,6 +301,8 @@ class Reenactment_hair():
         print('Average loss_ssim: %.4f' % np.mean(loss_ssim_arr))
         print('Average psnr: %.4f' % np.mean(psnr_test_arr))
         print('Average ssim: %.4f' % np.mean(ssim_test_arr))
+        print('Average hair psnr: %.4f' % np.mean(hair_psnr_test_arr))
+        print('Average hair ssim: %.4f' % np.mean(hair_ssim_test_arr))
 
         print('Saved head vertices to %s' % os.path.join(self.recorder.checkpoint_path , self.recorder.name, 'head_vertices_{}.npz'.format(self.camera_id)))
         print('Saved hair strand points to %s' % os.path.join(self.recorder.checkpoint_path,self.recorder.name, 'hair_strand_points_{}.npz'.format(self.camera_id)))

@@ -72,6 +72,7 @@ class MeshDataset(Dataset):
         self.samples = []
 
         image_folder = os.path.join(self.dataroot, 'images')
+        mask_folder = os.path.join(self.dataroot, 'NeuralHaircut_masks')
         param_folder = os.path.join(self.dataroot, 'params')
         camera_folder = os.path.join(self.dataroot, 'cameras')
         # frames = os.listdir(image_folder)
@@ -81,7 +82,8 @@ class MeshDataset(Dataset):
         self.num_exp_id = 0
         for frame in frames:
             image_paths = [os.path.join(image_folder, frame, 'image_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
-            mask_paths = [os.path.join(image_folder, frame, 'mask_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
+            # mask_paths = [os.path.join(image_folder, frame, 'mask_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
+            mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             visible_paths = [os.path.join(image_folder, frame, 'visible_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             camera_paths = [os.path.join(camera_folder, frame, 'camera_%s.npz' % camera_id) for camera_id in self.camera_ids]
             param_path = os.path.join(param_folder, frame, 'params.npz')
@@ -182,6 +184,27 @@ class MeshDataset(Dataset):
         return max(len(self.samples), 128)
 
 
+from torch.utils.data import Dataset
+
+class MultiDataset(Dataset):
+    def __init__(self, datasets):
+        self.datasets = datasets
+        self.cumulative_sizes = [0] + list(torch.cumsum(torch.tensor([len(d) for d in datasets]), dim=0))
+
+    def __len__(self):
+        return self.cumulative_sizes[-1].item()
+
+    def __getitem__(self, idx, view=None):
+        for i in range(len(self.datasets)):
+            if idx < self.cumulative_sizes[i + 1]:
+                local_idx = idx - self.cumulative_sizes[i]
+                if view is not None:
+                    data = self.datasets[i].__getitem__(local_idx, view=view)
+                else:
+                    data = self.datasets[i].__getitem__(local_idx)
+                data['timestep'] = idx
+                return data
+
 
 # TODO: use same model to predict mask and hair mask, and put them in unified folder.
 class GaussianDataset(Dataset):
@@ -219,7 +242,7 @@ class GaussianDataset(Dataset):
         mask_folder = os.path.join(self.dataroot, 'NeuralHaircut_masks')
         if not os.path.exists(mask_folder):
             mask_folder = os.path.join(self.dataroot, 'masks')
-        mask_folder = os.path.join(self.dataroot, 'masks')
+        # mask_folder = os.path.join(self.dataroot, 'masks')
 
         # as tested, face_parsing is more robust than matte anything, but less accurate
         # if os.path.exists(os.path.join(self.dataroot, 'face-parsing', 'hair')):
@@ -272,13 +295,14 @@ class GaussianDataset(Dataset):
             else:
                 mask_format = 'png'
             # mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
-            # mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
-            mask_paths = [os.path.join(image_folder, frame, 'mask_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
+            mask_paths = [os.path.join(mask_folder, 'body', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
+            # mask_paths = [os.path.join(image_folder, frame, 'mask_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
 
             hair_mask_path = [os.path.join(mask_folder,'hair', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
             # hair_mask_path = [os.path.join(hair_mask_folder, frame, 'image_lowres_%s.jpg' % camera_id) for camera_id in self.camera_ids]
 
-            head_mask_path = [os.path.join(mask_folder, 'head', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
+            # head_mask_path = [os.path.join(mask_folder, 'head', frame, 'image_%s.%s' % (camera_id, mask_format)) for camera_id in self.camera_ids]
+            head_mask_path = [ '' for camera_id in self.camera_ids]
             
             
             # visible_paths = [os.path.join(flame_param_folder, frame, 'visible_%s.jpg' % camera_id) for camera_id in self.camera_ids]

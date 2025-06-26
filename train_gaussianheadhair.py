@@ -7,6 +7,7 @@ import argparse
 from config.config import config_train
 
 from lib.dataset.Dataset import GaussianDataset
+from lib.dataset.Dataset import MultiDataset
 from lib.dataset.DataLoaderX import DataLoaderX
 from lib.module.MeshHeadModule import MeshHeadModule
 from lib.module.GaussianBaseModule import GaussianBaseModule
@@ -33,18 +34,20 @@ if __name__ == '__main__':
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
     
-    if len(cfg.dataset.dataroot) > 0:
+    if len(arg.dataroot) > 0:
         datasets = []
         for dataroot in arg.dataroot:
             arg_cfg = ['dataroot', dataroot]
             cfg.dataset.merge_from_list(arg_cfg)
-            single_dataset = GaussianDataset(cfg.dataset)
-            datasets.append(single_dataset)
-        dataset = ConcatDataset(datasets)
+            dataset = GaussianDataset(cfg.dataset)
+            datasets.append(dataset)
+        # TODO: train_mesh need to be updated
+        datasets = MultiDataset(datasets)
+        dataloader = DataLoaderX(datasets, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
     else:
         # debug select frames is to only load a few frames for debugging
         dataset = GaussianDataset(cfg.dataset)
-    dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
+        dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True)
 
     # test_dataset = GaussianDataset(cfg.dataset, train=False) 
     # test_dataloader = DataLoaderX(test_dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True)
@@ -127,7 +130,7 @@ if __name__ == '__main__':
     
     gaussians = FlameGaussianModel(0, disable_flame_static_offset = cfg.gaussianhairmodule.enable , n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
     # process meshes
-    if gaussians.binding != None:
+    if cfg.flame_gaussian_module.enable and gaussians.binding != None:
         gaussians.load_meshes(train_meshes=dataset.train_meshes,
                             test_meshes={},
                             tgt_train_meshes = {},
@@ -185,9 +188,10 @@ if __name__ == '__main__':
         # only reset points_raw if not resume training, otherwise gaussianhair.transform will be backpropagated wrongly
         gaussianhair.reset_strands()
         
-        cameras_extent = 4.907987451553345
-        gaussians.create_from_pcd(None, cameras_extent)
-        gaussians.training_setup(cfg.flame_gaussian_module)
+        if cfg.flame_gaussian_module.enable:
+            cameras_extent = 4.907987451553345
+            gaussians.create_from_pcd(None, cameras_extent)
+            gaussians.training_setup(cfg.flame_gaussian_module)
 
     # gaussians.select_mesh_by_timestep(0)
     # breakpoint()

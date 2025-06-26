@@ -24,20 +24,21 @@ if __name__ == '__main__':
     cfg.load(arg.config)
     cfg = cfg.get_cfg()
 
-
-    if len(cfg.dataset.dataroot) > 0:
+    if len(arg.dataroot) > 0:
         datasets = []
         for dataroot in arg.dataroot:
             arg_cfg = ['dataroot', dataroot]
             cfg.dataset.merge_from_list(arg_cfg)
-            single_dataset = GaussianDataset(cfg.dataset)
-            datasets.append(single_dataset)
-        dataset = ConcatDataset(datasets)
+            dataset = GaussianDataset(cfg.dataset)
+            datasets.append(dataset)
+        # TODO: train_mesh need to be updated
+        datasets = MultiDataset(datasets)
+        dataloader = DataLoaderX(datasets, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
     else:
         # debug select frames is to only load a few frames for debugging
         dataset = GaussianDataset(cfg.dataset)
+        dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True)
 
-    dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
 
     device = torch.device('cuda:%d' % cfg.gpu_id)
     torch.cuda.set_device(cfg.gpu_id)

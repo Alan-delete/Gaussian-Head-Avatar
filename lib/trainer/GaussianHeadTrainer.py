@@ -24,7 +24,7 @@ class GaussianHeadTrainer():
         cameraidx_to_show = 0
         for epoch in range(start_epoch, epochs):
             for idx, data in tqdm(enumerate(self.dataloader)):
-                iteration = epoch * len(self.dataloader) + idx + 1
+                iteration = epoch * len(self.dataloader) + idx 
                 # # prepare data
                 # to_cuda = ['images', 'masks', 'visibles', 'images_coarse', 'masks_coarse', 'visibles_coarse', 
                 #            'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',

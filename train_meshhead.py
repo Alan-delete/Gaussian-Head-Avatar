@@ -5,7 +5,7 @@ import argparse
 
 from config.config import config_train
 
-from lib.dataset.Dataset import MeshDataset
+from lib.dataset.Dataset import MeshDataset,MultiDataset
 from lib.dataset.DataLoaderX import DataLoaderX
 from lib.module.MeshHeadModule import MeshHeadModule
 from lib.module.CameraModule import CameraModule
@@ -23,18 +23,34 @@ if __name__ == '__main__':
     cfg = cfg.get_cfg()
 
 
-    if len(cfg.dataset.dataroot) > 0:
+    if len(arg.dataroot) > 0:
         datasets = []
         for dataroot in arg.dataroot:
             arg_cfg = ['dataroot', dataroot]
             cfg.dataset.merge_from_list(arg_cfg)
-            single_dataset = MeshDataset(cfg.dataset)
-            datasets.append(single_dataset)
-        dataset = ConcatDataset(datasets)
+            dataset = MeshDataset(cfg.dataset)
+            datasets.append(dataset)
+        # TODO: train_mesh need to be updated
+        datasets = MultiDataset(datasets)
+        dataloader = DataLoaderX(datasets, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
     else:
+        # debug select frames is to only load a few frames for debugging
         dataset = MeshDataset(cfg.dataset)
+        dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True)
+
+
+    # if len(cfg.dataset.dataroot) > 0:
+    #     datasets = []
+    #     for dataroot in arg.dataroot:
+    #         arg_cfg = ['dataroot', dataroot]
+    #         cfg.dataset.merge_from_list(arg_cfg)
+    #         single_dataset = MeshDataset(cfg.dataset)
+    #         datasets.append(single_dataset)
+    #     dataset = ConcatDataset(datasets)
+    # else:
+    #     dataset = MeshDataset(cfg.dataset)
         
-    dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
+    # dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
 
     device = torch.device('cuda:%d' % cfg.gpu_id)
     torch.cuda.set_device(cfg.gpu_id)
