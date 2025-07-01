@@ -628,6 +628,21 @@ class GaussianDataset(Dataset):
             flame_param = np.load(flame_param_path)
             flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
             flame_scale = torch.from_numpy(flame_param['scale']).float().view(-1)
+            flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
+            flame_id_coeff = torch.from_numpy(flame_param['id_coeff'][0]).float()
+
+            # expression_params = exp_coeff[:, : exp_dims]
+            # jaw_rotation = exp_coeff[:, exp_dims: exp_dims + 3]
+            # neck_pose = torch.zeros(exp_coeff.shape[0], 3, dtype=torch.float32)  # neck pose is not used in GHA
+            # eye_pose = exp_coeff[:, exp_dims + 3: exp_dims + 9]
+
+            # pose_params = torch.cat([self.global_rotation, jaw_rotation], 1)
+            # shape_params = self.id_coeff.repeat(self.batch_size, 1)
+            # vertices, landmarks = self.flame(shape_params, 
+            #                                 expression_params, 
+            #                                 pose_params, 
+            #                                 neck_pose, 
+            #                                 eye_pose)
         else:
             flame_pose = torch.zeros(6, dtype=torch.float32)
             flame_scale = torch.ones(1, dtype=torch.float32)
@@ -670,6 +685,8 @@ class GaussianDataset(Dataset):
                 'poses_history': poses_history,
                 'flame_pose': flame_pose,
                 'flame_scale': flame_scale,
+                'flame_exp_coeff': flame_exp_coeff,
+                'flame_id_coeff': flame_id_coeff,
                 'optical_flow': optical_flow,
                 'optical_flow_confidence': optical_flow_confidence,
                 'optical_flow_coarse': optical_flow_coarse,

@@ -222,8 +222,8 @@ class FLAME(nn.Module):
     """
     def __init__(self, batch_size):
 
-        self.shape_dims = 100
-        self.exp_dims = 50
+        self.shape_dims = 150 #100
+        self.exp_dims = 100 #50
 
         super(FLAME, self).__init__()
         print("creating the FLAME Decoder")
@@ -409,11 +409,11 @@ class FLAME(nn.Module):
 
 
 class FLAMEModule(nn.Module):
-    def __init__(self, batch_size):
+    def __init__(self, batch_size = 1):
         super(FLAMEModule, self).__init__()
 
-        self.shape_dims = 100
-        self.exp_dims = 50
+        self.shape_dims = 150 #100
+        self.exp_dims = 100 #50
         self.batch_size = batch_size
 
         self.flame = FLAME(batch_size)
@@ -422,7 +422,7 @@ class FLAMEModule(nn.Module):
         self.exp_coeff = nn.Parameter(torch.zeros(self.batch_size, self.exp_dims + 9, dtype=torch.float32)) # include expression_params, jaw_pose, eye_pose
         self.pose = nn.Parameter(torch.zeros(batch_size, 6, dtype=torch.float32))
         # self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32))
-        self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32), requires_grad=True)
+        self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32), requires_grad=False)
         self.global_translation = nn.Parameter(torch.zeros(1, 1, 3, dtype=torch.float32))
 
         self.register_buffer('neck_pose', torch.zeros(self.batch_size, 3, dtype=torch.float32)) # not optimized
@@ -435,14 +435,21 @@ class FLAMEModule(nn.Module):
     # 'pose' -- 'rotation'(with respect to origin) + 'translation'
     # 'id_coeff' -- 'shape'
 
-    def forward(self):
-        expression_params = self.exp_coeff[:, : self.exp_dims]
-        jaw_rotation = self.exp_coeff[:, self.exp_dims: self.exp_dims + 3]
+    def forward(self, pose=None, scale=None, exp_coeff=None, id_coeff=None):
+
+        pose = pose if pose is not None else self.pose
+        scale = scale if scale is not None else self.scale
+        exp_coeff = exp_coeff if exp_coeff is not None else self.exp_coeff
+        id_coeff = id_coeff if id_coeff is not None else self.id_coeff
+
+
+        expression_params = exp_coeff[:, : self.exp_dims]
+        jaw_rotation = exp_coeff[:, self.exp_dims: self.exp_dims + 3]
         neck_pose = self.neck_pose
-        eye_pose = self.exp_coeff[:, self.exp_dims + 3: self.exp_dims + 9]
+        eye_pose = exp_coeff[:, self.exp_dims + 3: self.exp_dims + 9]
 
         pose_params = torch.cat([self.global_rotation, jaw_rotation], 1)
-        shape_params = self.id_coeff.repeat(self.batch_size, 1)
+        shape_params = id_coeff.repeat(self.batch_size, 1)
         vertices, landmarks = self.flame(shape_params, 
                                          expression_params, 
                                          pose_params, 
@@ -468,12 +475,12 @@ class FLAMEModule(nn.Module):
 
 
 
-        R = so3_exponential_map(self.pose[:, :3])
-        T = self.pose[:, 3:]
+        R = so3_exponential_map(pose[:, :3])
+        T = pose[:, 3:]
         # R = so3_exponential_map(self.pose[:1, :3]).repeat(self.batch_size, 1, 1)
         # T = self.pose[:1, 3:].repeat(self.batch_size, 1)
-        vertices = torch.bmm(vertices * self.scale, R.permute(0,2,1)) + T[:, None, :]
-        landmarks = torch.bmm(landmarks * self.scale, R.permute(0,2,1)) + T[:, None, :]
+        vertices = torch.bmm(vertices * scale, R.permute(0,2,1)) + T[:, None, :]
+        landmarks = torch.bmm(landmarks * scale, R.permute(0,2,1)) + T[:, None, :]
 
         return vertices, landmarks
 

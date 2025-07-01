@@ -7,6 +7,7 @@ from tqdm import tqdm
 import trimesh
 
 from lib.utils.general_utils import ssim, psnr
+from lib.face_models.FLAMEModule import FLAMEModule
 
 class Reenactment_hair():
     def __init__(self, dataloader, gaussianhead, gaussianhair,supres, camera, recorder, gpu_id, freeview, camera_id=23):
@@ -19,13 +20,15 @@ class Reenactment_hair():
         self.recorder = recorder
         self.device = torch.device('cuda:%d' % gpu_id)
         self.freeview = freeview
+        self.flame_model = FLAMEModule().to(self.device)
 
 
     def run(self):
 
         to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
                     'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
-                    'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','poses_history', 'optical_flow', 'optical_flow_confidence']
+                    'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale', 
+                    'flame_exp_coeff', 'flame_id_coeff', 'poses_history', 'optical_flow', 'optical_flow_confidence']
         iteration = -1
         dataset = self.dataloader.dataset
         
@@ -88,24 +91,6 @@ class Reenactment_hair():
                                                             global_pose = data['flame_pose'][0], 
                                                             global_scale = data['flame_scale'][0])
                     hair_data = self.gaussianhair.generate(data)
-                    
-                    # color = hair_data['color'][..., :3].view(1, self.gaussianhair.num_strands, 99, 3)
-                    # new_color = torch.tensor([1.0, 0.0, 0.0], device=color.device).view(1, 1, 1, 3)
-
-                    # color[:, highlight_strands_idx, :, :] = highlight_color
-                    # hair_data['color'][..., :3] = color.view(1, -1, 3)
-                    # # Set every 100th strand to new_color
-                    # # color[:, ::100, :, :] = torch.rand(color[:, ::100, :, :].shape[1], 3).unsqueeze(1).repeat(1, 100, 1).unsqueeze(0).to(color.device)
-
-                    # scales = hair_data['scales'].view(1, self.gaussianhair.num_strands, 99, 3)
-                    # scales[:, highlight_strands_idx, :, 1: ] = 20 * scales[:, highlight_strands_idx, :, 1: ]
-                    # hair_data['scales'] = scales.view(1, -1, 3)
-
-
-                    # hair_data['opacity'][...] = 0.0
-                    # opacity = hair_data['opacity'].view(1, self.gaussianhair.num_strands, 99, 1)
-                    # opacity[:, highlight_strands_idx, :, :] = 1.0
-                    # hair_data['opacity'] = opacity.view(1, -1, 1)
 
                     # combine head and hair data
                     for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
@@ -134,6 +119,13 @@ class Reenactment_hair():
                 loss_rgb_lr = F.l1_loss(render_images[:, 0:3, :, :] * visibles_coarse, images_coarse * visibles_coarse)
 
 
+                vertices , _ = self.flame_model(pose=data['flame_pose'], scale=data['flame_scale'], 
+                                                exp_coeff=data['flame_exp_coeff'], id_coeff=data['flame_id_coeff'])
+                faces = self.flame_model.faces
+                head_vertices.append(vertices.squeeze(0).cpu().numpy())
+
+
+
                 if self.gaussianhair is not None:
                     hair_strand_points_world_per_frame = self.gaussianhair.get_strand_points_world
                     hair_strand_points_posed_per_frame = self.gaussianhair.get_strand_points_posed
@@ -157,19 +149,19 @@ class Reenactment_hair():
                         trimesh.PointCloud(strands_origins.reshape(-1, 3).detach().cpu(), colors=cols).export(os.path.join(self.recorder.checkpoint_path, self.recorder.name, 'strands_points_frame0.ply'))
 
 
-                if hasattr(self.gaussianhead, 'verts'):
-                    head_vertices_world_per_frame = self.gaussianhead.verts
-                    faces = self.gaussianhead.faces
-                    head_vertices.append(head_vertices_world_per_frame.squeeze(0).cpu().numpy())
+                # if hasattr(self.gaussianhead, 'verts'):
+                #     head_vertices_world_per_frame = self.gaussianhead.verts
+                #     faces = self.gaussianhead.faces
+                #     head_vertices.append(head_vertices_world_per_frame.squeeze(0).cpu().numpy())
 
-                    xyz = self.gaussianhead.get_xyz
-                    # save head vertices to a ply file
-                    trimesh.PointCloud(xyz.reshape(-1, 3).detach().cpu()).export(os.path.join(self.recorder.checkpoint_path, self.recorder.name, 'head_gaussian_xyz.ply'))
+                #     xyz = self.gaussianhead.get_xyz
+                #     # save head vertices to a ply file
+                #     trimesh.PointCloud(xyz.reshape(-1, 3).detach().cpu()).export(os.path.join(self.recorder.checkpoint_path, self.recorder.name, 'head_gaussian_xyz.ply'))
                     
-                    # render the mesh
-                    mesh = trimesh.Trimesh(vertices= head_vertices_world_per_frame.reshape(-1, 3).detach().cpu().numpy(), faces=faces.cpu().numpy())
-                    # projec the mesh to the image according to the camera parameters
-                    # mesh.apply_transform(data['full_proj_transform'][0].cpu().numpy())
+                #     # render the mesh
+                #     mesh = trimesh.Trimesh(vertices= head_vertices_world_per_frame.reshape(-1, 3).detach().cpu().numpy(), faces=faces.cpu().numpy())
+                #     # projec the mesh to the image according to the camera parameters
+                #     # mesh.apply_transform(data['full_proj_transform'][0].cpu().numpy())
 
                 log = {
                     'data': data,
@@ -229,7 +221,7 @@ class Reenactment_hair():
                     # color[:, ::100, :, :] = torch.rand(color[:, ::100, :, :].shape[1], 3).unsqueeze(1).repeat(1, 100, 1).unsqueeze(0).to(color.device)
 
                     scales = hair_data['scales'].view(1, self.gaussianhair.num_strands, 99, 3)
-                    scales[:, highlight_strands_idx, :, 1: ] = 20 * scales[:, highlight_strands_idx, :, 1: ]
+                    scales[:, highlight_strands_idx, :, 1: ] = 100 * scales[:, highlight_strands_idx, :, 1: ]
                     hair_data['scales'] = scales.view(1, -1, 3)
 
 
@@ -279,9 +271,10 @@ class Reenactment_hair():
         print('Saved non-rigid deformation video to %s' % output_path)
 
         # save head vertices
+        # faces = self.gaussianhead.faces.cpu().numpy()
+        faces = self.flame_model.faces.cpu().numpy()
         if len(head_vertices) != 0:
             head_vertices = np.stack(head_vertices, axis=0)
-            faces = self.gaussianhead.faces.cpu().numpy()
             np.savez(os.path.join("{}/{}/head_vertices_{}.npz".format(self.recorder.checkpoint_path ,self.recorder.name, self.camera_id)), vertices=head_vertices, faces=faces)
         
         

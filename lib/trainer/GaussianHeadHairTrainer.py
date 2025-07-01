@@ -41,9 +41,11 @@ class GaussianHeadHairTrainer():
 
     def train(self, start_epoch=0, epochs=1):
         # iteration = start_epoch * len(self.dataloader) * 128
-        iteration = 0
+        iteration = 1
+        if self.cfg.resume_training:
+            iteration = 50001
         # iteration = 40001
-        end_iteration = iteration + 50000
+        end_iteration = iteration + 150000
         dataset = self.dataloader.dataset
         static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
         
@@ -376,7 +378,7 @@ class GaussianHeadHairTrainer():
 
             loss_smoothness = 0 #self.gaussianhair.smoothness_loss() * 10
 
-            if backprop_into_prior or iteration <= static_training_util_iter:
+            if  iteration <= static_training_util_iter:
                 loss_elastic = 0
             else:
                 loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 

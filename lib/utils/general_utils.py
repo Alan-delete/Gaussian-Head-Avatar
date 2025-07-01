@@ -343,3 +343,64 @@ def or_loss(network_output, gt, confs = None, weight = None, mask = None):
     #     return (loss * weight).sum() / weight.sum()
     # else:
     #     return loss * weight
+
+
+            # flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
+            # flame_scale = torch.from_numpy(flame_param['scale']).float().view(-1)
+            # # breakpoint()
+            # # exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
+            # # id_coeff = torch.from_numpy(flame_param['id_coeff'][0]).float()
+def GHA2FLAME(pose, scale, exp_coeff, id_coeff, exp_dims=50, id_dims=100):
+    """
+    Convert Gaussian Head A parameters to FLAME parameters.
+    :param pose: (B, 6) tensor
+    :param scale: (B, 3) tensor
+    :param exp_coeff: (B, E) tensor
+    :param id_coeff: (B, I) tensor
+    :return: dict with FLAME parameters
+    """
+            # expression_params = exp_coeff[:, : exp_dims]
+            # jaw_rotation = exp_coeff[:, exp_dims: exp_dims + 3]
+            # neck_pose = torch.zeros(exp_coeff.shape[0], 3, dtype=torch.float32)  # neck pose is not used in GHA
+            # eye_pose = exp_coeff[:, exp_dims + 3: exp_dims + 9]
+
+            # pose_params = torch.cat([self.global_rotation, jaw_rotation], 1)
+            # shape_params = self.id_coeff.repeat(self.batch_size, 1)
+    expression_params = exp_coeff[:, :exp_dims]
+    jaw_rotation = exp_coeff[:, exp_dims: exp_dims + 3]
+    neck_pose = torch.zeros(exp_coeff.shape[0], 3, dtype=torch.float32)  # neck pose is not used in GHA
+    eye_pose = exp_coeff[:, exp_dims + 3: exp_dims + 9]
+    pose_params = torch.cat([pose[:, :3], jaw_rotation], 1)
+    shape_params = id_coeff.repeat(pose.shape[0], 1)
+
+    return 
+
+import os
+import shutil
+import glob
+# used to convert the strcuture input_folder/images/frame_id/image_camera_id.jpg
+# to the structure input_folder/images/camera_id/image_frame_id.jpg
+# e.g. input_folder/images/00001/image_222200049.jpg
+# to input_folder/images/222200049/00001.jpg
+def convert_file_structure(img_dir, output_dir):
+    frames = sorted(os.listdir(img_dir))
+    frames = [f for f in frames if os.path.isdir(os.path.join(img_dir, f))]
+    for frame in frames:
+        frame_path = os.path.join(img_dir, frame)
+        images = glob.glob(os.path.join(frame_path, 'image_[0-9]*.jpg'))
+        for image in images:
+            camera_id = image.split('_')[1].split('.')[0]  # Extract camera ID from the image name
+            new_image_name = f"image_{frame}.jpg"
+            new_camera_dir = os.path.join(output_dir, camera_id)
+            os.makedirs(new_camera_dir, exist_ok=True)
+            old_image_path = os.path.join(frame_path, image)
+            new_image_path = os.path.join(new_camera_dir, new_image_name)
+            # copy the image to the new location
+            shutil.copy(old_image_path, new_image_path)
+
+if __name__ == "__main__":
+    # Example usage
+    input_folder = '/local/home/haonchen/Gaussian-Head-Avatar/datasets/NeRSemble/258/sequences/HAIR/images'
+    output_folder = '/local/home/haonchen/Gaussian-Head-Avatar/datasets/NeRSemble/258/sequences/HAIR/images_converted'
+    convert_file_structure(input_folder, output_folder)
+    print(f"Converted file structure from {input_folder} to {output_folder}")

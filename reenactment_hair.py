@@ -45,7 +45,7 @@ if __name__ == '__main__':
             cfg.dataset.merge_from_list(arg_cfg)
             dataset = GaussianDataset(cfg.dataset, split_strategy='test')
             datasets.append(dataset)
-        # TODO: train_mesh need to be updated
+        # TODO: train_mesh need to be updated for flame gaussian model
         datasets = MultiDataset(datasets)
         dataloader = DataLoaderX(datasets, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
     else:

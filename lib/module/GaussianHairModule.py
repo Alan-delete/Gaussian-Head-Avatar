@@ -591,9 +591,14 @@ class GaussianHairModule(GaussianBaseModule):
 
     def disable_static_parameters(self):
         # Disable the static parameters
-        for param_group in self.l_static:
-            for param in param_group['params']:
-                param.requires_grad = False
+        # for param_group in self.l_static:
+        #     for param in param_group['params']:
+        #         param.requires_grad = False
+
+        for param_group in self.optimizer.param_groups:
+            if param_group["name"] in self.l_static:
+                param_group['lr'] = param_group['lr'] * 0.3
+
 
         self.features_dc_raw.requires_grad = True
         
@@ -916,7 +921,7 @@ class GaussianHairModule(GaussianBaseModule):
         o3d.io.write_triangle_mesh('Init_transformed_source.ply', hair_mesh)
 
         mesh_width = (target[4051, :3] - target[4597, :3]).norm() # 2 x distance between the eyes
-        width_raw_new = self.width_raw * mesh_width / self.prev_mesh_width
+        width_raw_new = self.width_raw * mesh_width / self.prev_mesh_width * 0.2
         if self.train_width:
             optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, width_raw_new, "width")
             self.width_raw = optimizable_tensors["width"]
@@ -1279,7 +1284,7 @@ class GaussianHairModule(GaussianBaseModule):
 
         self.scales = torch.ones_like(self.xyz)
         # chance that two points are too close
-        self.scales[:, 0] = dir_world.norm(dim=-1) * 0.66 + 1e-6
+        self.scales[:, 0] = dir_world.norm(dim=-1) * 0.55 + 1e-6
         self.scales[:, 1:] = self.width.repeat(1, self.strand_length - 1).view(-1, 1)
 
         self.seg_label = torch.zeros_like(self.xyz)
