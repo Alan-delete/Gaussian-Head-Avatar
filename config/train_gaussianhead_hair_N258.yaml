@@ -1,0 +1,221 @@
+gpu_id: 0
+load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble258/meshhead_latest'
+# load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
+# load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
+# load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
+lr_net: 1e-4
+lr_pose: 1e-6
+batch_size: 1
+optimize_pose: False
+use_supres: False
+train_segment: True
+train_optical_flow: False
+checkpoint_seed: 175137457760 
+resume_training: False 
+start_epoch: 0
+num_epochs: 400   
+static_scene_init: True
+static_training_util_iter: 20000 # 20000  
+
+dataset:
+  dataroot: 'datasets/mini_demo_dataset/031'
+  camera_ids: []
+  test_camera_ids: [0, 25]
+  selected_frames: []
+  # selected_frames: ['0000', '0099']
+  # selected_frames: ['0000', '0042' , '0048', '0054']
+  original_resolution: 2048
+  resolution: 2048
+  coarse_scale_factor: 1.0  
+
+
+loss_weights:
+  dir: 10.
+  dssim: 0.2
+  knn_feature: 10.
+  mesh_dist: 0.001
+  orient: 1.
+  rgb_hr: 1.
+  rgb_lr: 1.
+  segment: 5.
+  sign_distance: 0.5
+  strand_feature: 0.01
+  transform_reg: 10.
+  vgg: 0.1
+  deform_reg: 0.0
+
+meshheadmodule:
+  geo_mlp: [27, 256, 256, 256, 256, 256, 132]
+  exp_color_mlp: [192, 256, 256, 32]
+  # exp_color_mlp: [187, 256, 256, 32]
+  pose_color_mlp: [182, 128, 32]
+  exp_deform_mlp: [91, 256, 256, 256, 256, 256, 3]
+  # exp_deform_mlp: [86, 256, 256, 256, 256, 256, 3]
+  pose_deform_mlp: [81, 256, 256, 3]
+  pos_freq: 4
+  model_bbox: [[-1.6, 1.6], [-1.7, 1.8], [-2.5, 1.0]]
+  dist_threshold_near: 0.1
+  dist_threshold_far: 0.25
+  deform_scale: 0.3
+  subdivide: False
+
+supresmodule:
+  input_dim: 32
+  output_dim: 3
+  network_capacity: 4
+
+gaussianheadmodule:
+  # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_latest_174766867582'
+  # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_iter_20000'
+  # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_iter_20000 copy'
+  num_add_mouth_points: 3000
+  exp_color_mlp: [192, 256, 256, 32]
+  pose_color_mlp: [182, 128, 32]
+  exp_deform_mlp: [91, 256, 256, 256,256,256, 3]
+  pose_deform_mlp: [81, 256, 256, 3]
+  exp_attributes_mlp: [192, 256, 256, 256, 8]
+  pose_attributes_mlp: [182, 128, 128, 8]
+  # exp_color_mlp: [192, 256, 32]
+  # pose_color_mlp: [182, 128, 32]
+  # exp_deform_mlp: [91, 256, 256, 256,256,256, 3]
+  # pose_deform_mlp: [81, 256, 256, 3]
+  # exp_attributes_mlp: [192, 256, 256, 256, 8]
+  # pose_attributes_mlp: [182, 128, 128, 8]
+  exp_coeffs_dim: 64
+  pos_freq: 4
+  dist_threshold_near: 0.1
+  dist_threshold_far: 0.25
+  deform_scale: 0.3
+  attributes_scale: 0.2
+
+  densify: False
+  densification_interval: 100
+  opacity_reset_interval: 3_000
+  densify_from_iter: 500
+  densify_until_iter: 15_000
+  # densify_grad_threshold: 0.0002
+  densify_grad_threshold: 0.0004
+  opacity_reg_from_iter: 30_000
+  gaussian_pruning_threshold: 0.5
+
+gaussianhairmodule:
+  # enable: False
+  # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_latest_174766867582'
+  # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_17480233800' 
+  # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000' 
+  # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000 copy' 
+  pose_deform_method: 'mlp' # 'attention'
+  pose_point_mlp: [81, 256, 3]
+  pose_prior_mlp: [54, 54] 
+  pos_freq: 4
+  dist_threshold_near: 0.1
+  dist_threshold_far: 0.25
+  deform_scale: 0.3
+  attributes_scale: 0.2
+  num_strands: 10_140
+  strand_length: 100
+  simplify_strands: False
+  aspect_ratio: 1
+  quantile: 1
+  train_directions: False
+  train_features_rest: True 
+  train_width: False
+  train_opacity: False 
+  strand_scale : 0.001
+  sh_degree : 3
+
+  # strands_reset_from_iter: 4_000
+  # just reset strands once at 15000, just [0, 15000] train the prior and [15000, ] train the strands
+  strands_reset_from_iter: 5_000
+  strands_reset_until_iter: 5_000
+  strands_reset_interval: 1_000
+
+  # strands_reset_from_iter: 1_000000000000
+  # strands_reset_until_iter: 1_000000000000
+  # strands_reset_interval: 1_000
+
+
+  lrs : {
+      "theta": 0.005,
+      "beta":  0.01,
+      "G_raw": 0.001,
+      "G_superres": 0.001,
+      "G_res": 0.001,
+  }
+
+  milestones : {
+      "theta": [0, 15_000],
+      "G_raw": [0, 15_000],
+      "G_superres": [0, 15_000],
+      "beta":  [1_000, 15_000],
+      "G_res": [1_000, 15_000],
+  }
+  # milestones : {
+  #     "theta": [0, 1_000_000_000_000],
+  #     "G_raw": [0, 1_000_000_000_000],
+  #     "G_superres": [0, 1_000_000_000_000],
+  #     "beta":  [1_000, 1_000_000_000_000],
+  #     "G_res": [1_000, 1_000_000_000_000],
+  # }
+
+
+  position_lr_init: 1.6e-4 
+  position_lr_final: 1.6e-6 
+  position_lr_delay_mult: 0.01
+  position_lr_max_steps: 30_000
+  # feature_lr: 0.0025
+  feature_lr: 0.01
+  opacity_lr: 0.05
+  label_lr: 0.05
+  orient_conf_lr: 0.05
+  scaling_lr: 0.005
+  rotation_lr: 0.001
+
+
+flame_gaussian_module:
+  # load_flame_gaussian_checkpoint: 'checkpoints/gaussianhead_renderme_single/head_latest_17480233800.ply'
+  # load_flame_gaussian_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/head_latest_174777888919.ply' 
+  enable: False
+  iterations: 600_000  # 30_000 (original)
+  position_lr_init: 0.005  # (scaled up according to mean triangle scale)  #0.00016 (original)
+  position_lr_final: 0.00005  # (scaled up according to mean triangle scale) # 0.0000016 (original)
+  position_lr_delay_mult: 0.01
+  position_lr_max_steps: 600_000  # 30_000 (original)
+  feature_lr: 0.0025
+  opacity_lr: 0.05
+  scaling_lr: 0.017  # (scaled up according to mean triangle scale)  # 0.005 (original)
+  rotation_lr: 0.001
+  densify: True
+  densification_interval: 1_000  # 100 (original)
+  opacity_reset_interval: 6_000 # 3000 (original)
+  densify_from_iter: 5_000 #10_000  # 500 (original)
+  densify_until_iter: 60_000 #600_000  # 15_000 (original)
+  densify_grad_threshold: 0.0002
+  # GaussianAvatars
+  flame_expr_lr: 1e-4
+  flame_trans_lr: 1e-6
+  flame_pose_lr: 1e-5
+  percent_dense: 0.01
+  lambda_dssim: 0.2
+  lambda_xyz: 1e-2
+  threshold_xyz: 1.
+  metric_xyz: False
+  lambda_scale: 1.
+  threshold_scale: 0.6
+  metric_scale: False
+  lambda_dynamic_offset: 0.
+  lambda_laplacian: 0.
+  lambda_dynamic_offset_std: 0 
+
+  
+
+recorder:
+  debug_tool: 'wandb' # 'tensorboard' or 'wandb'
+  # name: 'gaussianhead_hair_renderme_NoOpacity'
+  name: 'gaussianhead_NeRSemble258'
+  # name: 'gaussianhead_hair_renderme'
+  logdir: 'log/gaussianhead_NeRSemble031_Simplified'
+  checkpoint_path: 'checkpoints'
+  result_path: 'results'
+  save_freq: 10000
+  show_freq: 5000
