@@ -4,6 +4,8 @@ datasets
 # wandb
 /wandb
 
+*.json
+haonan/*
 
 # results
 /results
