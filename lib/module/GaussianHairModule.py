@@ -1152,10 +1152,9 @@ class GaussianHairModule(GaussianBaseModule):
             # select the last 3 poses
             # 3, 54 ->  1, 3 * 54
             selected_pose = all_pose_embedding[-3:].flatten(0, 1)[None]
-            #  54 ->  54
-            pose_features = self.pose_mlp(selected_pose)
-            pose_deform_embedding = pose_features
-
+            #  3 * 54 ->  54
+            pose_deform_embedding = self.pose_mlp(selected_pose) 
+            
             points = self.points.contiguous().view(-1, 3)
             pose_deform_input = torch.cat([self.pos_embedding(points).t(),
                                             pose_deform_embedding.t().repeat(1, points.shape[0])], 0)[None]
@@ -1164,6 +1163,19 @@ class GaussianHairModule(GaussianBaseModule):
 
         else:
             raise NotImplementedError(f"Pose deform method {self.pose_deform_method} not implemented")
+            # # 54
+            # pose_deform_embedding = self.pose_mlp(selected_pose)
+            # selected_indices = torch.arange(self.num_strands).cuda()
+            # selected_roots = self.roots.view(-1, 3)[selected_indices]
+
+            # pose_deform_input = torch.cat([self.pos_embedding(selected_roots).t(),
+            #                                 pose_deform_embedding.t().repeat(1, selected_roots.shape[0])], 0)[None]
+            # # [feat_num, num_selected_roots] -> [128, num_selected_roots]
+            # pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
+            # # [128, num_selected_roots] -> [128, num_roots], interpolation
+            # ...
+            # # [128, num_roots] -> [3 * strand_length, num_roots] 
+            # ...
 
         return pose_deform.view(self.num_strands, self.strand_length - 1, 3)
 

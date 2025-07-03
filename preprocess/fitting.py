@@ -32,6 +32,14 @@ import numpy as np
 import os
 from yacs.config import CfgNode as CN
  
+from pytorch3d.structures import Meshes
+from pytorch3d.renderer import (
+    FoVPerspectiveCameras, PerspectiveCameras, RasterizationSettings, 
+    MeshRenderer, MeshRasterizer, SoftPhongShader, PointLights, TexturesVertex, SoftSilhouetteShader 
+)
+from pytorch3d.utils import cameras_from_opencv_projection
+from pytorch3d.transforms import Rotate, Translate 
+
 sys.path.append('../')
 # from lib.Recorder import Recorder
 from lib.face_models import get_face_model
@@ -165,7 +173,8 @@ class Fitter():
                 loss.backward()
                 optimizer.step()
 
-                if abs(loss.item() - prev_loss) < 1e-10 and abs(loss.item() - pprev_loss) < 1e-9:
+                if abs(loss.item() - prev_loss) < 1e-11 and abs(loss.item() - pprev_loss) < 1e-10:
+                    print('iter: %d, loss: %.4f, pro_loss: %.4f, reg_loss: %.4f' % (i, loss.item(), pro_loss.item(), reg_loss.item()))
                     break
                 else:
                     pprev_loss = prev_loss
@@ -319,14 +328,14 @@ class Recorder():
         for n, frame in tqdm(enumerate(frames)):
             os.makedirs(os.path.join(self.save_folder, frame), exist_ok=True)
             
-            face_model.save('%s/params.npz' % (os.path.join(self.save_folder, frame)), batch_id=n)
-            np.save('%s/lmk_3d.npy' % (os.path.join(self.save_folder, frame)), landmarks[n].cpu().numpy())
-            if self.save_vertices:
-                np.save('%s/vertices.npy' % (os.path.join(self.save_folder, frame)), vertices[n].cpu().numpy())
+            # face_model.save('%s/params.npz' % (os.path.join(self.save_folder, frame)), batch_id=n)
+            # np.save('%s/lmk_3d.npy' % (os.path.join(self.save_folder, frame)), landmarks[n].cpu().numpy())
+            # if self.save_vertices:
+            #     np.save('%s/vertices.npy' % (os.path.join(self.save_folder, frame)), vertices[n].cpu().numpy())
 
             faces = log_data['face_model'].faces.cpu().numpy()
             mesh_trimesh = trimesh.Trimesh(vertices=vertices[n].cpu().numpy(), faces=faces)
-            # save the trimesh
+            # # save the trimesh
             mesh_trimesh.export('%s/mesh_%d.obj' % (os.path.join(self.save_folder, frame), n))
 
 
@@ -339,31 +348,145 @@ class Recorder():
                     
                     origin_image = cv2.imread(img_paths)[:,:,::-1]
                     origin_image = cv2.resize(origin_image, (self.camera.image_size, self.camera.image_size))
+
+                    # scene = trimesh.Scene(mesh_trimesh)
                     
-                    mesh = pyrender.Mesh.from_trimesh(mesh_trimesh)
-                    self.camera.init_renderer(intrinsic=intrinsics[n, v], extrinsic=extrinsics[n, v])
-                    render_image = origin_image.copy()
+                    # extrinsic_cv = np.eye(4)
+                    # extrinsic_cv[:3, :] = extrinsics[n, v].cpu().numpy()
+                    # camera_transform = np.linalg.inv(extrinsic_cv)
+                    # scene.camera_transform = camera_transform
+
+                    # K = intrinsics[n, v].cpu().numpy()
+                    # image_width = image_height = self.camera.image_size
+                    # fx, fy = K[0, 0], K[1, 1]
+                    # fov_x = 2 * np.arctan(image_width / (2 * fx)) * 180 / np.pi
+                    # fov_y = 2 * np.arctan(image_height / (2 * fy)) * 180 / np.pi
+                    # scene.camera.fov = (fov_y, fov_x)
+
+                    # # full_project = torch.bmm(intrinsic.unsqueeze(0), extrinsic.unsqueeze(0))
+                    # # scene.camera_transform = full_project.cpu().numpy()
+                    # scene.camera.resolution = (self.camera.image_size, self.camera.image_size)
+
+                    # data = scene.save_image(resolution=(image_width, image_height), visible=False)
+                    # render_image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
+
+
+                    # mesh = pyrender.Mesh.from_trimesh(mesh_trimesh)
+                    # self.camera.init_renderer(intrinsic=intrinsics[n, v], extrinsic=extrinsics[n, v])
+                    # render_image = origin_image.copy()
                     # render_image = self.camera.render(mesh)
 
-                    # # merge the original image and the render image
-                    # render_image = cv2.resize(render_image, (self.camera.image_size, self.camera.image_size))
 
-                    # # dark_mask = render_image < 50
-                    # # # add background from orginal image to rendered image
-                    # # render_image[dark_mask] = origin_image[dark_mask]
-                    # # alpha blending
-                    # alpha = 0.65
-                    # render_image = cv2.addWeighted(render_image, alpha, origin_image, 1 - alpha, 0)
+                    # Convert trimesh to pytorch3d mesh
+                    verts = torch.tensor(mesh_trimesh.vertices, dtype=torch.float32).unsqueeze(0).to("cuda")
+                    faces = torch.tensor(mesh_trimesh.faces, dtype=torch.int64).unsqueeze(0).to("cuda")
 
+                    # Assign white texture
+                    # textures = TexturesVertex(verts_features=torch.ones_like(verts).to("cuda") * 0.5)
+                    fixed_color = torch.tensor([1.0, 1.0, 1.0], device="cuda")
+                    colors = fixed_color[None, None].expand_as(verts)  # (1, V, 3)
+                    textures = TexturesVertex(verts_features=colors)
+                    mesh = Meshes(verts=verts, faces=faces, textures=textures)
+
+                    # Camera intrinsics
+                    K = intrinsics[n, v]
+                    fx, fy = K[0, 0], K[1, 1]
+                    cx, cy = K[0, 2], K[1, 2]
+                    H = W = self.camera.image_size
+
+                    # # Use full intrinsics
+                    # cameras = PerspectiveCameras(
+                    #     focal_length=((fx, fy),),
+                    #     principal_point=((cx, cy),),
+                    #     image_size=((H, W),),
+                    #     device="cuda",
+                    #     in_ndc=False,
+                    #     R=torch.tensor(extrinsics[n, v][:, :3], dtype=torch.float32).unsqueeze(0).to("cuda"),
+                    #     T=torch.tensor(extrinsics[n, v][:, 3], dtype=torch.float32).unsqueeze(0).to("cuda")
+                    # )
+
+                    cameras = cameras_from_opencv_projection( R = torch.tensor(extrinsics[n, v][:, :3], dtype=torch.float32).unsqueeze(0).to("cuda"),
+                                                             tvec = torch.tensor(extrinsics[n, v][:, 3], dtype=torch.float32).unsqueeze(0).to("cuda"),
+                                                             camera_matrix = torch.tensor(intrinsics[n, v], dtype=torch.float32).unsqueeze(0).to("cuda"),
+                                                            image_size=torch.tensor([H, W]).unsqueeze(0))
+
+
+                    # scale = 1.0  # Adjust based on mesh size
+                    # cameras = FoVOrthographicCameras(
+                    #     device=device,
+                    #     R=torch.tensor(extrinsics[n, v][:, :3].T, dtype=torch.float32).unsqueeze(0).to(device),
+                    #     T=torch.tensor(extrinsics[n, v][:, 3], dtype=torch.float32).unsqueeze(0).to(device),
+                    #     scale_xyz=((scale, scale, scale),),  # Uniform scaling
+                    #     image_size=((H, W),)
+                    # )
+
+                    # Rasterization & Shader
+                    raster_settings = RasterizationSettings(
+                        image_size=H,
+                        blur_radius=1e-6,
+                        faces_per_pixel=10,
+                    )
+
+                    # Use full ambient lighting only
+                    lights = PointLights(device=device, ambient_color=((1, 1, 1),),diffuse_color=((0, 0, 0),), specular_color=((0, 0, 0),))
+                    shader = SoftPhongShader(device=device, cameras=cameras, lights=lights)
+                    
+                    shader = SoftSilhouetteShader()
+
+                    renderer = MeshRenderer(rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),shader=shader)
+
+
+                    # # DEBUG, it works
+                    # from pytorch3d.utils import ico_sphere
+                    # mesh = ico_sphere(level=2, device="cuda")  # Simple sphere mesh
+                
+                    # cameras = PerspectiveCameras(
+                    #     focal_length=((fx, fy),),
+                    #     principal_point=((cx, cy),),
+                    #     image_size=((H, W),),
+                    #     device="cuda",
+                    #     in_ndc=False,
+                    #     T=torch.tensor([0,0,5], dtype=torch.float32).unsqueeze(0).to("cuda") )
+
+                    # renderer = MeshRenderer(rasterizer=MeshRasterizer(cameras=cameras, raster_settings=raster_settings),shader=shader)
+                    # fixed_color = torch.tensor([1.0, 0.0, 0.0], device="cuda")
+                    # colors = fixed_color[None, None].expand_as(mesh.verts_packed()[None])
+                    # mesh.textures = TexturesVertex(verts_features=colors)
+
+                    # Render
+                    images = renderer(mesh)
+                    render_image = images[0, ..., 3:].cpu().numpy()  # HxWx3 RGB, float [0,1]
+                    # GRAY to RGB
+                    render_image = cv2.cvtColor(render_image, cv2.COLOR_GRAY2RGB)
+
+                    # render_image = images[0, ..., :3].cpu().numpy()  # HxWx3 RGB, float [0,1]
+                    render_image = (render_image * 255).astype(np.uint8)
+
+                    # Alpha blend with original
+                    alpha = 0.65
+                    origin_image_resized = cv2.resize(origin_image, (W, H))
+                    render_image = cv2.addWeighted(origin_image_resized, 1 - alpha, render_image, alpha, 0)
+
+                    # merge the original image and the render image
+                    render_image = cv2.resize(render_image, (self.camera.image_size, self.camera.image_size))
+
+                    # landmarks = vertices
                     N = landmarks[n].shape[0]
+
 
                     # Convert points to homogeneous coordinates [N, 4]
                     ones = torch.ones((N, 1), device=landmarks[n].device)
                     points_h = torch.cat([landmarks[n], ones], dim=1)  # Shape: [N, 4]
 
+                    # R = extrinsics[n][v][:3, :3]  # Rotation part of the extrinsic matrix
+                    # T = extrinsics[n][v][:3, 3]  # Translation part of
+                    # T_ = Translate(T[None], device=R.device)
+                    # R_ = Rotate(R[None], device=R.device)
+
                     # Transform to camera coordinates using extrinsic matrix
                     cam_coords = extrinsics[n][v] @ points_h.T  # Shape: [3, N]
-
+                    
+                    
                     # Project to image plane using intrinsic matrix
                     pixel_coords = intrinsics[n][v] @ cam_coords  # Shape: [3, N]
 
@@ -398,6 +521,7 @@ class Recorder():
                     render_image = np.concatenate([origin_image, render_image], axis=1)
 
                     cv2.imwrite('%s/vis_%d.jpg' % (os.path.join(self.save_folder, frame), v), render_image[:,:,::-1])
+
 
 if __name__ == '__main__':
 

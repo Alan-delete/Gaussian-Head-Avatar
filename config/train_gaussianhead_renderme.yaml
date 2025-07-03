@@ -1,9 +1,9 @@
 gpu_id: 0
 load_meshhead_checkpoint: 'checkpoints/meshhead_renderme/meshhead_latest'
 # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_renderme/gaussianhead_latest'
-# load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
-# load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
-# load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
+# load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_renderme/gaussianhead_latest'
+load_supres_checkpoint: 'checkpoints/gaussianhead_renderme/supres_latest'
+load_delta_poses_checkpoint: 'checkpoints/gaussianhead_renderme/delta_poses_latest'
 lr_net: 1e-4
 lr_pose: 1e-5
 batch_size: 1
@@ -11,7 +11,7 @@ optimize_pose: True
 use_supres: True 
 train_segment: True
 train_optical_flow: False 
-checkpoint_seed: 174982452240 
+checkpoint_seed: 175029050023 
 resume_training: False
 start_epoch: 0
 num_epochs: 18000 # 1800 # 400   

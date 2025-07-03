@@ -43,7 +43,7 @@ class GaussianHeadHairTrainer():
         # iteration = start_epoch * len(self.dataloader) * 128
         iteration = 1
         if self.cfg.resume_training:
-            iteration = 50001
+            iteration = 10001
         # iteration = 40001
         end_iteration = iteration + 150000
         dataset = self.dataloader.dataset
@@ -174,7 +174,8 @@ class GaussianHeadHairTrainer():
         resolution_coarse = images_coarse.shape[2]
         resolution_fine = images.shape[2]
 
-        data['pose'] = data['pose'] + self.delta_poses[data['exp_id'], :]
+        if self.cfg.optimize_pose:
+            data['pose'] = data['pose'] + self.delta_poses[data['exp_id'], :]
         
         
         B = data['pose'].shape[0]
@@ -330,7 +331,7 @@ class GaussianHeadHairTrainer():
         # step decay for segment loss
         if iteration > 20000:
             decay_rate = 0.6 ** ( iteration // 20000)
-            decay_rate = max(decay_rate, 0.4)
+            decay_rate = max(decay_rate, 0.05)
             loss_segment = loss_segment * decay_rate
 
 
