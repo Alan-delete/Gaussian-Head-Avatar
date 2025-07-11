@@ -222,8 +222,8 @@ class FLAME(nn.Module):
     """
     def __init__(self, batch_size):
 
-        self.shape_dims = 150 #100
-        self.exp_dims = 100 #50
+        self.shape_dims = 100
+        self.exp_dims = 50
 
         super(FLAME, self).__init__()
         print("creating the FLAME Decoder")
@@ -412,8 +412,8 @@ class FLAMEModule(nn.Module):
     def __init__(self, batch_size = 1):
         super(FLAMEModule, self).__init__()
 
-        self.shape_dims = 150 #100
-        self.exp_dims = 100 #50
+        self.shape_dims = 100
+        self.exp_dims = 50
         self.batch_size = batch_size
 
         self.flame = FLAME(batch_size)
