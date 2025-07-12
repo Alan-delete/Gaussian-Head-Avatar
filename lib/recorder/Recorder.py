@@ -89,6 +89,58 @@ def vis_orient(orient_angle, mask):
     return rgb * mask
 
 
+def hair_strand_rendering(data, gaussianhair, camera):
+
+    device = data['images'].device
+
+    if gaussianhair is not None:
+        highlight_strands_idx = torch.arange(0, gaussianhair.num_strands, 300, device= device)
+        gen = torch.Generator(device=device)
+        gen.manual_seed(77)
+        highlight_color = torch.rand(highlight_strands_idx.shape[0], 3, generator=gen, device=device).unsqueeze(1).repeat(1, 99, 1).unsqueeze(0)
+        
+            
+    # data['poses_history'] = [None]
+    data['bg_rgb_color'] = torch.as_tensor([1.0, 1.0, 1.0]).cuda()
+    # TODO: select a few strands, color and enlarge them. Then render them
+    with torch.no_grad():
+        if gaussianhair is not None:
+            gaussianhair.generate_hair_gaussians(poses_history = data['poses_history'][0], 
+                                                    # global_pose = init_flame_pose[0],
+                                                    global_pose = data['flame_pose'][0], 
+                                                    global_scale = data['flame_scale'][0])
+            hair_data = gaussianhair.generate(data)
+                    
+            color = hair_data['color'][..., :3].view(1, gaussianhair.num_strands, 99, 3)
+            new_color = torch.tensor([1.0, 0.0, 0.0], device=color.device).view(1, 1, 1, 3)
+
+            color[:, highlight_strands_idx, :, :] = highlight_color
+            hair_data['color'][..., :3] = color.view(1, -1, 3)
+            # Set every 100th strand to new_color
+            # color[:, ::100, :, :] = torch.rand(color[:, ::100, :, :].shape[1], 3).unsqueeze(1).repeat(1, 100, 1).unsqueeze(0).to(color.device)
+
+            scales = hair_data['scales'].view(1, gaussianhair.num_strands, 99, 3)
+            scales[:, highlight_strands_idx, :, 1: ] = 50 * scales[:, highlight_strands_idx, :, 1: ]
+            hair_data['scales'] = scales.view(1, -1, 3)
+
+
+            hair_data['opacity'][...] = 0.0
+            opacity = hair_data['opacity'].view(1, gaussianhair.num_strands, 99, 1)
+            opacity[:, highlight_strands_idx, :, :] = 1.0
+            hair_data['opacity'] = opacity.view(1, -1, 1)
+
+            # combine head and hair data
+            for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
+                # first dimension is batch size, concat along the second dimension
+                data[key] = hair_data[key]
+
+        data = camera.render_gaussian(data, 2048)
+        render_images = data['render_images'][: ,:3, ...]
+        return render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy()
+
+
+
+
 class GaussianHeadTrainRecorder():
     def __init__(self, full_cfg, test_dataloader=None):
         
