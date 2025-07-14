@@ -427,16 +427,8 @@ class GaussianHairModule(GaussianBaseModule):
         # self.pose_color_mlp = MLP(cfg.pose_color_mlp, last_op=None)
         # self.pose_attributes_mlp = MLP(cfg.pose_attributes_mlp, last_op=None)
         # self.pose_deform_mlp = MLP(cfg.pose_deform_mlp, last_op=nn.Tanh())
-        self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
-        self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
-        
         self.pose_embedding_dim = 54
         self.pose_deform_dim = 54
-        self.pose_query_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
-        self.pose_key_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
-        self.pose_value_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
-        self.pose_deform_attention = torch.nn.MultiheadAttention(self.pose_deform_dim, 2, dropout=0.1)
-
         self.pose_num = 3
         self.pose_mlp = torch.nn.Sequential(
             torch.nn.Linear(self.pose_embedding_dim * self.pose_num, 128),
@@ -446,19 +438,45 @@ class GaussianHairModule(GaussianBaseModule):
             torch.nn.Linear(128, self.pose_deform_dim),
         )
 
-        # # initialize the pose_deform_mlp as zero
-        # def init_weights(m):
-        #     if isinstance(m, nn.Linear) or isinstance(m, nn.Conv1d):
-        #         torch.nn.init.zeros_(m.weight)
-        #         m.bias.data.fill_(0.001)
-        # self.pose_deform_attention.apply(init_weights)
-        # self.pose_mlp.apply(init_weights)
-        # self.pose_query_mlp.apply(init_weights)
-        # self.pose_key_mlp.apply(init_weights)
-        # self.pose_value_mlp.apply(init_weights)
-        # self.pose_point_mlp.apply(init_weights)
-        # self.pose_prior_mlp.apply(init_weights)
+        if cfg.pose_deform_method == 'mlp':
+            self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
+            self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
+            l_dynamic = [
+                {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-4, "name": "pose_prior"},
+                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
+                {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
+            ]
+        
+        elif cfg.pose_deform_method == 'attention':
+            self.pose_query_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
+            self.pose_key_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
+            self.pose_value_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
+            self.pose_deform_attention = torch.nn.MultiheadAttention(self.pose_deform_dim, 2, dropout=0.1)
+            l_dynamic = [
+                {'params': self.pose_query_mlp.parameters(), 'lr': 1e-4, "name": "pose_query"},
+                {'params': self.pose_key_mlp.parameters(), 'lr': 1e-4, "name": "pose_key"},
+                {'params': self.pose_value_mlp.parameters(), 'lr': 1e-4, "name": "pose_value"},
+                {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
+                {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
+            ]
+        elif cfg.pose_deform_method == 'rnn':
+            pass
+        else:
+            raise ValueError(f'Unknown pose deform method: {cfg.pose_deform_method}')
 
+
+
+        # # TODO: Add learning rate for each parameter
+        # l_dynamic = [
+        #     {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-4, "name": "pose_prior"},
+        #     {'params': self.pose_query_mlp.parameters(), 'lr': 1e-4, "name": "pose_query"},
+        #     {'params': self.pose_key_mlp.parameters(), 'lr': 1e-4, "name": "pose_key"},
+        #     {'params': self.pose_value_mlp.parameters(), 'lr': 1e-4, "name": "pose_value"},
+        #     {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
+        #     {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
+        #     {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
+        #     # {'params': self.color_mlp.parameters(), 'lr': 1e-4, "name": "color_mlp"},
+        # ]
     
         # self.color_mlp = MLP([9, 128, 128, 3], last_op=nn.Sigmoid())
         self.sh_embed = lambda dir: eval_sh_bases(self.active_sh_degree, dir) [..., 1:]
@@ -494,17 +512,6 @@ class GaussianHairModule(GaussianBaseModule):
         self.cameras_extent = 4.907987451553345
         self.spatial_lr_scale = self.cameras_extent
 
-        # TODO: Add learning rate for each parameter
-        l_dynamic = [
-            {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-4, "name": "pose_prior"},
-            {'params': self.pose_query_mlp.parameters(), 'lr': 1e-4, "name": "pose_query"},
-            {'params': self.pose_key_mlp.parameters(), 'lr': 1e-4, "name": "pose_key"},
-            {'params': self.pose_value_mlp.parameters(), 'lr': 1e-4, "name": "pose_value"},
-            {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
-            {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
-            {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
-            # {'params': self.color_mlp.parameters(), 'lr': 1e-4, "name": "color_mlp"},
-        ]
 
         l_static = [{'params': [self.features_dc_raw], 'lr': cfg.feature_lr, "name": "f_dc"}]
         
@@ -1161,6 +1168,12 @@ class GaussianHairModule(GaussianBaseModule):
             # 81, point_num -> 3, point_num -> point_num, 3
             pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
 
+        elif self.pose_deform_method == 'rnn':
+            # Q: should I cat the pose embedding with the points embedding and then use the rnn?
+            # Maybe rnn directly output position(or velocity)?
+            # pose_diff = all_pose_embedding[1:] - all_pose_embedding[:-1]
+            # L-1, 54 
+            pass
         else:
             raise NotImplementedError(f"Pose deform method {self.pose_deform_method} not implemented")
             # # 54

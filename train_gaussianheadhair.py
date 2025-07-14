@@ -178,7 +178,7 @@ if __name__ == '__main__':
             print(f'load gaussians from {gaussians_ply_checkpoint}')
         
         if os.path.exists(gaussianhair_checkpoint):
-            gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage))
+            gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage), strict = False)
             print(f'load gaussianhair from {gaussianhair_checkpoint}')
         
         # start_epoch = int(gaussianhead_checkpoint.split('/')[-1].split('_')[0])
