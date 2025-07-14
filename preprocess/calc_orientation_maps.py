@@ -112,10 +112,11 @@ def main(args):
         os.makedirs(os.path.join(args.filtered_img_dir, frame), exist_ok=True)
         os.makedirs(os.path.join(args.vis_img_dir, frame), exist_ok=True)
 
-    # img_dir: 'datasets/mini_demo_dataset/031/images'
     filepaths = sorted(glob.glob(os.path.join(args.img_dir, '*', f'image_[0-9]*.jpg')))
-    # '/datasets/mini_demo_dataset/031/masks/hair'
+    # filepaths = sorted(glob.glob(os.path.join(args.img_dir, '*', f'image_*.jpg')))
     mask_paths = sorted(glob.glob(os.path.join(args.mask_dir, '*', f'image_[0-9]*.jpg')))
+    # mask_paths = sorted(glob.glob(os.path.join(args.mask_dir, '*', f'image_*.jpg')))
+
     assert len(filepaths) == len(mask_paths)
 
     # img_list = sorted(os.listdir(args.mask_paths))

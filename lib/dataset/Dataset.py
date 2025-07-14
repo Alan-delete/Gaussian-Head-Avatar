@@ -605,6 +605,7 @@ class GaussianDataset(Dataset):
             # raise ValueError('Orientation map not found')
             orient_angle = torch.zeros(1, self.resolution, self.resolution)
         
+        # TODO: use cosine value to interpolate the angle 
         orient_angle_coarse = F.interpolate(orient_angle[None], scale_factor=self.coarse_scale_factor)[0]
 
         if False and os.path.exists(orientation_confidence_path):
