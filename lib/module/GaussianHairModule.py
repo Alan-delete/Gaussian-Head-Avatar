@@ -430,17 +430,17 @@ class GaussianHairModule(GaussianBaseModule):
         self.pose_embedding_dim = 54
         self.pose_deform_dim = 54
         self.pose_num = 3
-        self.pose_mlp = torch.nn.Sequential(
-            torch.nn.Linear(self.pose_embedding_dim * self.pose_num, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, 128),
-            torch.nn.ReLU(),
-            torch.nn.Linear(128, self.pose_deform_dim),
-        )
 
         if cfg.pose_deform_method == 'mlp':
-            self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
+            self.pose_mlp = torch.nn.Sequential(
+                torch.nn.Linear(self.pose_embedding_dim * self.pose_num, 128),
+                torch.nn.ReLU(),
+                torch.nn.Linear(128, 128),
+                torch.nn.ReLU(),
+                torch.nn.Linear(128, self.pose_deform_dim),
+            )
             self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
+            self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
             l_dynamic = [
                 {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-4, "name": "pose_prior"},
                 {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
@@ -452,18 +452,40 @@ class GaussianHairModule(GaussianBaseModule):
             self.pose_key_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
             self.pose_value_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
             self.pose_deform_attention = torch.nn.MultiheadAttention(self.pose_deform_dim, 2, dropout=0.1)
+            self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
             l_dynamic = [
                 {'params': self.pose_query_mlp.parameters(), 'lr': 1e-4, "name": "pose_query"},
                 {'params': self.pose_key_mlp.parameters(), 'lr': 1e-4, "name": "pose_key"},
                 {'params': self.pose_value_mlp.parameters(), 'lr': 1e-4, "name": "pose_value"},
                 {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
-                {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
+                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
             ]
         elif cfg.pose_deform_method == 'rnn':
             pass
+            # L-1, 54 -> 54 
+            self.pose_lstm = nn.LSTM(input_size=self.pose_embedding_dim , 
+                                    hidden_size=self.pose_deform_dim, 
+                                    num_layers=1, 
+                                    batch_first=True)
+            self.pose_lstm_h0 = nn.Parameter(torch.zeros(1, self.pose_deform_dim).cuda(), requires_grad=True)
+            self.pose_lstm_c0 = nn.Parameter(torch.zeros(1, self.pose_deform_dim).cuda(), requires_grad=True)
+            self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
+            l_dynamic = [
+                {'params': self.pose_lstm.parameters(), 'lr': 1e-4, "name": "pose_lstm"},
+                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
+            ]
         else:
             raise ValueError(f'Unknown pose deform method: {cfg.pose_deform_method}')
 
+        # set the weights of last layer of pose_point_mlp to be 0
+        # self.pose_point_mlp[-1].weight.data.fill_(0.0)
+        # self.pose_point_mlp[-1].bias.data.fill_(0.0)
+        last_layer_idx = len(cfg.pose_point_mlp) - 2  # dims has length L+1 => L layers
+        # Access and zero out the weights and bias
+        last_conv = self.pose_point_mlp._modules[f'conv{last_layer_idx}']
+        nn.init.constant_(last_conv.weight, 0.0)
+        if last_conv.bias is not None:
+            nn.init.constant_(last_conv.bias, 0.0)
 
 
         # # TODO: Add learning rate for each parameter
@@ -602,18 +624,19 @@ class GaussianHairModule(GaussianBaseModule):
         #     for param in param_group['params']:
         #         param.requires_grad = False
 
+        # self.features_dc_raw.requires_grad = True
+        
+        # if self.train_features_rest:
+        #     self.features_rest_raw.requires_grad = True
+
+        # if self.train_opacity:
+        #     self.opacity_raw.requires_grad = True
+
         for param_group in self.optimizer.param_groups:
             if param_group["name"] in self.l_static:
                 param_group['lr'] = param_group['lr'] * 0.3
 
 
-        self.features_dc_raw.requires_grad = True
-        
-        if self.train_features_rest:
-            self.features_rest_raw.requires_grad = True
-
-        if self.train_opacity:
-            self.opacity_raw.requires_grad = True
     
     def enable_static_parameters(self):
         # Enable the static parameters
@@ -1173,6 +1196,14 @@ class GaussianHairModule(GaussianBaseModule):
             # Maybe rnn directly output position(or velocity)?
             # pose_diff = all_pose_embedding[1:] - all_pose_embedding[:-1]
             # L-1, 54 
+            _, (pose_deform_embedding, cn) = self.pose_lstm(all_pose_embedding, 
+                                                   (self.pose_lstm_h0,
+                                                   self.pose_lstm_c0))
+            points = self.points.contiguous().view(-1, 3)
+            pose_deform_input = torch.cat([self.pos_embedding(points).t(),
+                                            pose_deform_embedding.t().repeat(1, points.shape[0])], 0)[None]
+            # 81, point_num -> 3, point_num -> point_num, 3
+            pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
             pass
         else:
             raise NotImplementedError(f"Pose deform method {self.pose_deform_method} not implemented")

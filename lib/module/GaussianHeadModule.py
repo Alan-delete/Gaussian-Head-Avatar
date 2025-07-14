@@ -246,7 +246,7 @@ class GaussianHeadModule(GaussianBaseModule):
         #     color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
 
         # data['exp_deform'] = exp_deform
-        # color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
+        color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
 
 
         # TODO: use delta_xyz after pose as the 3D optical flow property sent to differentiable renderer 
