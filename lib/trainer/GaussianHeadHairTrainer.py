@@ -43,9 +43,9 @@ class GaussianHeadHairTrainer():
         # iteration = start_epoch * len(self.dataloader) * 128
         iteration = 1
         if self.cfg.resume_training:
-            iteration = 10001
+            iteration = 20001
         # iteration = 40001
-        end_iteration = iteration + 150000
+        end_iteration = iteration + 160000
         dataset = self.dataloader.dataset
         static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
         
@@ -427,7 +427,7 @@ class GaussianHeadHairTrainer():
                                         (cropped_images * cropped_visibles)[:, :, left_up[0]:left_up[0]+512, left_up[1]:left_up[1]+512], normalize=True).mean()
         else:
             loss_rgb_hr = loss_rgb_lr
-            # loss_vgg = self.fn_lpips((render_images[:,:3] * visibles_coarse), images_coarse * visibles_coarse, normalize=True).mean()
+            loss_vgg = self.fn_lpips((render_images[:,:3] * visibles_coarse), images_coarse * visibles_coarse, normalize=True).mean()
 
 
         if self.cfg.flame_gaussian_module.enable:
