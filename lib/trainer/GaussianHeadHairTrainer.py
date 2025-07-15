@@ -325,13 +325,13 @@ class GaussianHeadHairTrainer():
         
         # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
         # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
-        loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+        loss_segment = (recall_loss(gt_segment[:,2], segment_clone[:,2]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
         # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
         
         # step decay for segment loss
         if iteration > 20000:
             decay_rate = 0.6 ** ( iteration // 20000)
-            decay_rate = max(decay_rate, 0.05)
+            decay_rate = max(decay_rate, 0.1)
             loss_segment = loss_segment * decay_rate
 
 
