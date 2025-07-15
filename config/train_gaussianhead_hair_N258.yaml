@@ -11,11 +11,11 @@ use_supres: False
 train_segment: True
 train_optical_flow: False
 checkpoint_seed: 175165694933 
-resume_training: True 
+resume_training: False 
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
-static_training_util_iter: 20000 # 20000  
+static_training_util_iter: 10000 # 20000  
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
@@ -97,6 +97,7 @@ gaussianheadmodule:
   densify_grad_threshold: 0.0004
   opacity_reg_from_iter: 30_000
   gaussian_pruning_threshold: 0.5
+  sh_degree: 1
 
 gaussianhairmodule:
   # enable: False

@@ -321,11 +321,11 @@ class GaussianHeadHairTrainer():
             return (gt - pred).clamp(min=0).mean()
 
         def relax_recall_loss(gt, pred):
-            return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.7
+            return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.2
         
         # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
         # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
-        loss_segment = (recall_loss(gt_segment[:,2], segment_clone[:,2]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+        loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
         # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
         
         # step decay for segment loss
@@ -385,12 +385,12 @@ class GaussianHeadHairTrainer():
                 loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 
         
 
-            #  default [4000, 15000], during that period, use strand raw data to rectify the prior 
-            if  self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter:
-                points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
-                pred_pts = dirs if self.gaussianhair.train_directions else points
-            gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
-            loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
+            # #  default [4000, 15000], during that period, use strand raw data to rectify the prior 
+            # if  self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter:
+            #     points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
+            #     pred_pts = dirs if self.gaussianhair.train_directions else points
+            # gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
+            # loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
         
 
         # landmark loss

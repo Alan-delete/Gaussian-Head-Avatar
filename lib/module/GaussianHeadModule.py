@@ -39,6 +39,8 @@ class GaussianHeadModule(GaussianBaseModule):
         self.xyz = nn.Parameter(xyz)
         self.feature = nn.Parameter(feature)
 
+        self.max_sh_degree = cfg['sh_degree']
+        self.active_sh_degree = self.max_sh_degree
         features = torch.zeros((xyz.shape[0], 3, (self.max_sh_degree + 1) ** 2)).float().cuda()
         self.features_dc = nn.Parameter(features[:,:,0:1].transpose(1, 2).contiguous().requires_grad_(True))
         self.features_rest = nn.Parameter(features[:,:,1:].transpose(1, 2).contiguous().requires_grad_(True))
@@ -76,8 +78,6 @@ class GaussianHeadModule(GaussianBaseModule):
         self.deform_scale = cfg.deform_scale
         self.attributes_scale = cfg.attributes_scale
 
-        self.max_sh_degree = cfg['sh_degree']
-        self.active_sh_degree = self.max_sh_degree
     
     @property
     def get_seg_label(self):
