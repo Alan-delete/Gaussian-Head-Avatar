@@ -232,3 +232,23 @@ if __name__ == '__main__':
 
     trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
     trainer.train(start_epoch, start_epoch + cfg.num_epochs)
+
+    from lib.apps.Reenactment_hair import Reenactment_hair
+    
+    if len(arg.dataroot) > 0:
+        datasets = []
+        for dataroot in arg.dataroot:
+            arg_cfg = ['dataroot', dataroot]
+            cfg.dataset.merge_from_list(arg_cfg)
+            dataset = GaussianDataset(cfg.dataset, split_strategy='test')
+            datasets.append(dataset)
+        # TODO: train_mesh need to be updated for flame gaussian model
+        datasets = MultiDataset(datasets)
+        dataloader = DataLoaderX(datasets, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
+    else:
+        # debug select frames is to only load a few frames for debugging
+        dataset = GaussianDataset(cfg.dataset, split_strategy='test')
+        dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True)
+
+    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=arg.test_camera_id)
+    app.run()

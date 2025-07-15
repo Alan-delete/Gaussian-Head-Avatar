@@ -109,6 +109,7 @@ class config_train(config_base):
         self.cfg.gaussianheadmodule.opacity_reset_interval = 3_000
         self.cfg.gaussianheadmodule.opacity_reg_from_iter = 30_000
         self.cfg.gaussianheadmodule.gaussian_pruning_threshold = 0.5
+        self.cfg.gaussianheadmodule.sh_degree = 0
 
 
         self.cfg.flame_gaussian_module = CN()
