@@ -238,9 +238,9 @@ class Reenactment_hair():
                         # first dimension is batch size, concat along the second dimension
                         data[key] = hair_data[key]
 
-                data = self.camera.render_gaussian(data, 2048)
-                render_images = data['render_images'][: ,:3, ...]
-                non_rigid_video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
+                    data = self.camera.render_gaussian(data, 2048)
+                    render_images = data['render_images'][: ,:3, ...]
+                    non_rigid_video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
 
 
         only_rigid_video = []
@@ -292,9 +292,9 @@ class Reenactment_hair():
                         # first dimension is batch size, concat along the second dimension
                         data[key] = hair_data[key]
 
-                data = self.camera.render_gaussian(data, 2048)
-                render_images = data['render_images'][: ,:3, ...]
-                only_rigid_video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
+                    data = self.camera.render_gaussian(data, 2048)
+                    render_images = data['render_images'][: ,:3, ...]
+                    only_rigid_video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
 
 
 

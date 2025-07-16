@@ -969,7 +969,7 @@ class GaussianHairModule(GaussianBaseModule):
             optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, points_raw_new, "pts")
             self.points_raw = optimizable_tensors["pts"]
 
-    def sample_strands_from_prior(self, num_strands = -1, pose_params = None):
+    def sample_strands_from_prior(self, num_strands = -1, all_pose = None):
         # Subsample Perm strands if needed
         roots = self.roots
         if num_strands < self.num_strands and num_strands != -1:
@@ -977,14 +977,34 @@ class GaussianHairModule(GaussianBaseModule):
             roots = roots[strands_idx]
         else:
             strands_idx = torch.arange(self.num_strands)
+        
         # TODO: use pose embedding to change theta and beta
         # theta [1, 8, 512], meaning [54] -> [8, 512]
         # beta [1, 14, 512]
         # roots [1, 10_140, 3]
-        if pose_params is not None:
-            pose_embedding = self.pos_embedding(pose_params)
-            theta = self.theta + self.pose_prior_mlp(pose_embedding)
-            beta = self.beta + self.pose_prior_mlp(pose_embedding)
+        if all_pose is not None:
+            zero_pose = torch.zeros(6).cuda()
+            zero_pose = zero_pose[None].repeat(2, 1)
+            all_pose = torch.cat([zero_pose, all_pose], dim=0)
+
+            # timestep = torch.arange(len(all_pose)).cuda()
+            # # L, 9
+            # timestep_embedding = self.pos_embedding(timestep[:, None])
+
+            # cur_pose = all_pose[-1]
+            # # 6 -> 54
+            # pose_embedding = self.pos_embedding(cur_pose[None])
+            # # L, 54
+            # all_pose_embedding = self.pos_embedding(all_pose)
+
+            # L, 6 -> L, 54
+            all_pose_embedding = self.pos_embedding(all_pose)
+            selected_pose = all_pose_embedding[-3:].flatten(0, 1)[None]
+            #  3 * 54 ->  54
+            pose_deform_embedding = self.pose_mlp(selected_pose) 
+            # 54 -> 
+            theta = self.theta + self.pose_prior_mlp(pose_deform_embedding)
+            beta = self.beta + self.pose_prior_mlp(pose_deform_embedding)
 
         out = self.strands_generator(roots, self.theta, self.beta)
         pts_perm = out['strands'][0].position
