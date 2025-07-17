@@ -181,5 +181,5 @@ if __name__ == '__main__':
         arg_cfg = ['train_segment', False]
         cfg.merge_from_list(arg_cfg)
 
-    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=arg.test_camera_id)
+    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=arg.test_camera_id, cfg=cfg)
     app.run()

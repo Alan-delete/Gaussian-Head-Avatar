@@ -10,7 +10,7 @@ from lib.utils.general_utils import ssim, psnr
 from lib.face_models.FLAMEModule import FLAMEModule
 
 class Reenactment_hair():
-    def __init__(self, dataloader, gaussianhead, gaussianhair,supres, camera, recorder, gpu_id, freeview, camera_id=23):
+    def __init__(self, dataloader, gaussianhead, gaussianhair,supres, camera, recorder, gpu_id, freeview, camera_id=23, cfg=None):
         self.dataloader = dataloader
         self.gaussianhead = gaussianhead
         self.gaussianhair = gaussianhair
@@ -21,6 +21,7 @@ class Reenactment_hair():
         self.device = torch.device('cuda:%d' % gpu_id)
         self.freeview = freeview
         self.flame_model = FLAMEModule().to(self.device)
+        self.cfg = cfg
 
 
     def run(self):
@@ -29,7 +30,10 @@ class Reenactment_hair():
                     'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
                     'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale', 
                     'flame_exp_coeff', 'flame_id_coeff', 'poses_history', 'optical_flow', 'optical_flow_confidence']
-        iteration = -1
+        iteration = 20001
+        backprop_into_prior = False
+        if self.cfg is not None:
+            backprop_into_prior = iteration <= self.cfg.gaussianhairmodule.strands_reset_from_iter
         dataset = self.dataloader.dataset
         
         # set all parameters of gaussianhair to be not trainable
@@ -91,6 +95,7 @@ class Reenactment_hair():
                 if self.gaussianhair is not None:
                     self.gaussianhair.generate_hair_gaussians(poses_history = data['poses_history'][0], 
                                                             # global_pose = init_flame_pose[0],
+                                                            backprop_into_prior=backprop_into_prior, 
                                                             global_pose = data['flame_pose'][0], 
                                                             global_scale = data['flame_scale'][0])
                     hair_data = self.gaussianhair.generate(data)
@@ -210,8 +215,9 @@ class Reenactment_hair():
                     head_data = self.gaussianhead.generate(data)
 
                     self.gaussianhair.generate_hair_gaussians(poses_history = data['poses_history'][0], 
-                                                            # global_pose = init_flame_pose[0],
-                                                            global_pose = data['flame_pose'][0], 
+                                                            global_pose = init_flame_pose[0],
+                                                             backprop_into_prior=backprop_into_prior, 
+                                                            # global_pose = data['flame_pose'][0], 
                                                             global_scale = data['flame_scale'][0])
                     hair_data = self.gaussianhair.generate(data)
                     
@@ -265,6 +271,7 @@ class Reenactment_hair():
                     head_data = self.gaussianhead.generate(data)
 
                     self.gaussianhair.generate_hair_gaussians( poses_history = None, #poses_history = data['poses_history'][0], 
+                                                             backprop_into_prior=backprop_into_prior, 
                                                             global_pose = data['flame_pose'][0], 
                                                             global_scale = data['flame_scale'][0])
                     hair_data = self.gaussianhair.generate(data)

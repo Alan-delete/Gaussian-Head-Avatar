@@ -321,7 +321,7 @@ class GaussianHeadHairTrainer():
             return (gt - pred).clamp(min=0).mean()
 
         def relax_recall_loss(gt, pred):
-            return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.2
+            return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.4
         
         # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
         # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
