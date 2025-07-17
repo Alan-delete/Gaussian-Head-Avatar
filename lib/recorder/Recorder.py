@@ -89,12 +89,13 @@ def vis_orient(orient_angle, mask):
     return rgb * mask
 
 
-def hair_strand_rendering(data, gaussianhair, camera):
+def hair_strand_rendering(data, gaussianhead, gaussianhair, camera):
 
     device = data['images'].device
 
     if gaussianhair is not None:
-        highlight_strands_idx = torch.arange(0, gaussianhair.num_strands, 300, device= device)
+        # highlight_strands_idx = torch.arange(0, gaussianhair.num_strands, 300, device= device)
+        highlight_strands_idx = torch.arange(0, gaussianhair.num_strands, 1, device= device)
         gen = torch.Generator(device=device)
         gen.manual_seed(77)
         highlight_color = torch.rand(highlight_strands_idx.shape[0], 3, generator=gen, device=device).unsqueeze(1).repeat(1, 99, 1).unsqueeze(0)
@@ -104,6 +105,7 @@ def hair_strand_rendering(data, gaussianhair, camera):
     data['bg_rgb_color'] = torch.as_tensor([1.0, 1.0, 1.0]).cuda()
     # TODO: select a few strands, color and enlarge them. Then render them
     with torch.no_grad():
+        head_data = gaussianhead.generate(data)
         if gaussianhair is not None:
             gaussianhair.generate_hair_gaussians(poses_history = data['poses_history'][0], 
                                                     # global_pose = init_flame_pose[0],
