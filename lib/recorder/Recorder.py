@@ -122,7 +122,7 @@ def hair_strand_rendering(data, gaussianhead, gaussianhair, camera):
             # color[:, ::100, :, :] = torch.rand(color[:, ::100, :, :].shape[1], 3).unsqueeze(1).repeat(1, 100, 1).unsqueeze(0).to(color.device)
 
             scales = hair_data['scales'].view(1, gaussianhair.num_strands, 99, 3)
-            scales[:, highlight_strands_idx, :, 1: ] = 50 * scales[:, highlight_strands_idx, :, 1: ]
+            scales[:, highlight_strands_idx, :, 1: ] = 10 * scales[:, highlight_strands_idx, :, 1: ]
             hair_data['scales'] = scales.view(1, -1, 3)
 
 
@@ -134,7 +134,8 @@ def hair_strand_rendering(data, gaussianhead, gaussianhair, camera):
             # combine head and hair data
             for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
                 # first dimension is batch size, concat along the second dimension
-                data[key] = hair_data[key]
+                # data[key] = hair_data[key]
+                data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
 
         data = camera.render_gaussian(data, 2048)
         render_images = data['render_images'][: ,:3, ...]
@@ -191,6 +192,9 @@ class GaussianHeadTrainRecorder():
 
         # current time as random seed
         self.random_seq = str(int(time.time())) + str(np.random.randint(0, 100))
+
+        # save the video of rendered images
+        self.images = []
 
         os.makedirs(self.checkpoint_path, exist_ok=True)
         os.makedirs(self.result_path, exist_ok=True)
@@ -378,11 +382,11 @@ class GaussianHeadTrainRecorder():
                     images.append(wandb.Image(supres_image, caption="rendered_supres_image"))
 
 
-                if 'visibles' in data:
-                    visibles = data['visibles'][0].permute(1, 2, 0).detach().cpu().numpy()
-                    visibles = (visibles * 255).astype(np.uint8)
-                    visibles = cv2.resize(visibles, (image.shape[0], image.shape[1]))
-                    images.append(wandb.Image(visibles, caption="visibility"))
+                # if 'visibles' in data:
+                #     visibles = data['visibles'][0].permute(1, 2, 0).detach().cpu().numpy()
+                #     visibles = (visibles * 255).astype(np.uint8)
+                #     visibles = cv2.resize(visibles, (image.shape[0], image.shape[1]))
+                #     images.append(wandb.Image(visibles, caption="visibility"))
 
 
                 if 'gt_segment' in data:
@@ -414,33 +418,24 @@ class GaussianHeadTrainRecorder():
 
                         images.append(wandb.Image(vis_orient(render_orientation, ones_mask), caption="global_rendered_orientation"))
 
-                    # if 'optical_flow' in data:
-                    #     # [2, resolution, resolution]
-                    #     optical_flow = data['optical_flow_coarse'][0].to(mask.device)
-                    #     # angle = torch.atan2(optical_flow[1], optical_flow[0]) * 180 / np.pi
-                    #     angle = torch.atan2(optical_flow[1], optical_flow[0]) / np.pi
-                    #     images.append(wandb.Image(vis_orient(angle, mask), caption="optical_flow"))
+
+                hair_strand_image = hair_strand_rendering(data, log_data['gaussianhead'], log_data['gaussianhair'], log_data['camera'])
+                self.images.append(hair_strand_image)
+
+                # # save video
+                # gt_video = self.images
+                # # output_path = os.path.join("{}/{}/gt_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
+                # output_path = os.path.join(self.checkpoint_path, 'training_hair_strand_video.mp4' )
+                # out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (gt_video[0].shape[1], gt_video[0].shape[0]))
+                # for frame in gt_video:
+                #     frame = (frame*255).astype(np.uint8)
+                #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                #     out.write(frame)
+                # out.release()
+                # print('Saved video to %s' % output_path)
 
 
-                    #     # estimated_flow_numpy = (data['optical_flow'][0] * mask).permute(1, 2, 0).detach().cpu().numpy()
-                    #     # warped_query_image = remap_using_flow_fields(image, estimated_flow_numpy[:, :, 0],
-                    #     #                              estimated_flow_numpy[:, :, 1]).astype(np.uint8)
-                    #     # images.append(wandb.Image(warped_query_image, caption="warped_image"))
-
-                    # if 'render_velocity' in data:
-                    #     # render_velocity = data['render_velocity'][0].permute(1, 2, 0).detach().cpu().numpy() 
-                    #     # render_velocity = (render_velocity * 255).astype(np.uint8)
-                    #     # render_velocity = cv2.resize(render_velocity, (image.shape[0], image.shape[1]))
-                    #     # images.append(wandb.Image(render_velocity, caption="rendered_velocity"))
-                    #     render_velocity = data['render_velocity'][0]
-                    #     # angle = torch.atan2(render_velocity[1], render_velocity[0]) * 180 / np.pi
-                    #     angle = torch.atan2(render_velocity[1], render_velocity[0]) / np.pi
-                    #     images.append(wandb.Image(vis_orient(angle, mask), caption="rendered_velocity"))
-                    
-                    # if 'optical_flow_confidence' in data:
-                    #     optical_flow_confidence = data['optical_flow_confidence_coarse'][0].to(mask.device)
-                    #     images.append(wandb.Image(optical_flow_confidence.permute(1, 2, 0).detach().cpu().numpy(), caption="optical_flow_confidence"))
-
+                images.append(wandb.Image(hair_strand_image, caption="rendered_hair_strand"))
 
                 wandb.log({"Images": images})
 

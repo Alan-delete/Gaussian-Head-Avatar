@@ -962,11 +962,12 @@ class GaussianHairModule(GaussianBaseModule):
     def reset_strands(self):
         print('Resetting strands using the current weights of the prior')
         points_raw_new, dir_raw_new, self.origins_raw, _ = self.sample_strands_from_prior(self.num_strands)
+        self.origins_raw = self.origins_raw.detach()
         if self.train_directions:
-            optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, dir_raw_new, "pts")
+            optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, dir_raw_new.detach(), "pts")
             self.dir_raw = optimizable_tensors["pts"]
         else:
-            optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, points_raw_new, "pts")
+            optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, points_raw_new.detach(), "pts")
             self.points_raw = optimizable_tensors["pts"]
 
     def sample_strands_from_prior(self, num_strands = -1, all_pose = None):
