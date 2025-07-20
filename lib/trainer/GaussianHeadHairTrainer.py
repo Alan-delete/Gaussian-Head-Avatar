@@ -57,8 +57,9 @@ class GaussianHeadHairTrainer():
                     'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','poses_history', 'optical_flow','optical_flow_confidence',
                     'optical_flow_coarse','optical_flow_confidence_coarse', 'orient_angle_coarse']
 
-        self.gaussianhair.epoch_start()
-        self.gaussianhair.frame_start()
+        if self.gaussianhair is not None:
+            self.gaussianhair.epoch_start()
+            self.gaussianhair.frame_start()
 
         if self.cfg.static_scene_init:
 
@@ -88,18 +89,18 @@ class GaussianHeadHairTrainer():
                 self.train_step(iteration, epoch, data)
                 iteration += 1
                 
-            # disable the training of gaussian, just focus on the deformer
-            if self.gaussianhair is not None:
-                self.gaussianhair.disable_static_parameters()
-            if self.gaussianhead is not None:
-                self.gaussianhead.disable_static_parameters()
+            # # disable the training of gaussian, just focus on the deformer
+            # if self.gaussianhair is not None:
+            #     self.gaussianhair.disable_static_parameters()
+            # if self.gaussianhead is not None:
+            #     self.gaussianhead.disable_static_parameters()
             print('Disable static training, start dynamic training')
 
 
         # for epoch in range(start_epoch, epochs):
         while iteration < end_iteration:
 
-            self.gaussianhair.epoch_start()
+            # self.gaussianhair.epoch_start()
 
             # for idx in tqdm(range(len(dataset))):
 
@@ -148,7 +149,7 @@ class GaussianHeadHairTrainer():
                 for data_item in to_cuda:
                     data[data_item] = torch.as_tensor(data[data_item], device=self.device)
                 
-                self.train_step(iteration, epoch, data, grad_accumulation = 16)
+                self.train_step(iteration, epoch, data, grad_accumulation = 1)
                 iteration += 1
 
 
@@ -209,7 +210,7 @@ class GaussianHeadHairTrainer():
                 self.gaussianhair.reset_strands()
 
             # before 4000, backprop into prior
-            backprop_into_prior = iteration <= self.cfg.gaussianhairmodule.strands_reset_from_iter
+            backprop_into_prior = iteration < self.cfg.gaussianhairmodule.strands_reset_from_iter
         
             self.gaussianhair.update_learning_rate(iteration)
 
@@ -272,17 +273,17 @@ class GaussianHeadHairTrainer():
         
 
         # gt_mask = torch.maximum(gt_mask, gt_hair_mask)
-        # gt_segment = torch.cat([ 1 - gt_mask, gt_mask, gt_hair_mask], dim=1) 
+        gt_segment = torch.cat([ 1 - gt_mask, gt_mask, gt_hair_mask], dim=1) 
         # or
         # gt_segment = torch.cat([ 1 - gt_mask, gt_mask - gt_hair_mask, gt_hair_mask], dim=1) 
 
-        # TODO: don't forget to change dim if removing batch dimension
-        binary_hair_mask = gt_hair_mask > 0.1
-        gt_body_mask = (~binary_hair_mask) * gt_mask
-        gt_background_mask = torch.clamp(1 - gt_body_mask - gt_hair_mask, min=0, max=1)
-        gt_segment = torch.cat([ gt_background_mask , gt_body_mask, gt_hair_mask], dim=1) 
-        # normalize the gt_segment to [0, 1]
-        gt_segment = gt_segment / (gt_segment.sum(dim=1, keepdim=True) + 1e-6)
+        # # TODO: don't forget to change dim if removing batch dimension
+        # binary_hair_mask = gt_hair_mask > 0.1
+        # gt_body_mask = (~binary_hair_mask) * gt_mask
+        # gt_background_mask = torch.clamp(1 - gt_body_mask - gt_hair_mask, min=0, max=1)
+        # gt_segment = torch.cat([ gt_background_mask , gt_body_mask, gt_hair_mask], dim=1) 
+        # # normalize the gt_segment to [0, 1]
+        # gt_segment = gt_segment / (gt_segment.sum(dim=1, keepdim=True) + 1e-6)
         
         data['gt_segment'] = gt_segment
 
@@ -309,55 +310,38 @@ class GaussianHeadHairTrainer():
         loss_smoothness = 0
 
 
-        # sgement loss
-        # B, C, H, W 
-
-        segment_clone = render_segments.clone()
-        segment_clone[:,1] = render_segments[:,1] + render_segments[:,2]
-        def l1_loss(a, b):
-            return (a - b).abs().mean()
-
-        def recall_loss(gt, pred):
-            return (gt - pred).clamp(min=0).mean()
-
-        def relax_recall_loss(gt, pred):
-            return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.4
-        
-        # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
-        # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
-        loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
-        # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
-        
-        # step decay for segment loss
-        if iteration > 20000:
-            decay_rate = 0.6 ** ( iteration // 20000)
-            decay_rate = max(decay_rate, 0.1)
-            loss_segment = loss_segment * decay_rate
-
-
-
-        intersect_body_mask = gt_mask * segment_clone[:, 1].detach()
-        intersect_hair_mask = gt_hair_mask * segment_clone[:, 2].detach()
-
-
-        if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2 and iteration > 7000:
-            gt_optical_flow = data['optical_flow_coarse']
-            gt_optical_flow_confidence = data['optical_flow_confidence_coarse']
-            pred_optical_flow = data['render_velocity']
-            gt_optical_flow = gt_optical_flow * intersect_body_mask
-            pred_optical_flow = pred_optical_flow * intersect_body_mask
-            loss_optical_flow = ( (pred_optical_flow - gt_optical_flow) ** 2 * gt_optical_flow_confidence).mean() * 0.01
-            # TODO: use 3d optical flow or 2d optical flow projection?
-            loss_optical_flow_hair_reg = optical_flow_hair.norm(2).mean() * 0.1
-            loss_optical_flow_head_reg = optical_flow_head.norm(2).mean() * 0.1
-        else:
-            loss_optical_flow = 0
-            loss_optical_flow_hair_reg = 0
-            loss_optical_flow_head_reg = 0
-
-        
         # TODO: try mesh distance loss, also try knn color regularization
         if self.gaussianhair is not None:
+
+            # sgement loss
+            # B, C, H, W 
+
+            segment_clone = render_segments.clone()
+            segment_clone[:,1] = render_segments[:,1] + render_segments[:,2]
+            def l1_loss(a, b):
+                return (a - b).abs().mean()
+
+            def recall_loss(gt, pred):
+                return (gt - pred).clamp(min=0).mean()
+
+            def relax_recall_loss(gt, pred):
+                return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.7
+            
+            # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
+            # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            # loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) + 0.5 * l1_loss(gt_segment[:,1], segment_clone[:,1]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            
+            # step decay for segment loss
+            if iteration > 40000:
+                decay_rate = 0.6 ** ( iteration // 40000)
+                decay_rate = max(decay_rate, 0.2)
+                loss_segment = loss_segment * decay_rate
+
+            intersect_body_mask = gt_mask * segment_clone[:, 1].detach()
+            intersect_hair_mask = gt_hair_mask * segment_clone[:, 2].detach()
+
 
             gt_orientation = data['orient_angle_coarse']
             pred_orientation = data['render_orient']
@@ -391,6 +375,21 @@ class GaussianHeadHairTrainer():
             #     pred_pts = dirs if self.gaussianhair.train_directions else points
             # gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
             # loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
+
+        if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2 and iteration > 7000:
+            gt_optical_flow = data['optical_flow_coarse']
+            gt_optical_flow_confidence = data['optical_flow_confidence_coarse']
+            pred_optical_flow = data['render_velocity']
+            gt_optical_flow = gt_optical_flow * intersect_body_mask
+            pred_optical_flow = pred_optical_flow * intersect_body_mask
+            loss_optical_flow = ( (pred_optical_flow - gt_optical_flow) ** 2 * gt_optical_flow_confidence).mean() * 0.01
+            # TODO: use 3d optical flow or 2d optical flow projection?
+            loss_optical_flow_hair_reg = optical_flow_hair.norm(2).mean() * 0.1
+            loss_optical_flow_head_reg = optical_flow_head.norm(2).mean() * 0.1
+        else:
+            loss_optical_flow = 0
+            loss_optical_flow_hair_reg = 0
+            loss_optical_flow_head_reg = 0
         
 
         # landmark loss
@@ -408,6 +407,7 @@ class GaussianHeadHairTrainer():
         data['cropped_images'] = cropped_images
         
         # generate super resolution images
+        cropped_render_images = torch.cat([cropped_render_images[:, :3], cropped_render_images[:, 9:]], dim=1)  # remove orientation and segment
         supres_images = self.supres(cropped_render_images) if self.cfg.use_supres else cropped_images
         data['supres_images'] = supres_images
 
@@ -418,7 +418,7 @@ class GaussianHeadHairTrainer():
         loss_ssim = 1.0 - ssim(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
 
         # loss functions
-        loss_rgb_lr = F.l1_loss(render_images[:, 0:3, :, :] * visibles_coarse, images_coarse * visibles_coarse)
+        loss_rgb_lr = F.l1_loss(render_images[:, 0:3, :, :] * visibles_coarse, images_coarse * visibles_coarse) 
 
         if self.cfg.use_supres:
             loss_rgb_hr = F.l1_loss(supres_images * cropped_visibles, cropped_images * cropped_visibles)
@@ -582,9 +582,6 @@ class GaussianHeadHairTrainer():
             # strctured
             # regenerate raw data from perm prior
             if self.gaussianhair is not None:
-                if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter \
-                                                and iteration % self.cfg.gaussianhairmodule.strands_reset_interval == 0: 
-                    self.gaussianhair.reset_strands()
                 nan_grad = False
                 for group in self.gaussianhair.optimizer.param_groups:
                     for param in group['params']:
@@ -595,6 +592,9 @@ class GaussianHeadHairTrainer():
                     self.gaussianhair.optimizer.step()
                 self.gaussianhair.optimizer.zero_grad(set_to_none = True)
 
+                # if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter \
+                #                                 and iteration % self.cfg.gaussianhairmodule.strands_reset_interval == 1: 
+                #     self.gaussianhair.reset_strands()
 
     def random_crop(self, render_images, images, visibles, scale_factor, resolution_coarse, resolution_fine):
         render_images_scaled = F.interpolate(render_images, scale_factor=scale_factor)

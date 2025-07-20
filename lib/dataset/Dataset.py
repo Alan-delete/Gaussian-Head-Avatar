@@ -442,6 +442,7 @@ class GaussianDataset(Dataset):
         
         # image = image * mask  + (1 - mask) * self.bg_rgb_color[index].numpy()
         bg_rgb_color = self.random_color[np.random.randint(0, 5)]
+        # bg_rgb_color = torch.as_tensor([1.0, 1.0, 1.0]) 
         image = image * mask  + (1 - mask) * bg_rgb_color.numpy()
 
         hair_mask_path = sample[9][view]
