@@ -229,12 +229,13 @@ if __name__ == '__main__':
         arg_cfg = ['train_segment', False]
         cfg.merge_from_list(arg_cfg)
 
-
-    trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair,supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
+    # gaussianhair = None
+    trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair, supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
     trainer.train(start_epoch, start_epoch + cfg.num_epochs)
 
     from lib.apps.Reenactment_hair import Reenactment_hair
     
+    breakpoint()
     if len(arg.dataroot) > 0:
         datasets = []
         for dataroot in arg.dataroot:

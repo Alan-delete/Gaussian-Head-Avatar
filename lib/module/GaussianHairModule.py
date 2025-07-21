@@ -393,6 +393,15 @@ class GaussianHairModule(GaussianBaseModule):
         roots, _ = self.strands_generator.hair_roots.load_txt(hair_roots_path)
         self.roots = roots.cuda().unsqueeze(0)
         self.knn_roots_indices = None
+        # sample guide strands 5%
+        self.use_guide_strands = True
+        self.num_guide_strands = self.num_strands // 20
+        self.register_buffer('guide_strand_indices', torch.randperm(self.num_strands)[:self.num_guide_strands].cuda())
+        # TODO: use low precision or sparse matrix for guide strands weight
+        # initialize with root positions
+        # self.guide_strand_weights = nn.Parameter(torch.zeros(self.num_strands, self.num_guide_strands).cuda())
+        self.guide_strand_weights = nn.Parameter(torch.rand(self.num_strands, self.num_guide_strands).cuda())
+
         with torch.no_grad():
             init_theta = self.strands_generator.G_raw.mapping(torch.zeros(1, self.strands_generator.G_raw.z_dim).cuda())
         self.theta = nn.Parameter(init_theta.requires_grad_().cuda())
@@ -461,7 +470,6 @@ class GaussianHairModule(GaussianBaseModule):
                 {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
             ]
         elif cfg.pose_deform_method == 'rnn':
-            pass
             # L-1, 54 -> 54 
             self.pose_lstm = nn.LSTM(input_size=self.pose_embedding_dim , 
                                     hidden_size=self.pose_deform_dim, 
@@ -476,6 +484,9 @@ class GaussianHairModule(GaussianBaseModule):
             ]
         else:
             raise ValueError(f'Unknown pose deform method: {cfg.pose_deform_method}')
+        
+        if self.use_guide_strands:
+            l_dynamic.append({'params': self.guide_strand_weights, 'lr': 1e-4, "name": "guide_strand_weights"})
 
         # set the weights of last layer of pose_point_mlp to be 0
         # self.pose_point_mlp[-1].weight.data.fill_(0.0)
@@ -513,18 +524,6 @@ class GaussianHairModule(GaussianBaseModule):
             color_in_dim += (2 * cfg.pos_freq + 1 ) * 3 # hair dir embedding
         if self.use_sh:
             color_in_dim += (self.active_sh_degree + 1) ** 2 - 1 # SH embedding
-
-        # self.color_mlp = nn.Sequential(
-        #     nn.Linear(color_in_dim, 256),
-        #     nn.ReLU(),
-        #     nn.Linear(256, 128),
-        #     nn.ReLU(),
-        #     nn.Linear(128, 64),
-        #     nn.ReLU(),
-        #     nn.Linear(64, 3),
-        #     nn.Sigmoid()
-        # )
-
 
         self.transform = nn.Parameter(torch.eye(4).cuda())
 
@@ -1206,7 +1205,11 @@ class GaussianHairModule(GaussianBaseModule):
             #  3 * 54 ->  54
             pose_deform_embedding = self.pose_mlp(selected_pose) 
             
-            points = self.points.contiguous().view(-1, 3)
+            
+            if self.use_guide_strands: 
+                points = self.points.contiguous()[self.guide_strand_indices].reshape(-1, 3)
+            else:
+                points = self.points.contiguous().view(-1, 3)
             pose_deform_input = torch.cat([self.pos_embedding(points).t(),
                                             pose_deform_embedding.t().repeat(1, points.shape[0])], 0)[None]
             # 81, point_num -> 3, point_num -> point_num, 3
@@ -1220,12 +1223,14 @@ class GaussianHairModule(GaussianBaseModule):
             _, (pose_deform_embedding, cn) = self.pose_lstm(all_pose_embedding, 
                                                    (self.pose_lstm_h0,
                                                    self.pose_lstm_c0))
-            points = self.points.contiguous().view(-1, 3)
+            if self.use_guide_strands: 
+                points = self.points.contiguous()[self.guide_strand_indices].reshape(-1, 3)
+            else:
+                points = self.points.contiguous().view(-1, 3)
             pose_deform_input = torch.cat([self.pos_embedding(points).t(),
                                             pose_deform_embedding.t().repeat(1, points.shape[0])], 0)[None]
             # 81, point_num -> 3, point_num -> point_num, 3
             pose_deform = self.pose_point_mlp(pose_deform_input)[0].t()
-            pass
         else:
             raise NotImplementedError(f"Pose deform method {self.pose_deform_method} not implemented")
             # # 54
@@ -1241,8 +1246,29 @@ class GaussianHairModule(GaussianBaseModule):
             # ...
             # # [128, num_roots] -> [3 * strand_length, num_roots] 
             # ...
+    
+
+        # guide strand
+        if self.use_guide_strands:
+            guide_strand_deform = pose_deform.reshape(self.num_guide_strands, -1)
+            # [num_stand, num_guide_strands] * [num_guide_strands, 3 * strand_length - 1] -> [num_strands, 3 * strand_length - 1]
+            tau = 0.1
+            softmax_weights = torch.nn.functional.softmax(self.guide_strand_weights / tau, dim=1)
+            # softmax_weights = torch.nn.functional.softmax(self.guide_strand_weights, dim=1)
+            # entropy regularization
+            # self.guide_strand_entropy = -torch.sum(softmax_weights * torch.log(softmax_weights + 1e-5), dim=1).mean()
+            pose_deform = softmax_weights @ guide_strand_deform
+        
 
         return pose_deform.view(self.num_strands, self.strand_length - 1, 3)
+
+    def guide_strand_weight_loss(self):
+        if self.use_guide_strands:
+            tau = 0.1
+            softmax_weights = torch.nn.functional.softmax(self.guide_strand_weights / tau, dim=1)
+            return -torch.sum(softmax_weights * torch.log(softmax_weights + 1e-5), dim=1).mean()
+        else:
+            return 0
 
     # set gaussian representation from hair strands
     def generate_hair_gaussians(self, num_strands = -1, skip_color = False, skip_smpl = False, backprop_into_prior = False, poses_history = None, global_pose = None, global_scale = None, given_optical_flow = None, accumulate_optical_flow = None):

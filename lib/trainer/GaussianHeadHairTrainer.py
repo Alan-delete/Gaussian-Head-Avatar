@@ -308,6 +308,7 @@ class GaussianHeadHairTrainer():
         loss_flame_gaussian_reg = 0
         loss_deform_reg = 0
         loss_smoothness = 0
+        loss_guide_strand_loss = 0
 
 
         # TODO: try mesh distance loss, also try knn color regularization
@@ -362,14 +363,13 @@ class GaussianHeadHairTrainer():
             loss_deform_reg = self.gaussianhair.deform_regularization_loss()
 
             loss_smoothness = 0 #self.gaussianhair.smoothness_loss() * 10
+            
 
-            if  iteration <= static_training_util_iter:
-                loss_elastic = 0
-            else:
+            if  iteration > static_training_util_iter:
                 loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 
-        
+                loss_guide_strand_loss = self.gaussianhair.guide_strand_weight_loss() * 0.05 
 
-            # #  default [4000, 15000], during that period, use strand raw data to rectify the prior 
+            # #  default [4000, 15000], during that period, use strand raw data to rectify the prior
             # if  self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter:
             #     points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
             #     pred_pts = dirs if self.gaussianhair.train_directions else points
@@ -479,7 +479,8 @@ class GaussianHeadHairTrainer():
                 loss_optical_flow + 
                 loss_flame_gaussian_reg +
                 loss_deform_reg + 
-                loss_smoothness 
+                loss_smoothness + 
+                loss_guide_strand_loss 
         )
 
         loss = loss / grad_accumulation
@@ -510,6 +511,7 @@ class GaussianHeadHairTrainer():
             'loss_flame_gaussian_reg' : loss_flame_gaussian_reg,
             'loss_smoothness' : loss_smoothness,
             'loss_deform_reg' : loss_deform_reg,
+            'loss_guide_strand_loss' : loss_guide_strand_loss,
             'epoch' : epoch,
             # 'iter' : idx + epoch * len(self.dataloader)
             'iter' : iteration
