@@ -7,6 +7,20 @@ datasets
 *.json
 haonan/*
 
+# ply files
+*.ply
+
+# log files
+log/*
+
+# assets
+assets/*
+
+# obj, pkl
+*.obj
+*.pkl
+
+
 # results
 /results
 
