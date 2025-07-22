@@ -10,23 +10,23 @@ import depth_pro
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def process_depth(module_path, data_path, folder_name):
+def process_depth(module_path, data_dir, folder_name):
     cwd = os.getcwd()
     os.chdir(module_path)
 
     # Load model and preprocessing transform
     model, transform = depth_pro.create_model_and_transforms()
     model.eval().to(device)
-    image_folder_path = os.path.join(data_path , folder_name)
     # iterate over images
     # there are mask images also in image folder, so we need to filter out those
-    image_paths = glob.glob(image_folder_path + "/**/image_[0-9]*.jpg")
-    # TODO: very naive way, will have error if there are multiple "images" string in the path
-    os.makedirs(image_folder_path.replace("images", "depths"), exist_ok=True)
-    for image_path in image_paths:
-        image_dir = os.path.dirname(image_path)
-        os.makedirs(image_dir.replace("images", "depths"), exist_ok=True)
-
+    # under the images, there are folders for each frame, we need to create the same folder structure for NeuralHaircut_masks
+    frames_names = os.listdir(f'{data_dir}/images') 
+    os.makedirs(f'{data_dir}/depths', exist_ok=True)
+    for frame in frames_names:
+        mask_folder = os.path.join(f'{data_dir}/depths', frame) 
+        os.makedirs(mask_folder, exist_ok=True)
+    image_paths = sorted(glob.glob(os.path.join(data_dir, 'images', '*', f'image_*.jpg')))
+    image_paths = sorted(glob.glob(os.path.join(data_dir, 'images', '*', f'image_lowres*.jpg')))
 
     for image_path in tqdm.tqdm(image_paths):
         # Load and preprocess an image.
