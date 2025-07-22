@@ -90,8 +90,8 @@ class GaussianHeadHairTrainer():
                 iteration += 1
                 
             # # disable the training of gaussian, just focus on the deformer
-            # if self.gaussianhair is not None:
-            #     self.gaussianhair.disable_static_parameters()
+            if self.gaussianhair is not None:
+                self.gaussianhair.disable_static_parameters()
             # if self.gaussianhead is not None:
             #     self.gaussianhead.disable_static_parameters()
             print('Disable static training, start dynamic training')
@@ -367,7 +367,7 @@ class GaussianHeadHairTrainer():
 
             if  iteration > static_training_util_iter:
                 loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 
-                loss_guide_strand_loss = self.gaussianhair.guide_strand_weight_loss() * 0.05 
+                loss_guide_strand_loss = self.gaussianhair.guide_strand_weight_loss() * 0.01 
 
             # #  default [4000, 15000], during that period, use strand raw data to rectify the prior
             # if  self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter:

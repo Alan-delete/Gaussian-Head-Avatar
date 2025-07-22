@@ -346,43 +346,46 @@ class GaussianDataset(Dataset):
         self.shape_dims = 100
         self.exp_dims = 50
         
-        for i, flame_param_path in enumerate(VHAP_flame_param_paths):
+        # for i, flame_param_path in enumerate(VHAP_flame_param_paths):
+        for i, flame_param_path in enumerate(params_path_history):
             mesh = {}
             if os.path.exists(flame_param_path):
                 flame_param = np.load(flame_param_path)
 
-                # # scale is around 0.995
-                # scale = flame_param['scale']
-                # # (1, 100)
-                # shape = flame_param['id_coeff']
-                # # (1, 3)
-                # # the rotation in GHA is not the same one in FLAME, so we just set it to 0
-                # rotation = flame_param['pose'][:, :3]
-                # # (1, 3)
-                # translation = flame_param['pose'][:, 3:]
-                # # (1, 59)
-                # exp_coeff = flame_param['exp_coeff']
-                # # (1, 3)
-                # jaw_pose = exp_coeff[:, self.exp_dims: self.exp_dims + 3]
-                # # (1, 6)
-                # neck_pose = np.zeros((1, 3))
-                # # (1, 3)
-                # eyes_pose = exp_coeff[:, self.exp_dims + 3: self.exp_dims + 9]
-                # expr = exp_coeff[:, :self.exp_dims]
+                # scale is around 0.995
+                scale = flame_param['scale']
+                # (1, 100)
+                shape = flame_param['id_coeff']
+                # (1, 3)
+                # the rotation in GHA is not the same one in FLAME, so we just set it to 0
+                rotation = flame_param['pose'][:, :3]
+                # (1, 3)
+                translation = flame_param['pose'][:, 3:]
+                # (1, 59)
+                exp_coeff = flame_param['exp_coeff']
+                # (1, 3)
+                jaw_pose = exp_coeff[:, self.exp_dims: self.exp_dims + 3]
+                # (1, 6)
+                neck_pose = np.zeros((1, 3))
+                # (1, 3)
+                eyes_pose = exp_coeff[:, self.exp_dims + 3: self.exp_dims + 9]
+                expr = exp_coeff[:, :self.exp_dims]
 
-                # # the difference between FLAME and GHA is that the rotation in GHA is not the same one in FLAME
-                # # Flame is with respect to the root joint, while GHA is with respect to world origin
-                # rotation_mat = so3_exponential_map(torch.from_numpy(rotation)).detach().numpy()
-                # # hard code the root joint position, usually it won't change much
-                # J_0 = np.array([-0.0013, -0.1479, -0.0829], dtype=np.float32).reshape(1, 1, 3)
-                # translation = translation - J_0 + np.matmul(rotation_mat, J_0.transpose(0, 2, 1)).transpose(0, 2, 1)
-                expr = flame_param['expr'][:, :self.exp_dims]
-                rotation = flame_param['rotation']
-                translation = flame_param['translation']
-                jaw_pose = flame_param['jaw_pose']
-                neck_pose = flame_param['neck_pose']
-                eyes_pose = flame_param['eyes_pose']
-                shape = flame_param['shape'][:self.shape_dims]
+                # the difference between FLAME and GHA is that the rotation in GHA is not the same one in FLAME
+                # Flame is with respect to the root joint, while GHA is with respect to world origin
+                rotation_mat = so3_exponential_map(torch.from_numpy(rotation)).detach().numpy()
+                # hard code the root joint position, usually it won't change much
+                J_0 = np.array([-0.0013, -0.1479, -0.0829], dtype=np.float32).reshape(1, 1, 3)
+                translation = translation - J_0 + np.matmul(rotation_mat, J_0.transpose(0, 2, 1)).transpose(0, 2, 1)
+
+                
+                # expr = flame_param['expr'][:, :self.exp_dims]
+                # rotation = flame_param['rotation']
+                # translation = flame_param['translation']
+                # jaw_pose = flame_param['jaw_pose']
+                # neck_pose = flame_param['neck_pose']
+                # eyes_pose = flame_param['eyes_pose']
+                # shape = flame_param['shape'][:self.shape_dims]
 
                 mesh['expr'] = expr
                 mesh['rotation'] = rotation

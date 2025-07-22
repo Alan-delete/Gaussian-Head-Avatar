@@ -3,19 +3,19 @@ load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble258/meshhead_latest'
 # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
 # load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
 # load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
-lr_net: 1e-4
+lr_net: 5e-4 #1e-4
 lr_pose: 1e-6
 batch_size: 1
 optimize_pose: False
 use_supres: False 
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 17530535581 
+checkpoint_seed: 175312138327 
 resume_training: False 
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
-static_training_util_iter: 1 #10000 # 20000  
+static_training_util_iter: 5000 #10000 # 20000  
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
@@ -37,8 +37,8 @@ loss_weights:
   orient: 0.5
   rgb_hr: 1.
   rgb_lr: 1.
-  segment: 10.
-  sign_distance: 0.5
+  segment: 50.
+  sign_distance: 5. # 0.5
   strand_feature: 0.01
   transform_reg: 10.
   vgg: 0.1

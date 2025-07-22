@@ -451,9 +451,9 @@ class GaussianHairModule(GaussianBaseModule):
             self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
             self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
             l_dynamic = [
-                {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-4, "name": "pose_prior"},
-                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
-                {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
+                {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-3, "name": "pose_prior"},
+                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-3, "name": "pose_point"},
+                {'params': self.pose_mlp.parameters(), 'lr': 1e-3, "name": "pose_mlp"},
             ]
         
         elif cfg.pose_deform_method == 'attention':
@@ -633,7 +633,7 @@ class GaussianHairModule(GaussianBaseModule):
 
         for param_group in self.optimizer.param_groups:
             if param_group["name"] in self.l_static:
-                param_group['lr'] = param_group['lr'] * 0.3
+                param_group['lr'] = param_group['lr'] * 0.2
 
 
     
@@ -1148,8 +1148,8 @@ class GaussianHairModule(GaussianBaseModule):
         Stretch_loss = (direction_norm - direction_rest_norm) ** 2
         Stretch_loss = Stretch_loss.sum(dim=-1).mean()
 
-        # loss = Cosserat_loss + Stretch_loss
-        loss = Stretch_loss
+        loss = 0.1 * Cosserat_loss + Stretch_loss
+        # loss = Stretch_loss
 
         return loss
 
@@ -1391,64 +1391,6 @@ class GaussianHairModule(GaussianBaseModule):
         self.scales[:, 1:] = self.width.repeat(1, self.strand_length - 1).view(-1, 1)
 
         self.seg_label = torch.zeros_like(self.xyz)
-
-        # if not skip_smpl and self.simplify_strands:
-        #     # Run line simplification
-        #     MAX_ITERATIONS = 4
-        #     xyz = self.xyz.view(num_strands, self.strand_length - 1, 3)
-        #     dir = self.dir.view(num_strands, self.strand_length - 1, 3)
-        #     num_gaussians = xyz.shape[1]
-        #     len = (dir**2).sum(-1)
-        #     if not skip_color:
-        #         features_dc = self.features_dc.view(num_strands, self.strand_length - 1, 3)
-        #         features_rest = self.features_rest.view(num_strands, self.strand_length - 1, -1)
-        #     scaling = self.scales.view(num_strands, self.strand_length - 1, 3)
-        #     opacity = self.opacity.view(num_strands, self.strand_length - 1, 1)
-        #     for _ in range(MAX_ITERATIONS):
-        #         new_num_gaussians = num_gaussians // 2
-        #         dir_new = (dir[:, :new_num_gaussians*2:2, :] + dir[:, 1::2, :])
-        #         len_new = (dir_new**2).sum(-1)
-        #         err = ( len[:, :new_num_gaussians*2:2] - (dir[:, :new_num_gaussians*2:2, :] * dir_new).sum(-1)**2 / (len_new + 1e-7) )**0.5
-        #         xyz_new = (xyz[:, :new_num_gaussians*2:2, :] + xyz[:, 1::2, :]) * 0.5
-        #         if not skip_color:
-        #             features_dc_new = (features_dc[:, :new_num_gaussians*2:2, :] + features_dc[:, 1::2, :]) * 0.5
-        #             features_rest_new = (features_rest[:, :new_num_gaussians*2:2, :] + features_rest[:, 1::2, :]) * 0.5
-        #         scaling_new = (scaling[:, :new_num_gaussians*2:2, :] + scaling[:, 1::2, :]) * 0.5
-        #         opacity_new = (opacity[:, :new_num_gaussians*2:2, :] + opacity[:, 1::2, :]) * 0.5
-        #         if (torch.quantile(err, self.quantile, dim=1) < self.width * self.aspect_ratio).float().mean() > 0.5:
-        #             if num_gaussians % 2:
-        #                 xyz = torch.cat([xyz_new, xyz[:, -1:]], dim=1)
-        #                 dir = torch.cat([dir_new, dir[:, -1:]], dim=1)
-        #                 len = torch.cat([len_new, len[:, -1:]], dim=1)
-        #                 if not skip_color:
-        #                     features_dc = torch.cat([features_dc_new, features_dc[:, -1:]], dim=1)
-        #                     features_rest = torch.cat([features_rest_new, features_rest[:, -1:]], dim=1)
-        #                 scaling = torch.cat([scaling_new, scaling[:, -1:]], dim=1)
-        #                 opacity = torch.cat([opacity_new, opacity[:, -1:]], dim=1)
-        #             else:
-        #                 xyz = xyz_new
-        #                 dir = dir_new
-        #                 len = len_new
-        #                 if not skip_color:
-        #                     features_dc = features_dc_new
-        #                     features_rest = features_rest_new
-        #                 scaling = scaling_new
-        #                 opacity = opacity_new
-        #             num_gaussians = xyz.shape[1]
-        #         else:
-        #             break
-        #     self.xyz = xyz.view(-1, 3)
-        #     self.dir = dir.view(-1, 3)
-        #     if not skip_color:
-        #         self.features_dc = features_dc.view(-1, 1, 3)
-        #         self.features_rest = features_rest.view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3)
-        #     self.scales = scaling.view(-1, 3)
-        #     self.opacity= opacity.view(-1, 1)
-        
-        #     if num_gaussians + 1 != self.prev_strand_length:
-        #         print(f'Simplified strands from {self.prev_strand_length} to {num_gaussians + 1} points')
-        #         self.prev_strand_length = num_gaussians + 1
-
         self.scales = self.scales_inverse_activation(self.scales)
 
         # Assign geometric features        
