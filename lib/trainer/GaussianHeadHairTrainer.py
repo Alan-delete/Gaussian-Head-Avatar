@@ -153,7 +153,7 @@ class GaussianHeadHairTrainer():
                     if data_item in data:
                         data[data_item] = torch.as_tensor(data[data_item], device=self.device)
 
-                self.train_step(iteration, epoch, data, grad_accumulation = 1)
+                self.train_step(iteration, epoch, data, grad_accumulation = 4)
                 iteration += 1
 
 
@@ -366,7 +366,7 @@ class GaussianHeadHairTrainer():
 
             loss_smoothness = 0 #self.gaussianhair.smoothness_loss() * 10
 
-            if 'depth' in data:
+            if False and 'depth' in data:
                 # loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_mask) * 5
                 loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_hair_mask) * 5
 

@@ -494,9 +494,9 @@ class GaussianHairModule(GaussianBaseModule):
         last_layer_idx = len(cfg.pose_point_mlp) - 2  # dims has length L+1 => L layers
         # Access and zero out the weights and bias
         last_conv = self.pose_point_mlp._modules[f'conv{last_layer_idx}']
-        nn.init.constant_(last_conv.weight, 0.0)
+        nn.init.constant_(last_conv.weight, 0.0001)
         if last_conv.bias is not None:
-            nn.init.constant_(last_conv.bias, 0.0)
+            nn.init.constant_(last_conv.bias, 0.0001)
 
 
         # # TODO: Add learning rate for each parameter
@@ -619,21 +619,21 @@ class GaussianHairModule(GaussianBaseModule):
 
     def disable_static_parameters(self):
         # Disable the static parameters
-        # for param_group in self.l_static:
-        #     for param in param_group['params']:
-        #         param.requires_grad = False
+        for param_group in self.l_static:
+            for param in param_group['params']:
+                param.requires_grad = False
 
-        # self.features_dc_raw.requires_grad = True
+        self.features_dc_raw.requires_grad = True
         
-        # if self.train_features_rest:
-        #     self.features_rest_raw.requires_grad = True
+        if self.train_features_rest:
+            self.features_rest_raw.requires_grad = True
 
-        # if self.train_opacity:
-        #     self.opacity_raw.requires_grad = True
+        if self.train_opacity:
+            self.opacity_raw.requires_grad = True
 
-        for param_group in self.optimizer.param_groups:
-            if param_group["name"] in self.l_static:
-                param_group['lr'] = param_group['lr'] * 0.2
+        # for param_group in self.optimizer.param_groups:
+        #     if param_group["name"] in self.l_static:
+        #         param_group['lr'] = param_group['lr'] * 0.2
 
 
     
@@ -1148,8 +1148,8 @@ class GaussianHairModule(GaussianBaseModule):
         Stretch_loss = (direction_norm - direction_rest_norm) ** 2
         Stretch_loss = Stretch_loss.sum(dim=-1).mean()
 
-        loss = 0.1 * Cosserat_loss + Stretch_loss
-        # loss = Stretch_loss
+        # loss = 0.1 * Cosserat_loss + Stretch_loss
+        loss = Stretch_loss
 
         return loss
 

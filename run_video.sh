@@ -1,4 +1,4 @@
-export GPU="4"
+export GPU="5"
 export CAMERA="PINHOLE"
 export EXP_NAME_1="stage1"
 export EXP_NAME_2="stage2"
@@ -303,8 +303,8 @@ conda activate gha2
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_N$SUBJECT.yaml --dataroot $DATA_PATH
 
 # CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_N$SUBJECT.yaml --dataroot $DATA_PATH
-# CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N$SUBJECT.yaml --dataroot $DATA_PATH $DATA_PATH1 $DATA_PATH2
-CUDA_VISIBLE_DEVICES="$GPU" python reenactment_hair.py --config  config/train_gaussianhead_hair_N$SUBJECT.yaml --dataroot $DATA_PATH1 --test_camera_id 25 
+CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N$SUBJECT.yaml --dataroot $DATA_PATH $DATA_PATH1 # $DATA_PATH2
+# CUDA_VISIBLE_DEVICES="$GPU" python reenactment_hair.py --config  config/train_gaussianhead_hair_N$SUBJECT.yaml --dataroot $DATA_PATH1 --test_camera_id 25 
 
 # CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_renderme.yaml --dataroot $DATA_PATH
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH
