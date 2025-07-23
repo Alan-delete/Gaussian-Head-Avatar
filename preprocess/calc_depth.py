@@ -25,8 +25,8 @@ def process_depth(module_path, data_dir, folder_name):
     for frame in frames_names:
         mask_folder = os.path.join(f'{data_dir}/depths', frame) 
         os.makedirs(mask_folder, exist_ok=True)
-    image_paths = sorted(glob.glob(os.path.join(data_dir, 'images', '*', f'image_*.jpg')))
-    image_paths = sorted(glob.glob(os.path.join(data_dir, 'images', '*', f'image_lowres*.jpg')))
+    image_paths = sorted(glob.glob(os.path.join(data_dir, 'images', '*', f'image_[0-9]*.jpg')))
+    # image_paths = sorted(glob.glob(os.path.join(data_dir, 'images', '*', f'image_lowres*.jpg')))
 
     for image_path in tqdm.tqdm(image_paths):
         # Load and preprocess an image.

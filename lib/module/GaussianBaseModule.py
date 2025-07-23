@@ -111,6 +111,12 @@ class GaussianBaseModule(nn.Module):
         return torch.cat((features_dc, features_rest), dim=1)    
 
 
+    def get_depths(self, viewmatrix, xyz = None):
+        if xyz is None:
+            xyz = self.get_xyz
+        xyz_view = (xyz[:, None, :] @ viewmatrix[None, :3, :3] + viewmatrix[None, [3], :3])[:, 0]
+        return xyz_view[:, -1:]
+
     def get_direction_2d(self, viewpoint_camera):
         mean = self.get_xyz
 

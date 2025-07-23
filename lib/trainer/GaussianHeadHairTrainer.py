@@ -7,6 +7,7 @@ import lpips
 
 
 from lib.utils.general_utils import ssim, psnr
+from lib.utils.loss_utils import l2_depth_loss
 
 def or_loss(network_output, gt, confs = None, weight = None, mask = None):
     weight = torch.ones_like(gt[:1]) if weight is None else weight
@@ -55,7 +56,7 @@ class GaussianHeadHairTrainer():
         to_cuda = ['images', 'masks', 'hair_masks','visibles', 'images_coarse', 'masks_coarse','hair_masks_coarse', 'visibles_coarse', 
                     'intrinsics', 'extrinsics', 'world_view_transform', 'projection_matrix', 'full_proj_transform', 'camera_center',
                     'pose', 'scale', 'exp_coeff', 'landmarks_3d', 'exp_id', 'fovx', 'fovy', 'orient_angle', 'flame_pose', 'flame_scale','poses_history', 'optical_flow','optical_flow_confidence',
-                    'optical_flow_coarse','optical_flow_confidence_coarse', 'orient_angle_coarse']
+                    'optical_flow_coarse','optical_flow_confidence_coarse', 'orient_angle_coarse','depth']
 
         if self.gaussianhair is not None:
             self.gaussianhair.epoch_start()
@@ -89,9 +90,9 @@ class GaussianHeadHairTrainer():
                 self.train_step(iteration, epoch, data)
                 iteration += 1
                 
-            # # disable the training of gaussian, just focus on the deformer
-            if self.gaussianhair is not None:
-                self.gaussianhair.disable_static_parameters()
+            # # # disable the training of gaussian, just focus on the deformer
+            # if self.gaussianhair is not None:
+            #     self.gaussianhair.disable_static_parameters()
             # if self.gaussianhead is not None:
             #     self.gaussianhead.disable_static_parameters()
             print('Disable static training, start dynamic training')
@@ -309,6 +310,7 @@ class GaussianHeadHairTrainer():
         loss_deform_reg = 0
         loss_smoothness = 0
         loss_guide_strand_loss = 0
+        loss_depth = 0
 
 
         # TODO: try mesh distance loss, also try knn color regularization
@@ -326,11 +328,11 @@ class GaussianHeadHairTrainer():
                 return (gt - pred).clamp(min=0).mean()
 
             def relax_recall_loss(gt, pred):
-                return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.7
+                return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.5
             
             # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
             # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
-            # loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) + 0.5 * l1_loss(gt_segment[:,1], segment_clone[:,1]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            # loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) + 0.2 * l1_loss(gt_segment[:,1], segment_clone[:,1]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             
@@ -363,7 +365,9 @@ class GaussianHeadHairTrainer():
             loss_deform_reg = self.gaussianhair.deform_regularization_loss()
 
             loss_smoothness = 0 #self.gaussianhair.smoothness_loss() * 10
-            
+
+            if data['depth'] is not None:
+                loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_mask)
 
             if  iteration > static_training_util_iter:
                 loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 
@@ -480,7 +484,8 @@ class GaussianHeadHairTrainer():
                 loss_flame_gaussian_reg +
                 loss_deform_reg + 
                 loss_smoothness + 
-                loss_guide_strand_loss 
+                loss_guide_strand_loss+
+                loss_depth 
         )
 
         loss = loss / grad_accumulation
@@ -512,6 +517,7 @@ class GaussianHeadHairTrainer():
             'loss_smoothness' : loss_smoothness,
             'loss_deform_reg' : loss_deform_reg,
             'loss_guide_strand_loss' : loss_guide_strand_loss,
+            'loss_depth' : loss_depth,
             'epoch' : epoch,
             # 'iter' : idx + epoch * len(self.dataloader)
             'iter' : iteration

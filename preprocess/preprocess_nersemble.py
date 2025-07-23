@@ -49,7 +49,7 @@ def ResizeImage(target_size, source_size, image=None, K=None):
 
 def extract_frames(id_list, sequence):
 
-    frame_step = 3
+    frame_step = 2
 
     for id in id_list:
         # camera_path = os.path.join(DATA_SOURCE, 'camera_params', id, 'camera_params.json')

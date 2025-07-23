@@ -81,7 +81,8 @@ class GaussianHeadModule(GaussianBaseModule):
     
     @property
     def get_seg_label(self):
-        seg_label_unstruct = torch.cat([self.seg_label_activation(self.seg_label[..., :2]), torch.zeros_like(self.opacity)], dim = -1)
+        # seg_label_unstruct = torch.cat([self.seg_label_activation(self.seg_label[..., :2]), torch.zeros_like(self.opacity)], dim = -1)
+        seg_label_unstruct = torch.cat([torch.zeros_like(self.opacity),torch.ones_like(self.opacity), torch.zeros_like(self.opacity)], dim = -1)
         return seg_label_unstruct
 
     @property
@@ -109,9 +110,12 @@ class GaussianHeadModule(GaussianBaseModule):
     def update_learning_rate(self, iter):
         ''' Learning rate scheduling per step '''
         for param_group in self.optimizer.param_groups:
-            if param_group["name"] == "xyz" or param_group["name"] == "feature":
-                lr = self.scheduler_args(iter)
-                param_group['lr'] = lr
+            # if param_group["name"] == "xyz" or param_group["name"] == "feature":
+            #     lr = self.scheduler_args(iter)
+            #     param_group['lr'] = lr
+            if iter > 20000:
+                param_group['lr'] = param_group['lr'] * (0.7 ** (iter // 20000))
+            
 
     # given pose, scale. return the posed xyz
     def get_posed_points(self, exp_coeff, pose, scale):
@@ -155,6 +159,29 @@ class GaussianHeadModule(GaussianBaseModule):
 
     def generate(self, data):
         B = data['exp_coeff'].shape[0]
+
+        if len(data['pose'].shape) == 1:
+            batched = False
+            B = 1
+            pose = data['pose'].unsqueeze(0)
+            images = data['images'].unsqueeze(0)
+            camera_center = data['camera_center'].unsqueeze(0)
+            poses_history = data['poses_history'].unsqueeze(0)
+            fovx = data['fovx'].unsqueeze(0)
+            fovy = data['fovy'].unsqueeze(0)
+            world_view_transform = data['world_view_transform'].unsqueeze(0)
+        else:
+            batched = True
+            B = data['pose'].shape[0]
+            pose = data['pose']
+            images = data['images']
+            camera_center = data['camera_center']
+            poses_history = data['poses_history']
+            fovx = data['fovx']
+            fovy = data['fovy']
+            world_view_transform = data['world_view_transform']
+
+
 
         xyz = self.xyz.unsqueeze(0).repeat(B, 1, 1)
         feature = torch.tanh(self.feature).unsqueeze(0).repeat(B, 1, 1)
@@ -243,10 +270,14 @@ class GaussianHeadModule(GaussianBaseModule):
         for b in range(B):
             # view dependent/independent color
             shs_view = self.get_features.transpose(1, 2).view(-1, 3, (self.max_sh_degree+1)**2)
-            dir_pp = (xyz - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
+            # dir_pp = (xyz - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
+            dir_pp = (xyz[b] - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
             dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
             sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
             color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
+
+            z = self.get_depths(world_view_transform[b], xyz[b])
+            color[b, :, 9:10] = z
 
         # data['exp_deform'] = exp_deform
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)

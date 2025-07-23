@@ -394,7 +394,7 @@ class GaussianHairModule(GaussianBaseModule):
         self.roots = roots.cuda().unsqueeze(0)
         self.knn_roots_indices = None
         # sample guide strands 5%
-        self.use_guide_strands = True
+        self.use_guide_strands = False 
         self.num_guide_strands = self.num_strands // 20
         self.register_buffer('guide_strand_indices', torch.randperm(self.num_strands)[:self.num_guide_strands].cuda())
         # TODO: use low precision or sparse matrix for guide strands weight
@@ -1743,6 +1743,8 @@ class GaussianHairModule(GaussianBaseModule):
                                                image_height, image_width,
                                                world_view_transform[b], 
                                                xyz[b], dir[b]))
+            z = self.get_depths(world_view_transform[b], xyz[b])
+            color[b, :, 9:10] = z
             # # TODO, velocity should not be normalized
             # velocity2D.append(self.get_direction_2d(fovx[b], fovy[b], 
             #                                         image_height, image_width,

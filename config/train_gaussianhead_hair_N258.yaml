@@ -15,7 +15,7 @@ resume_training: False
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
-static_training_util_iter: 5000 #10000 # 20000  
+static_training_util_iter: 1 #5000 #10000 # 20000  
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
@@ -37,8 +37,8 @@ loss_weights:
   orient: 0.5
   rgb_hr: 1.
   rgb_lr: 1.
-  segment: 50.
-  sign_distance: 5. # 0.5
+  segment: 10. #50.
+  sign_distance: 1. # 0.5
   strand_feature: 0.01
   transform_reg: 10.
   vgg: 0.1
@@ -160,8 +160,8 @@ gaussianhairmodule:
   # }
 
 
-  position_lr_init: 1.6e-4 
-  position_lr_final: 1.6e-6 
+  position_lr_init: 1.6e-5 # 1.6e-4 
+  position_lr_final: 1.6e-7  #1.6e-6 
   position_lr_delay_mult: 0.01
   position_lr_max_steps: 30_000
   # feature_lr: 0.0025
@@ -219,4 +219,4 @@ recorder:
   checkpoint_path: 'checkpoints'
   result_path: 'results'
   save_freq: 10000
-  show_freq: 2000
+  show_freq: 1000

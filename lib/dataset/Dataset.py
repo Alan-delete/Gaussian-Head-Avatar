@@ -251,6 +251,7 @@ class GaussianDataset(Dataset):
         #     hair_mask_folder = os.path.join(self.dataroot, 'masks', 'hair')
         # hair_mask_folder = os.path.join(self.dataroot, 'face-parsing', 'hair')
 
+        depth_folder = os.path.join(self.dataroot, 'depths')
         flame_param_folder = os.path.join(self.dataroot, 'FLAME_params')
         flame_param_VHAP_folder = os.path.join(self.dataroot, 'FLAME_params_VHAP')
         optical_flow_folder = os.path.join(self.dataroot, 'optical_flow')
@@ -288,7 +289,7 @@ class GaussianDataset(Dataset):
         VHAP_flame_param_paths = []
         for frame in frames:
             image_paths = [os.path.join(image_folder, frame, 'image_%s.jpg' % camera_id) for camera_id in self.camera_ids]
-            
+            depth_paths = [os.path.join(depth_folder, frame, 'image_%s.npy' % camera_id) for camera_id in self.camera_ids]
             # mask_paths = [os.path.join(image_folder, frame, 'mask_%s.jpg' % camera_id) for camera_id in self.camera_ids]
             if os.path.exists(os.path.join(mask_folder, 'body', frame, 'image_%s.jpg' % self.camera_ids[0])):
                 mask_format = 'jpg'
@@ -316,10 +317,28 @@ class GaussianDataset(Dataset):
             orientation_confidence_path = [os.path.join(orientation_confidence_folder, frame, 'image_%s.npy' % camera_id) for camera_id in self.camera_ids]
 
             # TODO: use dict instead of tuple
-            sample = (image_paths, mask_paths, visible_paths, camera_paths, 
-                      param_path, landmarks_3d_path, vertices_path, self.num_exp_id, 
-                      params_path_history, hair_mask_path, optical_flow_path, orientation_path, orientation_confidence_path, flame_param_path, head_mask_path)
-            
+            # sample = (image_paths, mask_paths, visible_paths, camera_paths, 
+            #           param_path, landmarks_3d_path, vertices_path, self.num_exp_id, 
+            #           params_path_history, hair_mask_path, optical_flow_path, orientation_path, orientation_confidence_path, flame_param_path, head_mask_path, depth_paths)
+            sample = {
+                'image_paths': image_paths,
+                'mask_paths': mask_paths,
+                'visible_paths': visible_paths,
+                'camera_paths': camera_paths,
+                'param_path': param_path,
+                'landmarks_3d_path': landmarks_3d_path,
+                'vertices_path': vertices_path,
+                'exp_id': self.num_exp_id,
+                'params_path_history': params_path_history,
+                'hair_mask_path': hair_mask_path,
+                'optical_flow_path': optical_flow_path,
+                'orientation_path': orientation_path,
+                'orientation_confidence_path': orientation_confidence_path,
+                'flame_param_path': flame_param_path,
+                'head_mask_path': head_mask_path,
+                'depth_paths': depth_paths
+            }
+
             # the optical flow of t_1 is (position_1 - position_0), which is stored in the folder of t_0
             optical_flow_path = [os.path.join(optical_flow_folder, frame, 'image_%s.npy' % camera_id) for camera_id in self.camera_ids]
             
@@ -437,52 +456,40 @@ class GaussianDataset(Dataset):
         # randomly pick a view
         view = random.sample(range(len(self.camera_ids)), 1)[0] if view is None else view % len(self.camera_ids)
 
-        image_path = sample[0][view]
+        image_path = sample['image_paths'][view]
         image = cv2.resize(io.imread(image_path), (self.original_resolution, self.original_resolution)) / 255
-        mask_path = sample[1][view]
+        mask_path = sample['mask_paths'][view]
         mask = cv2.resize(io.imread(mask_path), (self.original_resolution, self.original_resolution)) / 255
         mask = mask[:, :, 0:1] if len(mask.shape) == 3 else mask[:, :, None]
-        
-        # image = image * mask  + (1 - mask) * self.bg_rgb_color[index].numpy()
-        bg_rgb_color = self.random_color[np.random.randint(0, 5)]
-        # bg_rgb_color = torch.as_tensor([1.0, 1.0, 1.0]) 
-        image = image * mask  + (1 - mask) * bg_rgb_color.numpy()
 
-        hair_mask_path = sample[9][view]
+        bg_rgb_color = self.random_color[np.random.randint(0, 5)]
+        image = image * mask + (1 - mask) * bg_rgb_color.numpy()
+
+        hair_mask_path = sample['hair_mask_path'][view]
         if os.path.exists(hair_mask_path):
             hair_mask = cv2.resize(io.imread(hair_mask_path), (self.original_resolution, self.original_resolution))[:, :, None] / 255
         else:
             raise ValueError('Hair mask not found')
 
-        head_mask_path = sample[14][view]
+        head_mask_path = sample['head_mask_path'][view]
         if os.path.exists(head_mask_path):
             head_mask = cv2.resize(io.imread(head_mask_path), (self.original_resolution, self.original_resolution))[:, :, None] / 255
         else:
             head_mask = np.ones_like(mask)
 
-        visible_path = sample[2][view]
+        visible_path = sample['visible_paths'][view]
         if os.path.exists(visible_path):
             visible = cv2.resize(io.imread(visible_path), (self.original_resolution, self.original_resolution))[:, :, 0:1] / 255
         else:
             visible = np.ones_like(mask)
         visible = visible * head_mask
 
-        camera = np.load(sample[3][view])
+        camera = np.load(sample['camera_paths'][view])
         extrinsic = torch.from_numpy(camera['extrinsic']).float()
-        R = extrinsic[:3,:3].t()
+        R = extrinsic[:3, :3].t()
         T = extrinsic[:3, 3]
 
         intrinsic = camera['intrinsic']
-
-        # # TODO: why do we need to align intrinsic to the center of the image? In experiemnt it causes some error
-        # if np.abs(intrinsic[0, 2] - self.original_resolution / 2) > 1 or np.abs(intrinsic[1, 2] - self.original_resolution / 2) > 1:
-        #     left_up = np.around(intrinsic[0:2, 2] - np.array([self.original_resolution / 2, self.original_resolution / 2])).astype(np.int32)
-        #     _, intrinsic = CropImage(left_up, (self.original_resolution, self.original_resolution), K=intrinsic)
-        #     image, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=image)
-        #     mask, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=mask)
-        #     visible, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=visible)
-        #     hair_mask, _ = CropImage(left_up, (self.original_resolution, self.original_resolution), image=hair_mask)
-
         intrinsic[0, 0] = intrinsic[0, 0] * 2 / self.original_resolution
         intrinsic[0, 2] = intrinsic[0, 2] * 2 / self.original_resolution - 1
         intrinsic[1, 1] = intrinsic[1, 1] * 2 / self.original_resolution
@@ -502,51 +509,27 @@ class GaussianDataset(Dataset):
         fovy = 2 * math.atan(1 / intrinsic[1, 1])
 
         world_view_transform = torch.tensor(getWorld2View2(R.numpy(), T.numpy())).transpose(0, 1)
-        projection_matrix = getProjectionMatrix(znear=0.01, zfar=100, fovX=fovx, fovY=fovy).transpose(0,1)
+        projection_matrix = getProjectionMatrix(znear=0.01, zfar=100, fovX=fovx, fovY=fovy).transpose(0, 1)
         full_proj_transform = (world_view_transform.unsqueeze(0).bmm(projection_matrix.unsqueeze(0))).squeeze(0)
         camera_center = world_view_transform.inverse()[3, :3]
 
-        param_path = sample[4]
-        param = np.load(param_path)
+        param = np.load(sample['param_path'])
         pose = torch.from_numpy(param['pose'][0]).float()
-        
-        scale = torch.from_numpy(param['scale']).float()
-        # different dimension For BFM and FLAME, so unify it
-        scale = scale.view(-1)
-        # shape of 64
+        scale = torch.from_numpy(param['scale']).float().view(-1)
         exp_coeff = torch.from_numpy(param['exp_coeff'][0]).float()
-        
-        landmarks_3d_path = sample[5]
+
+        landmarks_3d_path = sample['landmarks_3d_path']
         if os.path.exists(landmarks_3d_path):
             landmarks_3d = torch.from_numpy(np.load(landmarks_3d_path)).float()
         else:
             landmarks_3d = torch.zeros(0, 3, dtype=torch.float32)
 
-        # vertices_path = sample[6]
-        # vertices = torch.from_numpy(np.load(vertices_path)).float()
-        # landmarks_3d = torch.cat([landmarks_3d, vertices[::100]], 0)
-
-        exp_id = torch.tensor(sample[7]).long()
-
-        # params_path_history = sample[8]
-        # poses_history = []
-        # for pre_idx in range(index + 1):
-        #     pre_param_path = params_path_history[pre_idx]
-        #     pre_param = np.load(pre_param_path)
-        #     pre_pose = torch.from_numpy(pre_param['pose'][0]).float()
-        #     poses_history.append(pre_pose)
-        # if len(poses_history) == 0:
-        #     # poses_history = torch.zeros(1, 6)
-        #     poses_history = torch.empty(0, 6)
-        # else:
-        #     poses_history = torch.stack(poses_history)
-        
+        exp_id = torch.tensor(sample['exp_id']).long()
         poses_history = self.poses_history[:index + 1]
 
-
-        optical_flow_path = sample[10][view]
+        optical_flow_path = sample['optical_flow_path'][view]
         optical_flow_confidence_path = optical_flow_path.replace('.npy', '_confidence_map.npy')
-        optical_flow = torch.zeros(2, 128,128)
+        optical_flow = torch.zeros(2, 128, 128)
         # optical_flow = torch.zeros(2, self.resolution, self.resolution)
 
         # if os.path.exists(optical_flow_path):
@@ -588,41 +571,27 @@ class GaussianDataset(Dataset):
         # else:
         #     optical_flow_confidence = torch.ones(1, self.resolution, self.resolution)
         optical_flow_confidence = torch.ones(1, self.resolution, self.resolution)
-
         optical_flow_confidence_coarse = F.interpolate(optical_flow_confidence[None], scale_factor=self.coarse_scale_factor)[0]
 
-        orientation_path = sample[11][view]
-        orientation_confidence_path = sample[12][view]
-        
+        orientation_path = sample['orientation_path'][view]
+        orientation_confidence_path = sample['orientation_confidence_path'][view]
         if os.path.exists(orientation_path):
             resized_orient_angle = cv2.resize(io.imread(orientation_path), (self.resolution, self.resolution)) 
             resized_orient_angle = torch.from_numpy(resized_orient_angle).float() / 180.0
             resized_orient_angle = resized_orient_angle.view(self.resolution, self.resolution, 1).permute(2, 0, 1)
             orient_angle = resized_orient_angle[:1, ...] * hair_mask
-            
-            # resized_orient_angle = PILtoTorch(Image.open(cam_info.image_path.replace(f'images_2', f'orientations_2/angles').replace('png', 'png')), resolution, max_value=180.0) # [0, 1], where 1 stands for pi
-            # resized_orient_var = F.interpolate(torch.from_numpy(np.load(cam_info.image_path.replace(f'images_2', f'orientations_2/vars').replace('png', 'npy'))).float()[None, None], size=resolution[::-1], mode='bilinear')[0] / math.pi**2
-            # resized_orient_conf = 1 / (resized_orient_var ** 2 + 1e-7)
-            # gt_orient_angle = resized_orient_angle[:1, ...]
-            # gt_orient_conf = resized_orient_conf[:1, ...]
         else:
-            # raise ValueError('Orientation map not found')
             orient_angle = torch.zeros(1, self.resolution, self.resolution)
-        
-        # TODO: use cosine value to interpolate the angle 
         orient_angle_coarse = F.interpolate(orient_angle[None], scale_factor=self.coarse_scale_factor)[0]
 
         if False and os.path.exists(orientation_confidence_path):
             resized_orient_var = F.interpolate(torch.from_numpy(np.load(orientation_confidence_path)).float()[None, None], size=(self.resolution, self.resolution), mode='bilinear')[0] / math.pi**2
             resized_orient_conf = 1 / (resized_orient_var ** 2 + 1e-7)
-
-            # TODO: conf, as printed, is too large?
             orient_conf = resized_orient_conf[:1, ...] * hair_mask
         else:
             orient_conf = torch.ones(1, self.resolution, self.resolution)
-        
 
-        flame_param_path = sample[13]
+        flame_param_path = sample['flame_param_path']
         # self.id_coeff = nn.Parameter(torch.zeros(1, self.shape_dims, dtype=torch.float32))
         # self.exp_coeff = nn.Parameter(torch.zeros(self.batch_size, self.exp_dims + 9, dtype=torch.float32)) # include expression_params, jaw_pose, eye_pose
         # self.pose = nn.Parameter(torch.zeros(batch_size, 6, dtype=torch.float32))
@@ -662,6 +631,16 @@ class GaussianDataset(Dataset):
         # breakpoint()
         # flame_model = FLAMEModule(batch_size=1)
 
+        depth_path = sample['depth_paths'][view]
+        if os.path.exists(depth_path):
+            depth = np.load(depth_path)
+            depth = cv2.resize(depth, (self.resolution, self.resolution))
+            depth = torch.from_numpy(depth).float()[None]
+        else:
+            depth = torch.zeros(1, self.resolution, self.resolution)
+
+        depth_coarse = F.interpolate(depth[None], scale_factor=self.coarse_scale_factor)[0]
+        
         return {
                 'timestep': index,
                 'images': image,
@@ -697,6 +676,7 @@ class GaussianDataset(Dataset):
                 'optical_flow_coarse': optical_flow_coarse,
                 'optical_flow_confidence_coarse': optical_flow_confidence_coarse,
                 'orient_angle_coarse': orient_angle_coarse,
+                'depth': depth_coarse,
                 # 'bg_rgb_color': self.bg_rgb_color[index],
                 'bg_rgb_color': bg_rgb_color,
                 }
