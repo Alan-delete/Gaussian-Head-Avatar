@@ -328,10 +328,10 @@ class Recorder():
         for n, frame in tqdm(enumerate(frames)):
             os.makedirs(os.path.join(self.save_folder, frame), exist_ok=True)
             
-            # face_model.save('%s/params.npz' % (os.path.join(self.save_folder, frame)), batch_id=n)
-            # np.save('%s/lmk_3d.npy' % (os.path.join(self.save_folder, frame)), landmarks[n].cpu().numpy())
-            # if self.save_vertices:
-            #     np.save('%s/vertices.npy' % (os.path.join(self.save_folder, frame)), vertices[n].cpu().numpy())
+            face_model.save('%s/params.npz' % (os.path.join(self.save_folder, frame)), batch_id=n)
+            np.save('%s/lmk_3d.npy' % (os.path.join(self.save_folder, frame)), landmarks[n].cpu().numpy())
+            if self.save_vertices:
+                np.save('%s/vertices.npy' % (os.path.join(self.save_folder, frame)), vertices[n].cpu().numpy())
 
             faces = log_data['face_model'].faces.cpu().numpy()
             mesh_trimesh = trimesh.Trimesh(vertices=vertices[n].cpu().numpy(), faces=faces)

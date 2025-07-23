@@ -171,7 +171,7 @@ def main(args):
         # vis_img = np.clip(rgb / norm[..., None], a_min=0, a_max=1) * mask[..., None] * 255.
 
         cv2.imwrite( os.path.join(args.orient_dir, flame, f'{basename}.png'), orientation_map.astype('uint8'))
-        np.save( os.path.join(args.conf_dir, flame, f'{basename}.npy'), confidence_map.astype('float16'))
+        # np.save( os.path.join(args.conf_dir, flame, f'{basename}.npy'), confidence_map.astype('float16'))
         # cv2.imwrite(os.path.join(args.filtered_img_dir, flame, f'{basename}.png'), filtered_img.astype('uint8'))
         # cv2.imwrite(os.path.join(args.vis_img_dir, flame, f'{basename}.png'), vis_img.astype('uint8'))
 

@@ -79,8 +79,9 @@ class GaussianHeadHairTrainer():
 
                 # prepare data
                 for data_item in to_cuda:
-                    data[data_item] = torch.as_tensor(data[data_item], device=self.device)
-                    data[data_item] = data[data_item].unsqueeze(0)
+                    if data_item in data:
+                        data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+                        data[data_item] = data[data_item].unsqueeze(0)
 
                 # # disable deformation util the last 2000 iterations to initialize deformation
                 # if iteration < 10000:
@@ -144,12 +145,14 @@ class GaussianHeadHairTrainer():
                     data = dataset.__getitem__(idx, i)
                     
                     for data_item in to_cuda:
-                        data[data_item] = torch.as_tensor(data[data_item], device=self.device)
-                        data[data_item] = data[data_item].unsqueeze(0)
+                        if data_item in data:
+                            data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+                            data[data_item] = data[data_item].unsqueeze(0)
                 
                 for data_item in to_cuda:
-                    data[data_item] = torch.as_tensor(data[data_item], device=self.device)
-                
+                    if data_item in data:
+                        data[data_item] = torch.as_tensor(data[data_item], device=self.device)
+
                 self.train_step(iteration, epoch, data, grad_accumulation = 1)
                 iteration += 1
 
@@ -345,16 +348,13 @@ class GaussianHeadHairTrainer():
             intersect_body_mask = gt_mask * segment_clone[:, 1].detach()
             intersect_hair_mask = gt_hair_mask * segment_clone[:, 2].detach()
 
-
-            gt_orientation = data['orient_angle_coarse']
-            pred_orientation = data['render_orient']
-
-            intersect_hair_mask = gt_hair_mask * segment_clone[:, 2].detach()
-
             # TODO: use pred_mask instead of gt_mask
             # orient_weight = torch.ones_like(gt_mask[:1]) * gt_orient_conf
-            loss_orient = or_loss(pred_orientation , gt_orientation, mask = intersect_hair_mask) #orient_conf, ) #, weight=orient_weight
-            if torch.isnan(loss_orient).any(): loss_orient = 0.0
+            if 'orient_angle' in data:
+                gt_orientation = data['orient_angle_coarse']
+                pred_orientation = data['render_orient']
+                loss_orient = or_loss(pred_orientation , gt_orientation, mask = intersect_hair_mask) #orient_conf, ) #, weight=orient_weight
+                if torch.isnan(loss_orient).any(): loss_orient = 0.0
 
             loss_sign_distance = self.gaussianhair.sign_distance_loss()
 
@@ -367,7 +367,7 @@ class GaussianHeadHairTrainer():
             loss_smoothness = 0 #self.gaussianhair.smoothness_loss() * 10
 
             if data['depth'] is not None:
-                loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_mask)
+                loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_mask) * 5
 
             if  iteration > static_training_util_iter:
                 loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 

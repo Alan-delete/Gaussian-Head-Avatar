@@ -421,35 +421,36 @@ class GaussianHeadTrainRecorder():
 
                         images.append(wandb.Image(vis_orient(render_orientation, ones_mask), caption="global_rendered_orientation"))
 
-                # depth is the 10th channel of the render_images
-                depth = data['render_images'][0, 9:10].permute(1, 2, 0).detach().cpu().numpy()
-                inverse_depth = 1 / (depth + 1e-6)  
-                # Visualize inverse depth instead of depth, clipped to [0.1m;250m] range for better visualization.
-                max_invdepth_vizu = min(inverse_depth.max(), 1 / 0.1)
-                min_invdepth_vizu = max(1 / 250, inverse_depth.min())
-                inverse_depth_normalized = (inverse_depth - min_invdepth_vizu) / (
-                    max_invdepth_vizu - min_invdepth_vizu
-                )
-                # Save as color-mapped "turbo" jpg image.
-                cmap = plt.get_cmap("turbo")
-                color_depth = (cmap(inverse_depth_normalized)[..., :3] * 255).astype(
-                    np.uint8
-                )
-                images.append(wandb.Image(color_depth, caption="rendered_inverse_depth"))
-                
-                gt_depth = data['depth'][0].permute(1, 2, 0).detach().cpu().numpy()
-                inverse_depth_gt = 1 / (gt_depth + 1e-6)
-                # Visualize inverse depth instead of depth, clipped to [0.1m;250m] range for better visualization.
-                max_invdepth_gt = min(inverse_depth_gt.max(), 1 / 0.1)
-                min_invdepth_gt = max(1 / 250, inverse_depth_gt.min())
-                inverse_depth_normalized_gt = (inverse_depth_gt - min_invdepth_gt) / (
-                    max_invdepth_gt - min_invdepth_gt
-                )
-                # Save as color-mapped "turbo" jpg image.
-                color_depth_gt = (cmap(inverse_depth_normalized_gt)[..., :3] * 255).astype(
-                    np.uint8
-                )
-                images.append(wandb.Image(color_depth_gt, caption="gt_inverse_depth"))
+                if 'depth' in data:
+                    # depth is the 10th channel of the render_images
+                    depth = data['render_images'][0, 9:10].permute(1, 2, 0).detach().cpu().numpy()
+                    inverse_depth = 1 / (depth + 1e-6)  
+                    # Visualize inverse depth instead of depth, clipped to [0.1m;250m] range for better visualization.
+                    max_invdepth_vizu = min(inverse_depth.max(), 1 / 0.1)
+                    min_invdepth_vizu = max(1 / 250, inverse_depth.min())
+                    inverse_depth_normalized = (inverse_depth - min_invdepth_vizu) / (
+                        max_invdepth_vizu - min_invdepth_vizu
+                    )
+                    # Save as color-mapped "turbo" jpg image.
+                    cmap = plt.get_cmap("turbo")
+                    color_depth = (cmap(inverse_depth_normalized)[..., :3] * 255).astype(
+                        np.uint8
+                    )
+                    images.append(wandb.Image(color_depth, caption="rendered_inverse_depth"))
+                    
+                    gt_depth = data['depth'][0].permute(1, 2, 0).detach().cpu().numpy()
+                    inverse_depth_gt = 1 / (gt_depth + 1e-6)
+                    # Visualize inverse depth instead of depth, clipped to [0.1m;250m] range for better visualization.
+                    max_invdepth_gt = min(inverse_depth_gt.max(), 1 / 0.1)
+                    min_invdepth_gt = max(1 / 250, inverse_depth_gt.min())
+                    inverse_depth_normalized_gt = (inverse_depth_gt - min_invdepth_gt) / (
+                        max_invdepth_gt - min_invdepth_gt
+                    )
+                    # Save as color-mapped "turbo" jpg image.
+                    color_depth_gt = (cmap(inverse_depth_normalized_gt)[..., :3] * 255).astype(
+                        np.uint8
+                    )
+                    images.append(wandb.Image(color_depth_gt, caption="gt_inverse_depth"))
 
 
                 hair_strand_image = hair_strand_rendering(data, log_data['gaussianhead'], log_data['gaussianhair'], log_data['camera'], log_data['iter'])

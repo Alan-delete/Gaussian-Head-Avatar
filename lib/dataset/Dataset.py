@@ -527,6 +527,114 @@ class GaussianDataset(Dataset):
         exp_id = torch.tensor(sample['exp_id']).long()
         poses_history = self.poses_history[:index + 1]
 
+
+
+        flame_param_path = sample['flame_param_path']
+        # self.id_coeff = nn.Parameter(torch.zeros(1, self.shape_dims, dtype=torch.float32))
+        # self.exp_coeff = nn.Parameter(torch.zeros(self.batch_size, self.exp_dims + 9, dtype=torch.float32)) # include expression_params, jaw_pose, eye_pose
+        # self.pose = nn.Parameter(torch.zeros(batch_size, 6, dtype=torch.float32))
+        # self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32))
+        # ['id_coeff', 'exp_coeff', 'scale', 'pose']
+        # for key in flame_param.files:
+        if os.path.exists(flame_param_path):
+            flame_param = np.load(flame_param_path)
+            flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
+            flame_scale = torch.from_numpy(flame_param['scale']).float().view(-1)
+            flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
+            flame_id_coeff = torch.from_numpy(flame_param['id_coeff'][0]).float()
+
+            # expression_params = exp_coeff[:, : exp_dims]
+            # jaw_rotation = exp_coeff[:, exp_dims: exp_dims + 3]
+            # neck_pose = torch.zeros(exp_coeff.shape[0], 3, dtype=torch.float32)  # neck pose is not used in GHA
+            # eye_pose = exp_coeff[:, exp_dims + 3: exp_dims + 9]
+
+            # pose_params = torch.cat([self.global_rotation, jaw_rotation], 1)
+            # shape_params = self.id_coeff.repeat(self.batch_size, 1)
+            # vertices, landmarks = self.flame(shape_params, 
+            #                                 expression_params, 
+            #                                 pose_params, 
+            #                                 neck_pose, 
+            #                                 eye_pose)
+        else:
+            flame_pose = torch.zeros(6, dtype=torch.float32)
+            flame_scale = torch.ones(1, dtype=torch.float32)
+
+
+        # # DEBUG: fix the pose to the first frame
+        # flame_pose = self.pose 
+
+        # shape of 59
+        # flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
+        # from lib.face_models.FLAMEModule import FLAMEModule
+        # breakpoint()
+        # flame_model = FLAMEModule(batch_size=1)
+        data = {
+                'timestep': index,
+                'images': image,
+                'masks': mask,
+                'hair_masks': hair_mask,
+                'visibles': visible,
+                'images_coarse': image_coarse,
+                'masks_coarse': mask_coarse,
+                'hair_masks_coarse': hair_mask_coarse,
+                'visibles_coarse': visible_coarse,
+                # 'orient_angle': orient_angle,
+                # 'orient_conf': orient_conf,
+                # 'orient_angle_coarse': orient_angle_coarse,
+                'pose': pose,
+                'scale': scale,
+                'exp_coeff': exp_coeff,
+                'landmarks_3d': landmarks_3d,
+                'exp_id': exp_id,
+                'extrinsics': extrinsic,
+                'intrinsics': intrinsic,
+                'fovx': fovx,
+                'fovy': fovy,
+                'world_view_transform': world_view_transform,
+                'projection_matrix': projection_matrix,
+                'full_proj_transform': full_proj_transform,
+                'camera_center': camera_center,
+                'poses_history': poses_history,
+                'flame_pose': flame_pose,
+                'flame_scale': flame_scale,
+                'flame_exp_coeff': flame_exp_coeff,
+                'flame_id_coeff': flame_id_coeff,
+                # 'optical_flow': optical_flow,
+                # 'optical_flow_confidence': optical_flow_confidence,
+                # 'optical_flow_coarse': optical_flow_coarse,
+                # 'optical_flow_confidence_coarse': optical_flow_confidence_coarse,
+                # 'bg_rgb_color': self.bg_rgb_color[index],
+                'bg_rgb_color': bg_rgb_color,
+                }
+
+        orientation_path = sample['orientation_path'][view]
+        orientation_confidence_path = sample['orientation_confidence_path'][view]
+        if os.path.exists(orientation_path):
+            resized_orient_angle = cv2.resize(io.imread(orientation_path), (self.resolution, self.resolution)) 
+            resized_orient_angle = torch.from_numpy(resized_orient_angle).float() / 180.0
+            resized_orient_angle = resized_orient_angle.view(self.resolution, self.resolution, 1).permute(2, 0, 1)
+            orient_angle = resized_orient_angle[:1, ...] * hair_mask
+            orient_angle_coarse = F.interpolate(orient_angle[None], scale_factor=self.coarse_scale_factor)[0]
+            data['orient_angle'] = orient_angle
+            data['orient_angle_coarse'] = orient_angle_coarse
+
+
+        if False and os.path.exists(orientation_confidence_path):
+            resized_orient_var = F.interpolate(torch.from_numpy(np.load(orientation_confidence_path)).float()[None, None], size=(self.resolution, self.resolution), mode='bilinear')[0] / math.pi**2
+            resized_orient_conf = 1 / (resized_orient_var ** 2 + 1e-7)
+            orient_conf = resized_orient_conf[:1, ...] * hair_mask
+        else:
+            orient_conf = torch.ones(1, self.resolution, self.resolution)
+
+
+        depth_path = sample['depth_paths'][view]
+        if os.path.exists(depth_path):
+            depth = np.load(depth_path)
+            depth = cv2.resize(depth, (self.resolution, self.resolution))
+            depth = torch.from_numpy(depth).float()[None]
+            depth_coarse = F.interpolate(depth[None], scale_factor=self.coarse_scale_factor)[0]
+            data['depth'] = depth
+        
         optical_flow_path = sample['optical_flow_path'][view]
         optical_flow_confidence_path = optical_flow_path.replace('.npy', '_confidence_map.npy')
         optical_flow = torch.zeros(2, 128, 128)
@@ -572,114 +680,8 @@ class GaussianDataset(Dataset):
         #     optical_flow_confidence = torch.ones(1, self.resolution, self.resolution)
         optical_flow_confidence = torch.ones(1, self.resolution, self.resolution)
         optical_flow_confidence_coarse = F.interpolate(optical_flow_confidence[None], scale_factor=self.coarse_scale_factor)[0]
-
-        orientation_path = sample['orientation_path'][view]
-        orientation_confidence_path = sample['orientation_confidence_path'][view]
-        if os.path.exists(orientation_path):
-            resized_orient_angle = cv2.resize(io.imread(orientation_path), (self.resolution, self.resolution)) 
-            resized_orient_angle = torch.from_numpy(resized_orient_angle).float() / 180.0
-            resized_orient_angle = resized_orient_angle.view(self.resolution, self.resolution, 1).permute(2, 0, 1)
-            orient_angle = resized_orient_angle[:1, ...] * hair_mask
-        else:
-            orient_angle = torch.zeros(1, self.resolution, self.resolution)
-        orient_angle_coarse = F.interpolate(orient_angle[None], scale_factor=self.coarse_scale_factor)[0]
-
-        if False and os.path.exists(orientation_confidence_path):
-            resized_orient_var = F.interpolate(torch.from_numpy(np.load(orientation_confidence_path)).float()[None, None], size=(self.resolution, self.resolution), mode='bilinear')[0] / math.pi**2
-            resized_orient_conf = 1 / (resized_orient_var ** 2 + 1e-7)
-            orient_conf = resized_orient_conf[:1, ...] * hair_mask
-        else:
-            orient_conf = torch.ones(1, self.resolution, self.resolution)
-
-        flame_param_path = sample['flame_param_path']
-        # self.id_coeff = nn.Parameter(torch.zeros(1, self.shape_dims, dtype=torch.float32))
-        # self.exp_coeff = nn.Parameter(torch.zeros(self.batch_size, self.exp_dims + 9, dtype=torch.float32)) # include expression_params, jaw_pose, eye_pose
-        # self.pose = nn.Parameter(torch.zeros(batch_size, 6, dtype=torch.float32))
-        # self.scale = nn.Parameter(torch.ones(1, 1, dtype=torch.float32))
-        # ['id_coeff', 'exp_coeff', 'scale', 'pose']
-        # for key in flame_param.files:
-        if os.path.exists(flame_param_path):
-            flame_param = np.load(flame_param_path)
-            flame_pose = torch.from_numpy(flame_param['pose'][0]).float()
-            flame_scale = torch.from_numpy(flame_param['scale']).float().view(-1)
-            flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
-            flame_id_coeff = torch.from_numpy(flame_param['id_coeff'][0]).float()
-
-            # expression_params = exp_coeff[:, : exp_dims]
-            # jaw_rotation = exp_coeff[:, exp_dims: exp_dims + 3]
-            # neck_pose = torch.zeros(exp_coeff.shape[0], 3, dtype=torch.float32)  # neck pose is not used in GHA
-            # eye_pose = exp_coeff[:, exp_dims + 3: exp_dims + 9]
-
-            # pose_params = torch.cat([self.global_rotation, jaw_rotation], 1)
-            # shape_params = self.id_coeff.repeat(self.batch_size, 1)
-            # vertices, landmarks = self.flame(shape_params, 
-            #                                 expression_params, 
-            #                                 pose_params, 
-            #                                 neck_pose, 
-            #                                 eye_pose)
-        else:
-            flame_pose = torch.zeros(6, dtype=torch.float32)
-            flame_scale = torch.ones(1, dtype=torch.float32)
-
-
-        # # DEBUG: fix the pose to the first frame
-        # flame_pose = self.pose 
-
-        # shape of 59
-        # flame_exp_coeff = torch.from_numpy(flame_param['exp_coeff'][0]).float()
-        # from lib.face_models.FLAMEModule import FLAMEModule
-        # breakpoint()
-        # flame_model = FLAMEModule(batch_size=1)
-
-        depth_path = sample['depth_paths'][view]
-        if os.path.exists(depth_path):
-            depth = np.load(depth_path)
-            depth = cv2.resize(depth, (self.resolution, self.resolution))
-            depth = torch.from_numpy(depth).float()[None]
-        else:
-            depth = torch.zeros(1, self.resolution, self.resolution)
-
-        depth_coarse = F.interpolate(depth[None], scale_factor=self.coarse_scale_factor)[0]
         
-        return {
-                'timestep': index,
-                'images': image,
-                'masks': mask,
-                'hair_masks': hair_mask,
-                'visibles': visible,
-                'images_coarse': image_coarse,
-                'masks_coarse': mask_coarse,
-                'hair_masks_coarse': hair_mask_coarse,
-                'visibles_coarse': visible_coarse,
-                'orient_angle': orient_angle,
-                'orient_conf': orient_conf,
-                'pose': pose,
-                'scale': scale,
-                'exp_coeff': exp_coeff,
-                'landmarks_3d': landmarks_3d,
-                'exp_id': exp_id,
-                'extrinsics': extrinsic,
-                'intrinsics': intrinsic,
-                'fovx': fovx,
-                'fovy': fovy,
-                'world_view_transform': world_view_transform,
-                'projection_matrix': projection_matrix,
-                'full_proj_transform': full_proj_transform,
-                'camera_center': camera_center,
-                'poses_history': poses_history,
-                'flame_pose': flame_pose,
-                'flame_scale': flame_scale,
-                'flame_exp_coeff': flame_exp_coeff,
-                'flame_id_coeff': flame_id_coeff,
-                'optical_flow': optical_flow,
-                'optical_flow_confidence': optical_flow_confidence,
-                'optical_flow_coarse': optical_flow_coarse,
-                'optical_flow_confidence_coarse': optical_flow_confidence_coarse,
-                'orient_angle_coarse': orient_angle_coarse,
-                'depth': depth_coarse,
-                # 'bg_rgb_color': self.bg_rgb_color[index],
-                'bg_rgb_color': bg_rgb_color,
-                }
+        return data
 
     def __len__(self):
         # return max(len(self.samples), 128)
