@@ -907,23 +907,23 @@ class GaussianHairModule(GaussianBaseModule):
         # self.FLAME_mesh = Meshes(verts= target[None].cuda().to(torch.float), faces=faces[None])
 
 
-        # # create a mesh from xyz
-        hair_mesh = o3d.geometry.TriangleMesh()
-        # source mesh
-        source_mesh = o3d.geometry.TriangleMesh()
-        source_mesh.vertices = o3d.utility.Vector3dVector(source)
-        # source_mesh.triangles = o3d.utility.Vector3iVector(faces)
-        source_mesh.compute_vertex_normals()
-        o3d.io.write_triangle_mesh('Init_source_mesh.ply', source_mesh)
+        # # # create a mesh from xyz
+        # hair_mesh = o3d.geometry.TriangleMesh()
+        # # source mesh
+        # source_mesh = o3d.geometry.TriangleMesh()
+        # source_mesh.vertices = o3d.utility.Vector3dVector(source)
+        # # source_mesh.triangles = o3d.utility.Vector3iVector(faces)
+        # source_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('Init_source_mesh.ply', source_mesh)
 
-        # create a mesh from the target vertices for debugging
-        target_mesh = o3d.geometry.TriangleMesh()
-        # target_mesh.vertices = o3d.utility.Vector3dVector(target)
-        target_mesh.vertices = o3d.utility.Vector3dVector(new_verts.cpu().numpy())
-        faces = faces.cpu().numpy()
-        target_mesh.triangles = o3d.utility.Vector3iVector(new_faces.cpu().numpy())
-        target_mesh.compute_vertex_normals()
-        o3d.io.write_triangle_mesh('Init_target_mesh.ply', target_mesh) 
+        # # create a mesh from the target vertices for debugging
+        # target_mesh = o3d.geometry.TriangleMesh()
+        # # target_mesh.vertices = o3d.utility.Vector3dVector(target)
+        # target_mesh.vertices = o3d.utility.Vector3dVector(new_verts.cpu().numpy())
+        # faces = faces.cpu().numpy()
+        # target_mesh.triangles = o3d.utility.Vector3iVector(new_faces.cpu().numpy())
+        # target_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('Init_target_mesh.ply', target_mesh) 
         
 
         source_scalp = torch.cat([source_scalp, torch.ones_like(source_scalp[:, :1])], -1)
@@ -935,19 +935,19 @@ class GaussianHairModule(GaussianBaseModule):
         self.init_transform = transform.detach().clone().cuda().float()
         
 
-        # transformed hair
-        transformed_hair = (torch.cat([self.xyz, torch.ones_like(self.xyz[:, :1])], -1) @ self.transform).detach().cpu().numpy()[:, :3]
-        hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_hair)
-        hair_mesh.compute_vertex_normals()
-        o3d.io.write_triangle_mesh('Init_transformed_hair.ply', hair_mesh)
+        # # transformed hair
+        # transformed_hair = (torch.cat([self.xyz, torch.ones_like(self.xyz[:, :1])], -1) @ self.transform).detach().cpu().numpy()[:, :3]
+        # hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_hair)
+        # hair_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('Init_transformed_hair.ply', hair_mesh)
 
-        # transformed source
-        transformed_source = (torch.cat([source[:, :3], torch.ones_like(source[:, :1])], -1) @ transform).detach().cpu().numpy()[:, :3]
-        # transformed_source = (source[:, :3] * s @ R + t).detach().cpu().numpy()
-        hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_source)
-        # hair_mesh.triangles = o3d.utility.Vector3iVector(faces)
-        hair_mesh.compute_vertex_normals()
-        o3d.io.write_triangle_mesh('Init_transformed_source.ply', hair_mesh)
+        # # transformed source
+        # transformed_source = (torch.cat([source[:, :3], torch.ones_like(source[:, :1])], -1) @ transform).detach().cpu().numpy()[:, :3]
+        # # transformed_source = (source[:, :3] * s @ R + t).detach().cpu().numpy()
+        # hair_mesh.vertices = o3d.utility.Vector3dVector(transformed_source)
+        # # hair_mesh.triangles = o3d.utility.Vector3iVector(faces)
+        # hair_mesh.compute_vertex_normals()
+        # o3d.io.write_triangle_mesh('Init_transformed_source.ply', hair_mesh)
 
         mesh_width = (target[4051, :3] - target[4597, :3]).norm() # 2 x distance between the eyes
         width_raw_new = self.width_raw * mesh_width / self.prev_mesh_width * 0.2
