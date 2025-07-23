@@ -175,6 +175,7 @@ class GaussianHeadTrainRecorder():
         wandb.save('lib/recorder/*.py', policy='now')
         wandb.save('lib/trainer/*.py', policy='now')
         wandb.save('config/*.py', policy='now')
+        wandb.save('config/*.yaml', policy='now')
         wandb.save('preprocess/*.py', policy='now')
         wandb.save('lib/face_models/*.py', policy='now')
         wandb.save('train*.py', policy='now')
