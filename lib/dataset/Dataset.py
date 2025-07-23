@@ -633,7 +633,7 @@ class GaussianDataset(Dataset):
             depth = cv2.resize(depth, (self.resolution, self.resolution))
             depth = torch.from_numpy(depth).float()[None]
             depth_coarse = F.interpolate(depth[None], scale_factor=self.coarse_scale_factor)[0]
-            data['depth'] = depth
+            data['depth'] = depth_coarse
         
         optical_flow_path = sample['optical_flow_path'][view]
         optical_flow_confidence_path = optical_flow_path.replace('.npy', '_confidence_map.npy')

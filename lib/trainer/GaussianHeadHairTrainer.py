@@ -366,8 +366,9 @@ class GaussianHeadHairTrainer():
 
             loss_smoothness = 0 #self.gaussianhair.smoothness_loss() * 10
 
-            if data['depth'] is not None:
-                loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_mask) * 5
+            if 'depth' in data:
+                # loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_mask) * 5
+                loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_hair_mask) * 5
 
             if  iteration > static_training_util_iter:
                 loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 

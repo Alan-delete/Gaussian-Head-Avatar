@@ -10,4 +10,4 @@ face_model: 'BFM'
 reg_id_weight: 1e-7
 reg_exp_weight: 1e-7
 save_vertices: True
-visualize: True
+visualize: False
