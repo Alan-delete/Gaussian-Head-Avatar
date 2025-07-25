@@ -9,6 +9,64 @@ import trimesh
 from lib.utils.general_utils import ssim, psnr
 from lib.face_models.FLAMEModule import FLAMEModule
 
+
+def hair_strand_rendering(data, gaussianhead, gaussianhair, camera, iteration = 1e6):
+
+    device = data['images'].device
+
+    if gaussianhair is not None:
+        # highlight_strands_idx = torch.arange(0, gaussianhair.num_strands, 300, device= device)
+        highlight_strands_idx = torch.arange(0, gaussianhair.num_strands, 1, device= device)
+        gen = torch.Generator(device=device)
+        gen.manual_seed(77)
+        highlight_color = torch.rand(highlight_strands_idx.shape[0], 3, generator=gen, device=device).unsqueeze(1).repeat(1, 99, 1).unsqueeze(0)
+        
+            
+    # data['poses_history'] = [None]
+    data['bg_rgb_color'] = torch.as_tensor([1.0, 1.0, 1.0]).cuda()
+    # TODO: select a few strands, color and enlarge them. Then render them
+    with torch.no_grad():
+        head_data = gaussianhead.generate(data)
+        if gaussianhair is not None:
+            backprop = iteration < 8000
+            gaussianhair.generate_hair_gaussians(poses_history = data['poses_history'][0], 
+                                                    # global_pose = init_flame_pose[0],
+                                                    backprop_into_prior = backprop,
+                                                    global_pose = data['flame_pose'][0], 
+                                                    global_scale = data['flame_scale'][0])
+            hair_data = gaussianhair.generate(data)
+                    
+            color = hair_data['color'][..., :3].view(1, gaussianhair.num_strands, 99, 3)
+            new_color = torch.tensor([1.0, 0.0, 0.0], device=color.device).view(1, 1, 1, 3)
+
+            color[:, highlight_strands_idx, :, :] = highlight_color
+            hair_data['color'][..., :3] = color.view(1, -1, 3)
+            # Set every 100th strand to new_color
+            # color[:, ::100, :, :] = torch.rand(color[:, ::100, :, :].shape[1], 3).unsqueeze(1).repeat(1, 100, 1).unsqueeze(0).to(color.device)
+
+            scales = hair_data['scales'].view(1, gaussianhair.num_strands, 99, 3)
+            scales[:, highlight_strands_idx, :, 1: ] = 10 * scales[:, highlight_strands_idx, :, 1: ]
+            hair_data['scales'] = scales.view(1, -1, 3)
+
+
+            hair_data['opacity'][...] = 0.0
+            opacity = hair_data['opacity'].view(1, gaussianhair.num_strands, 99, 1)
+            opacity[:, highlight_strands_idx, :, :] = 1.0
+            hair_data['opacity'] = opacity.view(1, -1, 1)
+
+            # combine head and hair data
+            for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
+                # first dimension is batch size, concat along the second dimension
+                # data[key] = hair_data[key]
+                data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
+
+        data = camera.render_gaussian(data, 2048)
+        render_images = data['render_images'][: ,:3, ...]
+        return render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy()
+
+
+
+
 class Reenactment_hair():
     def __init__(self, dataloader, gaussianhead, gaussianhair,supres, camera, recorder, gpu_id, freeview, camera_id=23, cfg=None):
         self.dataloader = dataloader
@@ -81,6 +139,8 @@ class Reenactment_hair():
 
             # prepare data
             for data_item in to_cuda:
+                if data_item not in data:
+                    continue
                 data[data_item] = torch.tensor(data[data_item], device=self.device)
                 data[data_item] = data[data_item].unsqueeze(0)
                 data[data_item].requires_grad = False
@@ -204,6 +264,8 @@ class Reenactment_hair():
 
                     # prepare data
                     for data_item in to_cuda:
+                        if data_item not in data:
+                            continue
                         data[data_item] = torch.tensor(data[data_item], device=self.device)
                         data[data_item] = data[data_item].unsqueeze(0)
                         data[data_item].requires_grad = False
@@ -249,7 +311,64 @@ class Reenactment_hair():
                     non_rigid_video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
 
 
-        only_rigid_video = []
+        # only_rigid_video = []
+        # if self.gaussianhair is not None:
+        #     with torch.no_grad():
+        #         for i in tqdm(range(frame_num)):
+                    
+        #             torch.cuda.empty_cache()
+                    
+        #             data = dataset.__getitem__(i, self.camera_id)
+
+        #             # prepare data
+        #             for data_item in to_cuda:
+        #                 if data_item not in data:
+        #                     continue
+        #                 data[data_item] = torch.tensor(data[data_item], device=self.device)
+        #                 data[data_item] = data[data_item].unsqueeze(0)
+        #                 data[data_item].requires_grad = False
+                    
+        #             # data['poses_history'] = [None]
+        #             data['bg_rgb_color'] = torch.as_tensor([1.0, 1.0, 1.0]).cuda()
+        #             # TODO: select a few strands, color and enlarge them. Then render them
+
+        #             head_data = self.gaussianhead.generate(data)
+
+        #             self.gaussianhair.generate_hair_gaussians( poses_history = None, #poses_history = data['poses_history'][0], 
+        #                                                      backprop_into_prior=backprop_into_prior, 
+        #                                                     global_pose = data['flame_pose'][0], 
+        #                                                     global_scale = data['flame_scale'][0])
+        #             hair_data = self.gaussianhair.generate(data)
+                    
+        #             color = hair_data['color'][..., :3].view(1, self.gaussianhair.num_strands, 99, 3)
+        #             new_color = torch.tensor([1.0, 0.0, 0.0], device=color.device).view(1, 1, 1, 3)
+
+        #             color[:, highlight_strands_idx, :, :] = highlight_color
+        #             hair_data['color'][..., :3] = color.view(1, -1, 3)
+        #             # Set every 100th strand to new_color
+        #             # color[:, ::100, :, :] = torch.rand(color[:, ::100, :, :].shape[1], 3).unsqueeze(1).repeat(1, 100, 1).unsqueeze(0).to(color.device)
+
+        #             scales = hair_data['scales'].view(1, self.gaussianhair.num_strands, 99, 3)
+        #             scales[:, highlight_strands_idx, :, 1: ] = 100 * scales[:, highlight_strands_idx, :, 1: ]
+        #             hair_data['scales'] = scales.view(1, -1, 3)
+
+
+        #             hair_data['opacity'][...] = 0.0
+        #             opacity = hair_data['opacity'].view(1, self.gaussianhair.num_strands, 99, 1)
+        #             opacity[:, highlight_strands_idx, :, :] = 1.0
+        #             hair_data['opacity'] = opacity.view(1, -1, 1)
+
+        #             # combine head and hair data
+        #             for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
+        #                 # first dimension is batch size, concat along the second dimension
+        #                 data[key] = hair_data[key]
+
+        #             data = self.camera.render_gaussian(data, 2048)
+        #             render_images = data['render_images'][: ,:3, ...]
+        #             only_rigid_video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
+        
+        
+        strand_vis_video = []
         if self.gaussianhair is not None:
             with torch.no_grad():
                 for i in tqdm(range(frame_num)):
@@ -260,49 +379,15 @@ class Reenactment_hair():
 
                     # prepare data
                     for data_item in to_cuda:
+                        if data_item not in data:
+                            continue
                         data[data_item] = torch.tensor(data[data_item], device=self.device)
                         data[data_item] = data[data_item].unsqueeze(0)
                         data[data_item].requires_grad = False
-                    
-                    # data['poses_history'] = [None]
-                    data['bg_rgb_color'] = torch.as_tensor([1.0, 1.0, 1.0]).cuda()
-                    # TODO: select a few strands, color and enlarge them. Then render them
 
-                    head_data = self.gaussianhead.generate(data)
+                    hair_strand_image = hair_strand_rendering(data, self.gaussianhair, self.gaussianhead, self.camera)
 
-                    self.gaussianhair.generate_hair_gaussians( poses_history = None, #poses_history = data['poses_history'][0], 
-                                                             backprop_into_prior=backprop_into_prior, 
-                                                            global_pose = data['flame_pose'][0], 
-                                                            global_scale = data['flame_scale'][0])
-                    hair_data = self.gaussianhair.generate(data)
-                    
-                    color = hair_data['color'][..., :3].view(1, self.gaussianhair.num_strands, 99, 3)
-                    new_color = torch.tensor([1.0, 0.0, 0.0], device=color.device).view(1, 1, 1, 3)
-
-                    color[:, highlight_strands_idx, :, :] = highlight_color
-                    hair_data['color'][..., :3] = color.view(1, -1, 3)
-                    # Set every 100th strand to new_color
-                    # color[:, ::100, :, :] = torch.rand(color[:, ::100, :, :].shape[1], 3).unsqueeze(1).repeat(1, 100, 1).unsqueeze(0).to(color.device)
-
-                    scales = hair_data['scales'].view(1, self.gaussianhair.num_strands, 99, 3)
-                    scales[:, highlight_strands_idx, :, 1: ] = 100 * scales[:, highlight_strands_idx, :, 1: ]
-                    hair_data['scales'] = scales.view(1, -1, 3)
-
-
-                    hair_data['opacity'][...] = 0.0
-                    opacity = hair_data['opacity'].view(1, self.gaussianhair.num_strands, 99, 1)
-                    opacity[:, highlight_strands_idx, :, :] = 1.0
-                    hair_data['opacity'] = opacity.view(1, -1, 1)
-
-                    # combine head and hair data
-                    for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
-                        # first dimension is batch size, concat along the second dimension
-                        data[key] = hair_data[key]
-
-                    data = self.camera.render_gaussian(data, 2048)
-                    render_images = data['render_images'][: ,:3, ...]
-                    only_rigid_video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
-
+                    strand_vis_video.append(hair_strand_image)
 
 
         # save video
@@ -335,14 +420,24 @@ class Reenactment_hair():
             out.release()
             print('Saved non-rigid deformation video to %s' % output_path)
 
-            output_path = os.path.join("{}/{}/only_rigid_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
-            out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (only_rigid_video[0].shape[1], only_rigid_video[0].shape[0]))
-            for frame in only_rigid_video:
+            # output_path = os.path.join("{}/{}/only_rigid_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
+            # out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (only_rigid_video[0].shape[1], only_rigid_video[0].shape[0]))
+            # for frame in only_rigid_video:
+            #     frame = (frame*255).astype(np.uint8)
+            #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            #     out.write(frame)
+            # out.release()
+            # print('Saved only rigid deformation video to %s' % output_path)
+
+            output_path = os.path.join("{}/{}/strand_vis_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
+            out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (strand_vis_video[0].shape[1], strand_vis_video[0].shape[0]))
+            for frame in strand_vis_video:
                 frame = (frame*255).astype(np.uint8)
                 frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
                 out.write(frame)
             out.release()
-            print('Saved only rigid deformation video to %s' % output_path)
+            print('Saved strand visualization video to %s' % output_path)
+                                                                                     
 
         # save head vertices
         # faces = self.gaussianhead.faces.cpu().numpy()

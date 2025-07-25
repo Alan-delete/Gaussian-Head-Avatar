@@ -1,5 +1,5 @@
 gpu_id: 0
-load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble258/meshhead_latest'
+load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble226/meshhead_latest'
 # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
 # load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
 # load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
@@ -213,7 +213,7 @@ flame_gaussian_module:
 recorder:
   debug_tool: 'wandb' # 'tensorboard' or 'wandb'
   # name: 'gaussianhead_hair_renderme_NoOpacity'
-  name: 'gaussianhead_NeRSemble258'
+  name: 'gaussianhead_NeRSemble226'
   # name: 'gaussianhead_hair_renderme'
   logdir: 'log/gaussianhead_NeRSemble031_Simplified'
   checkpoint_path: 'checkpoints'
