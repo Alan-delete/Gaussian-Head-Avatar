@@ -77,9 +77,9 @@ class Reenactment_hair():
         self.camera = camera
         self.camera_id = camera_id
         self.recorder = recorder
-        self.fn_lpips = lpips.LPIPS(net='vgg').to(self.device)
         self.device = torch.device('cuda:%d' % gpu_id)
         self.freeview = freeview
+        self.fn_lpips = lpips.LPIPS(net='vgg').to(self.device)
         self.flame_model = FLAMEModule().to(self.device)
         self.cfg = cfg
 
