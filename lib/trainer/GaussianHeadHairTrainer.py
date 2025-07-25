@@ -381,6 +381,14 @@ class GaussianHeadHairTrainer():
             # gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
             # loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
 
+            # #  let points be near to the prior
+            # if iteration > self.cfg.gaussianhairmodule.strands_reset_until_iter:
+            #     points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
+            #     gt_pts = dirs.detach() if self.gaussianhair.train_directions else points.detach()
+            #     pred_pts = self.gaussianhair.dir_raw if self.gaussianhair.train_directions else self.gaussianhair.points_raw
+            #     loss_dir = l1_loss(pred_pts, gt_pts)
+
+
         if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2 and iteration > 7000:
             gt_optical_flow = data['optical_flow_coarse']
             gt_optical_flow_confidence = data['optical_flow_confidence_coarse']
@@ -535,7 +543,7 @@ class GaussianHeadHairTrainer():
                 for param in group['params']:
                     if param.grad is not None and param.grad.isnan().any():
                         self.optimizer.zero_grad()
-                        print(f'NaN during backprop in {group.get("name", "Unnamed")} was found, skipping iteration...')
+                        # print(f'NaN during backprop in {group.get("name", "Unnamed")} was found, skipping iteration...')
             self.optimizer.step()
             self.optimizer.zero_grad(set_to_none = True)
 
@@ -545,7 +553,7 @@ class GaussianHeadHairTrainer():
                     for param in optimizer.param_groups[0]['params']:
                         if param.grad is not None and param.grad.isnan().any():
                             optimizer.zero_grad()
-                            print(f'NaN in prior during backprop was found, skipping iteration...')
+                            # print(f'NaN in prior during backprop was found, skipping iteration...')
                     optimizer.step()
                     optimizer.zero_grad(set_to_none = True)
 
@@ -580,7 +588,7 @@ class GaussianHeadHairTrainer():
                     for param in group['params']:
                         if param.grad is not None and param.grad.isnan().any():
                             nan_grad = True
-                            print(f"[NaN Detected in Gradients] → Unstruct Param group: {group.get('name', 'Unnamed')}")
+                            # print(f"[NaN Detected in Gradients] → Unstruct Param group: {group.get('name', 'Unnamed')}")
                         # if torch.isnan(param).any():
                         #     print(f"[NaN Detected in Weights] → Param group: {group.get('name', 'Unnamed')}") 
                 
@@ -596,7 +604,7 @@ class GaussianHeadHairTrainer():
                     for param in group['params']:
                         if param.grad is not None and param.grad.isnan().any():
                             nan_grad = True
-                            print(f"[NaN Detected in Gradients] → Struct Param group: {group.get('name', 'Unnamed')}")
+                            # print(f"[NaN Detected in Gradients] → Struct Param group: {group.get('name', 'Unnamed')}")
                 if not nan_grad:
                     self.gaussianhair.optimizer.step()
                 self.gaussianhair.optimizer.zero_grad(set_to_none = True)
