@@ -451,9 +451,9 @@ class GaussianHairModule(GaussianBaseModule):
             self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
             self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
             l_dynamic = [
-                {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-4, "name": "pose_prior"},
-                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
-                {'params': self.pose_mlp.parameters(), 'lr': 1e-4, "name": "pose_mlp"},
+                {'params': self.pose_prior_mlp.parameters(), 'lr': 1e-3, "name": "pose_prior"},
+                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-3, "name": "pose_point"},
+                {'params': self.pose_mlp.parameters(), 'lr': 1e-3, "name": "pose_mlp"},
             ]
         
         elif cfg.pose_deform_method == 'attention':

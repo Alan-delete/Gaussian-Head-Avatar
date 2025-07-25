@@ -381,12 +381,12 @@ class GaussianHeadHairTrainer():
             # gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
             # loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
 
-            # #  let points be near to the prior
-            # if iteration > self.cfg.gaussianhairmodule.strands_reset_until_iter:
-            #     points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
-            #     gt_pts = dirs.detach() if self.gaussianhair.train_directions else points.detach()
-            #     pred_pts = self.gaussianhair.dir_raw if self.gaussianhair.train_directions else self.gaussianhair.points_raw
-            #     loss_dir = l1_loss(pred_pts, gt_pts)
+            #  let points be near to the prior
+            if iteration > self.cfg.gaussianhairmodule.strands_reset_until_iter:
+                points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
+                gt_pts = dirs.detach() if self.gaussianhair.train_directions else points.detach()
+                pred_pts = self.gaussianhair.dir_raw if self.gaussianhair.train_directions else self.gaussianhair.points_raw
+                loss_dir = l1_loss(pred_pts, gt_pts)
 
 
         if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2 and iteration > 7000:
