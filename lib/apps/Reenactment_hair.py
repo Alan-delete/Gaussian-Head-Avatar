@@ -392,7 +392,6 @@ class Reenactment_hair():
         # print('Saved video to %s' % output_path)
 
         if self.gaussianhair is not None:
-            pass
             # output_path = os.path.join("{}/{}/non_rigid_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
             # out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (non_rigid_video[0].shape[1], non_rigid_video[0].shape[0]))
             # for frame in non_rigid_video:
@@ -411,14 +410,14 @@ class Reenactment_hair():
             # out.release()
             # print('Saved only rigid deformation video to %s' % output_path)
 
-            # output_path = os.path.join("{}/{}/strand_vis_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
-            # out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (strand_vis_video[0].shape[1], strand_vis_video[0].shape[0]))
-            # for frame in strand_vis_video:
-            #     frame = (frame*255).astype(np.uint8)
-            #     frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            #     out.write(frame)
-            # out.release()
-            # print('Saved strand visualization video to %s' % output_path)
+            output_path = os.path.join("{}/{}/strand_vis_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
+            out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (strand_vis_video[0].shape[1], strand_vis_video[0].shape[0]))
+            for frame in strand_vis_video:
+                frame = (frame*255).astype(np.uint8)
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                out.write(frame)
+            out.release()
+            print('Saved strand visualization video to %s' % output_path)
                                                                                      
 
         # save head vertices

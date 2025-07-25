@@ -742,11 +742,12 @@ class GaussianHairModule(GaussianBaseModule):
         points = self.points.reshape(-1, 3)[indices]
         vertices = self.FLAME_mesh.verts_packed()  # (V, 3)
         faces = self.FLAME_mesh.faces_packed()  # (F, 3)
+        mesh_h = kaolin.ops.mesh.index_vertices_by_faces(vertices.unsqueeze(0), faces)
         # (N, 1), bool, true means inside
         # inside = ray_stabbing(points, vertices, faces).view(-1).bool()
  
-        sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
-        inside = sign.bool()
+        # sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
+        # inside = sign.bool()
 
         # # save points to ply, with inside outside differnt color
         # points = points.squeeze(0).cpu().numpy()
@@ -760,18 +761,17 @@ class GaussianHairModule(GaussianBaseModule):
         # ply_el = PlyElement.describe(vertex, 'vertex')
         # PlyData([ply_el]).write('colored_points.ply')
 
-        # only inside points get the loss
-        points = points[inside]
+        # # only inside points get the loss
+        # points = points[inside]
 
-        # B, N, 3
-        points = points.view(1, -1, 3)
-        mesh_h = kaolin.ops.mesh.index_vertices_by_faces(vertices.unsqueeze(0), faces)
-        distance, _, _ = kaolin.metrics.trianglemesh.point_to_mesh_distance(
-            points.contiguous(), mesh_h.contiguous() #, vertices.contiguous(), faces.contiguous(), eps=1e-8
-        )
-        # distance = torch.sqrt(distance)  # kaolin outputs squared distance
-        distance[distance < 1e-5] = 0
-        dist_loss = distance.mean()
+        # # B, N, 3
+        # points = points.view(1, -1, 3)
+        # distance, _, _ = kaolin.metrics.trianglemesh.point_to_mesh_distance(
+        #     points.contiguous(), mesh_h.contiguous() #, vertices.contiguous(), faces.contiguous(), eps=1e-8
+        # )
+        # # distance = torch.sqrt(distance)  # kaolin outputs squared distance
+        # distance[distance < 1e-5] = 0
+        # dist_loss = distance.mean()
 
 
         # For posed points
@@ -787,7 +787,7 @@ class GaussianHairModule(GaussianBaseModule):
         )
         # distance = torch.sqrt(distance)  # kaolin outputs squared distance
         distance[distance < 1e-5] = 0
-        dist_loss = dist_loss +  distance.mean()
+        dist_loss = distance.mean()
 
 
         return dist_loss 
