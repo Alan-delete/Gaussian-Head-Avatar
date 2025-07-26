@@ -3,19 +3,19 @@ load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble036/meshhead_latest'
 # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
 # load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
 # load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
-lr_net: 5e-4 #1e-4
+lr_net: 2e-4 #1e-4
 lr_pose: 1e-6
 batch_size: 1
 optimize_pose: False
 use_supres: False 
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 175312138327 
+checkpoint_seed: 175345630313 
 resume_training: False 
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
-static_training_util_iter: 1 #5000 #10000 # 20000  
+static_training_util_iter: 5000 #10000 # 20000  
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
@@ -34,7 +34,7 @@ loss_weights:
   dssim: 0.2
   knn_feature: 10.
   mesh_dist: 0.001
-  orient: 0.5
+  orient: 1.0 #0.5
   rgb_hr: 1.
   rgb_lr: 1.
   segment: 10. #50.
@@ -127,8 +127,8 @@ gaussianhairmodule:
 
   # strands_reset_from_iter: 4_000
   # just reset strands once at 15000, just [0, 15000] train the prior and [15000, ] train the strands
-  strands_reset_from_iter: 8_000 #5_000
-  strands_reset_until_iter: 8_000 #5_000
+  strands_reset_from_iter: 10_000 #5_000
+  strands_reset_until_iter: 10_000 #5_000
   strands_reset_interval: 1_000
 
   # strands_reset_from_iter: 1_000000000000
@@ -160,8 +160,8 @@ gaussianhairmodule:
   # }
 
 
-  position_lr_init: 1.6e-5 # 1.6e-4 
-  position_lr_final: 1.6e-7  #1.6e-6 
+  position_lr_init: 1.6e-4 
+  position_lr_final: 1.6e-6 
   position_lr_delay_mult: 0.01
   position_lr_max_steps: 30_000
   # feature_lr: 0.0025

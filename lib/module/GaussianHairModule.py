@@ -1121,6 +1121,15 @@ class GaussianHairModule(GaussianBaseModule):
         
         return smoothness_loss
     
+    def manual_smoothen(self, points, iteration = 1):
+        # points: [strand_num, strand_length-1, 3]
+        # iteration: number of iterations to smoothen
+        # three points 
+        for _ in range(iteration):
+            points[:, 2:-1] = (points[:, 1:-2] + points[:, 2:-1] + points[:, 3:]) / 3.0
+        return points
+
+    
 
     # https://arxiv.org/pdf/2412.10061
     def elastic_potential_loss(self, poses_history = None):
@@ -1321,6 +1330,7 @@ class GaussianHairModule(GaussianBaseModule):
             points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
 
             self.points_posed = points
+            # self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
             self.points_origins_posed = torch.cat([self.origins, self.points_posed], dim=1)
             self.dir_posed = (self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]).view(-1, 3)
             
