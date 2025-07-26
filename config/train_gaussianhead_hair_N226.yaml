@@ -10,7 +10,7 @@ optimize_pose: False
 use_supres: False 
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 17533077238 
+checkpoint_seed: 17534879849 
 resume_training: False 
 start_epoch: 0
 num_epochs: 400   

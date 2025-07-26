@@ -206,7 +206,7 @@ class Reenactment_hair():
                     hair_strand_points.append(hair_strand_points_world_per_frame.cpu().numpy())
                     hair_strand_points_posed.append(hair_strand_points_posed_per_frame.cpu().numpy())
                     hair_color = data['color'][...,:3].view(-1, 3).mean(dim=0).cpu().numpy()
-                    self.gaussianhair.sign_distance_loss()
+                    # self.gaussianhair.sign_distance_loss()
                     
                     strands_origins = self.gaussianhair.get_strand_points_posed
                     

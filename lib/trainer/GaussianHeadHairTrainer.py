@@ -46,7 +46,7 @@ class GaussianHeadHairTrainer():
         if self.cfg.resume_training:
             iteration = 20001
         # iteration = 40001
-        end_iteration = iteration + 160000
+        end_iteration = iteration + 80000
         dataset = self.dataloader.dataset
         static_training_util_iter =  self.cfg.static_training_util_iter if self.cfg.static_scene_init else 0
         
@@ -340,9 +340,9 @@ class GaussianHeadHairTrainer():
             # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             
             # step decay for segment loss
-            if iteration > 40000:
-                decay_rate = 0.6 ** ( iteration // 40000)
-                decay_rate = max(decay_rate, 0.2)
+            if iteration > 20000:
+                decay_rate = 0.8 ** ( iteration // 20000)
+                decay_rate = max(decay_rate, 0.5)
                 loss_segment = loss_segment * decay_rate
 
             intersect_body_mask = gt_mask * segment_clone[:, 1].detach()
