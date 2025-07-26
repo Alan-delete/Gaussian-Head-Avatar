@@ -463,11 +463,11 @@ class GaussianHairModule(GaussianBaseModule):
             self.pose_deform_attention = torch.nn.MultiheadAttention(self.pose_deform_dim, 2, dropout=0.1)
             self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
             l_dynamic = [
-                {'params': self.pose_query_mlp.parameters(), 'lr': 1e-4, "name": "pose_query"},
-                {'params': self.pose_key_mlp.parameters(), 'lr': 1e-4, "name": "pose_key"},
-                {'params': self.pose_value_mlp.parameters(), 'lr': 1e-4, "name": "pose_value"},
-                {'params': self.pose_deform_attention.parameters(), 'lr': 1e-4, "name": "pose_deform_attention"},
-                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
+                {'params': self.pose_query_mlp.parameters(), 'lr': 1e-3, "name": "pose_query"},
+                {'params': self.pose_key_mlp.parameters(), 'lr': 1e-3, "name": "pose_key"},
+                {'params': self.pose_value_mlp.parameters(), 'lr': 1e-3, "name": "pose_value"},
+                {'params': self.pose_deform_attention.parameters(), 'lr': 1e-3, "name": "pose_deform_attention"},
+                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-3, "name": "pose_point"},
             ]
         elif cfg.pose_deform_method == 'rnn':
             # L-1, 54 -> 54 
@@ -479,8 +479,8 @@ class GaussianHairModule(GaussianBaseModule):
             self.pose_lstm_c0 = nn.Parameter(torch.zeros(1, self.pose_deform_dim).cuda(), requires_grad=True)
             self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
             l_dynamic = [
-                {'params': self.pose_lstm.parameters(), 'lr': 1e-4, "name": "pose_lstm"},
-                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-4, "name": "pose_point"},
+                {'params': self.pose_lstm.parameters(), 'lr': 1e-3, "name": "pose_lstm"},
+                {'params': self.pose_point_mlp.parameters(), 'lr': 1e-3, "name": "pose_point"},
             ]
         else:
             raise ValueError(f'Unknown pose deform method: {cfg.pose_deform_method}')
@@ -817,8 +817,14 @@ class GaussianHairModule(GaussianBaseModule):
     def strand_feature_loss(self):
         feature_dc = self.features_dc_raw.view(self.num_strands, self.strand_length -1, -1)
         feature_diff = (feature_dc - feature_dc.mean(dim=1, keepdim=True)) ** 2
+        loss = feature_diff.mean()
+
+        if self.train_features_rest:
+            feature_rest = self.features_rest_raw.view(self.num_strands, self.strand_length -1, -1)
+            feature_diff = (feature_rest - feature_rest.mean(dim=1, keepdim=True)) ** 2
+            loss += feature_diff.mean()
         
-        return feature_diff.mean()
+        return loss
 
     def random_set_transparent(self, ratio = 0.2):
         if self.train_opacity:
@@ -1170,10 +1176,10 @@ class GaussianHairModule(GaussianBaseModule):
         if len(all_pose) == 0:
             return 0
 
-        # fill the front with zeros poses so to have at least 3 poses, 
-        zero_pose = torch.zeros(6).cuda()
-        zero_pose = zero_pose[None].repeat(2, 1)
-        all_pose = torch.cat([zero_pose, all_pose], dim=0)
+        # fill the front with init poses so to have at least 3 poses, 
+        padding_pose = all_pose[0]
+        padding_pose = padding_pose[None].repeat(2, 1)
+        all_pose = torch.cat([padding_pose, all_pose], dim=0)
 
 
         # timestep = torch.arange(len(all_pose)).cuda()
@@ -1330,7 +1336,7 @@ class GaussianHairModule(GaussianBaseModule):
             points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
 
             self.points_posed = points
-            # self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
+            self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
             self.points_origins_posed = torch.cat([self.origins, self.points_posed], dim=1)
             self.dir_posed = (self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]).view(-1, 3)
             

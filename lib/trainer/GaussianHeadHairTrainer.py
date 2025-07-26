@@ -360,7 +360,7 @@ class GaussianHeadHairTrainer():
 
             loss_knn_feature = 0 # self.gaussianhair.knn_feature_loss()
 
-            loss_strand_feature = 0 #self.gaussianhair.strand_feature_loss()
+            loss_strand_feature = self.gaussianhair.strand_feature_loss()
 
             loss_deform_reg = self.gaussianhair.deform_regularization_loss()
 
