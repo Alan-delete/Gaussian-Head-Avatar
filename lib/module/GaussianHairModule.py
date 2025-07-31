@@ -435,6 +435,7 @@ class GaussianHairModule(GaussianBaseModule):
         # timestep [1] -> time embedding [9]
         # poistion [3] -> position embedding [27]
         self.pos_embedding, _ = get_embedder(cfg.pos_freq)
+        self.pose_embedding, _ = get_embedder(cfg.pos_freq)
 
 
         self.pose_deform_method = cfg.pose_deform_method
@@ -442,16 +443,16 @@ class GaussianHairModule(GaussianBaseModule):
         # self.pose_attributes_mlp = MLP(cfg.pose_attributes_mlp, last_op=None)
         # self.pose_deform_mlp = MLP(cfg.pose_deform_mlp, last_op=nn.Tanh())
         self.pose_embedding_dim = 54
-        self.pose_deform_dim = 54
+        self.pose_deform_dim = 54 
         self.pose_num = 3
 
         if cfg.pose_deform_method == 'mlp':
             self.pose_mlp = torch.nn.Sequential(
-                torch.nn.Linear(self.pose_embedding_dim * self.pose_num, 128),
+                torch.nn.Linear(self.pose_embedding_dim * self.pose_num, 16),
                 torch.nn.ReLU(),
-                torch.nn.Linear(128, 128),
+                torch.nn.Linear(16, 16),
                 torch.nn.ReLU(),
-                torch.nn.Linear(128, self.pose_deform_dim),
+                torch.nn.Linear(16, self.pose_deform_dim),
             )
             self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
             self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
@@ -462,9 +463,9 @@ class GaussianHairModule(GaussianBaseModule):
             ]
         
         elif cfg.pose_deform_method == 'attention':
-            self.pose_query_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
-            self.pose_key_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
-            self.pose_value_mlp = MLP([self.pose_embedding_dim, 128, self.pose_deform_dim], last_op=None)
+            self.pose_query_mlp = MLP([self.pose_embedding_dim, 32, self.pose_deform_dim], last_op=None)
+            self.pose_key_mlp = MLP([self.pose_embedding_dim, 32, self.pose_deform_dim], last_op=None)
+            self.pose_value_mlp = MLP([self.pose_embedding_dim, 32, self.pose_deform_dim], last_op=None)
             self.pose_deform_attention = torch.nn.MultiheadAttention(self.pose_deform_dim, 2, dropout=0.1)
             self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
             l_dynamic = [
@@ -476,13 +477,17 @@ class GaussianHairModule(GaussianBaseModule):
             ]
         elif cfg.pose_deform_method == 'rnn':
             # L-1, 54 -> 54 
+            self.pose_embedding, _ = get_embedder(2)
+            self.pose_embedding_dim = 30
+            self.pose_deform_dim = 16 
             self.pose_lstm = nn.LSTM(input_size=self.pose_embedding_dim , 
                                     hidden_size=self.pose_deform_dim, 
                                     num_layers=1, 
                                     batch_first=True)
             self.pose_lstm_h0 = nn.Parameter(torch.zeros(1, self.pose_deform_dim).cuda(), requires_grad=True)
             self.pose_lstm_c0 = nn.Parameter(torch.zeros(1, self.pose_deform_dim).cuda(), requires_grad=True)
-            self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
+            # self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
+            self.pose_point_mlp = MLP([43, 16, 3], last_op=None)
             l_dynamic = [
                 {'params': self.pose_lstm.parameters(), 'lr': 1e-3, "name": "pose_lstm"},
                 {'params': self.pose_point_mlp.parameters(), 'lr': 1e-3, "name": "pose_point"},
@@ -1198,7 +1203,7 @@ class GaussianHairModule(GaussianBaseModule):
         # all_pose_embedding = self.pos_embedding(all_pose)
 
         # L, 6 -> L, 54
-        all_pose_embedding = self.pos_embedding(all_pose)
+        all_pose_embedding = self.pose_embedding(all_pose)
         cur_pose_embedding = all_pose_embedding[-1:]
 
 
