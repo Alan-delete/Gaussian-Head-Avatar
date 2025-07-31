@@ -10,7 +10,7 @@ optimize_pose: False
 use_supres: False 
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 175345630313 
+checkpoint_seed: 175354282931 
 resume_training: False 
 start_epoch: 0
 num_epochs: 400   
@@ -105,7 +105,7 @@ gaussianhairmodule:
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_17480233800' 
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000' 
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000 copy' 
-  pose_deform_method: 'mlp' # 'attention' 'rnn'
+  pose_deform_method: 'rnn' #'mlp' # 'attention' 'rnn'
   pose_point_mlp: [81, 256, 3]
   pose_prior_mlp: [54, 54] 
   pos_freq: 4

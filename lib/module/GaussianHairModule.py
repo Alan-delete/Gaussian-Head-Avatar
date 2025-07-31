@@ -401,6 +401,11 @@ class GaussianHairModule(GaussianBaseModule):
         # initialize with root positions
         # self.guide_strand_weights = nn.Parameter(torch.zeros(self.num_strands, self.num_guide_strands).cuda())
         self.guide_strand_weights = nn.Parameter(torch.rand(self.num_strands, self.num_guide_strands).cuda())
+        # [num_guide, 3]
+        root_guide_strands = self.roots[0, self.guide_strand_indices]
+        # [num_strand, num_guide]
+        root_dist = ( (root_guide_strands[:, None] - self.roots) ** 2 ).sum(dim = -1).t()
+        self.guide_strand_weights.data = 1 / (root_dist + 1e-6) 
 
         with torch.no_grad():
             init_theta = self.strands_generator.G_raw.mapping(torch.zeros(1, self.strands_generator.G_raw.z_dim).cuda())
@@ -822,7 +827,7 @@ class GaussianHairModule(GaussianBaseModule):
         if self.train_features_rest:
             feature_rest = self.features_rest_raw.view(self.num_strands, self.strand_length -1, -1)
             feature_diff = (feature_rest - feature_rest.mean(dim=1, keepdim=True)) ** 2
-            loss += feature_diff.mean()
+            loss += feature_diff.mean() * 0.2
         
         return loss
 
@@ -1119,7 +1124,7 @@ class GaussianHairModule(GaussianBaseModule):
         direction = self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]
         direction = direction.view(-1, self.strand_length - 1, 3)
         direction_unit = direction / direction.norm(dim=-1, keepdim=True)
-        
+
         consecutive_diff = direction_unit[:, 1:] - direction_unit[:, :-1]
         consecutive_diff_norm = consecutive_diff.norm(dim=-1, keepdim=True)
         
@@ -1336,7 +1341,7 @@ class GaussianHairModule(GaussianBaseModule):
             points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
 
             self.points_posed = points
-            self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
+            # self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
             self.points_origins_posed = torch.cat([self.origins, self.points_posed], dim=1)
             self.dir_posed = (self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]).view(-1, 3)
             
@@ -1358,7 +1363,7 @@ class GaussianHairModule(GaussianBaseModule):
         # breakpoint()
 
         # from canonical space to world space, used in orginal codes.
-        self.points_origins_world = self.points_origins
+        self.points_origins_world = self.points_origins_posed
         if global_pose is not None and global_scale is not None:
             # add batch dimension
             R = so3_exponential_map(global_pose[None, :3])
@@ -1403,7 +1408,7 @@ class GaussianHairModule(GaussianBaseModule):
 
         self.scales = torch.ones_like(self.xyz)
         # chance that two points are too close
-        self.scales[:, 0] = dir_world.norm(dim=-1) * 0.55 + 1e-6
+        self.scales[:, 0] = dir_world.norm(dim=-1) * 0.55
         self.scales[:, 1:] = self.width.repeat(1, self.strand_length - 1).view(-1, 1)
 
         self.seg_label = torch.zeros_like(self.xyz)

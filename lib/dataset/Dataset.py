@@ -215,16 +215,14 @@ class GaussianDataset(Dataset):
         self.dataroot = cfg.dataroot
         self.camera_ids = cfg.camera_ids
         self.selected_frames = cfg.selected_frames
+        self.split_strategy = split_strategy
         
         
         if len(self.camera_ids) == 0:
             image_paths = sorted(glob.glob(os.path.join(self.dataroot, 'images', '*', 'image_[0-9]*.jpg')))
             self.camera_ids = set([os.path.basename(image_path).split('_')[1].split('.')[0] for image_path in image_paths])
         
-        # if train:
-        #     self.camera_ids =[camera_id for camera_id in self.camera_ids if camera_id not in cfg.test_camera_ids]
-        # else:
-        #     self.camera_ids = cfg.test_camera_ids
+        self.test_camera_ids = cfg.test_camera_ids if hasattr(cfg, 'test_camera_ids') else []
         
         self.camera_ids = sorted(self.camera_ids)
 
@@ -528,6 +526,11 @@ class GaussianDataset(Dataset):
         exp_id = torch.tensor(sample['exp_id']).long()
         poses_history = self.poses_history[:index + 1]
 
+        # TODO: add noise to exp and pose?
+        if self.split_strategy == 'train':
+            noise_std = 0.005
+            exp_coeff = exp_coeff + torch.randn_like(exp_coeff) * noise_std
+            poses_history = poses_history + torch.randn_like(poses_history) * noise_std
 
 
         flame_param_path = sample['flame_param_path']

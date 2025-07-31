@@ -114,8 +114,8 @@ class GaussianHeadModule(GaussianBaseModule):
             #     lr = self.scheduler_args(iter)
             #     param_group['lr'] = lr
             if iter > 20000:
-                param_group['lr'] = param_group['lr'] * (0.7 ** (iter // 20000))
-            
+                param_group['lr'] = param_group['lr'] * max( 0.1 , (0.9 ** (iter // 10000)))
+
 
     # given pose, scale. return the posed xyz
     def get_posed_points(self, exp_coeff, pose, scale):

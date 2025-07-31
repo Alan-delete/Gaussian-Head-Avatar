@@ -235,7 +235,7 @@ if __name__ == '__main__':
 
     from lib.apps.Reenactment_hair import Reenactment_hair
     
-    breakpoint()
+    # breakpoint()
     if len(arg.dataroot) > 0:
         datasets = []
         for dataroot in arg.dataroot:
