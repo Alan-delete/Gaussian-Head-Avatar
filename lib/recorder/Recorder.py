@@ -108,8 +108,8 @@ def hair_strand_rendering(data, gaussianhead, gaussianhair, camera, iteration = 
     with torch.no_grad():
         head_data = gaussianhead.generate(data)
         if gaussianhair is not None:
-            # backprop = iteration < 8000
-            backprop = True #iteration < 8000
+            backprop = iteration < 8000
+            # backprop = True 
             gaussianhair.generate_hair_gaussians(poses_history = data['poses_history'][0], 
                                                     # global_pose = init_flame_pose[0],
                                                     backprop_into_prior = backprop,
