@@ -114,7 +114,7 @@ gaussianhairmodule:
   deform_scale: 0.3
   attributes_scale: 0.2
   num_strands: 10_140
-  strand_length: 50 
+  strand_length: 100 
   simplify_strands: False
   aspect_ratio: 1
   quantile: 1

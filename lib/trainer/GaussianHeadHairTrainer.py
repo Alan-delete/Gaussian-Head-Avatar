@@ -319,24 +319,46 @@ class GaussianHeadHairTrainer():
         # TODO: try mesh distance loss, also try knn color regularization
         if self.gaussianhair is not None:
 
+            # create a ambiguous boundary mask 
+            # that ambiguous region has weight 0.5, and the rest has weight 1
+            binary_hair_mask = gt_hair_mask > 0.9
+            erode_kernel_size = 5
+            erode_kernel = torch.ones((1, 1, erode_kernel_size, erode_kernel_size), device=self.device)
+            eroded_hair_mask = F.conv2d(binary_hair_mask.float(), erode_kernel, padding=erode_kernel_size//2) > 0.5
+            boundary_mask = gt_hair_mask.float() - eroded_hair_mask.float()
+            boundary_mask = boundary_mask <= 0
+            # boundary_weight = boundary_mask.float() * 0.5 + 0.5 
+            boundary_weight = boundary_mask.float() * 0.6 + 0.4 
+            visibles_coarse = visibles_coarse * boundary_weight
+            data['visibles_coarse'] = visibles_coarse
+
             # sgement loss
             # B, C, H, W 
 
             segment_clone = render_segments.clone()
             segment_clone[:,1] = render_segments[:,1] + render_segments[:,2]
-            def l1_loss(a, b):
+            def l1_loss(a, b, mask=None):
+                if mask is not None:
+                    a = a * mask
+                    b = b * mask
                 return (a - b).abs().mean()
 
-            def recall_loss(gt, pred):
+            def recall_loss(gt, pred, mask=None):
+                if mask is not None:
+                    gt = gt * mask
+                    pred = pred * mask
                 return (gt - pred).clamp(min=0).mean()
 
-            def relax_recall_loss(gt, pred):
+            def relax_recall_loss(gt, pred, mask=None):
+                if mask is not None:
+                    gt = gt * mask
+                    pred = pred * mask
                 return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.5
             
             # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
             # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             # loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) + 0.2 * l1_loss(gt_segment[:,1], segment_clone[:,1]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
-            loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2], mask=visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             
             # step decay for segment loss
@@ -353,7 +375,8 @@ class GaussianHeadHairTrainer():
             if 'orient_angle' in data:
                 gt_orientation = data['orient_angle_coarse']
                 pred_orientation = data['render_orient']
-                loss_orient = or_loss(pred_orientation , gt_orientation, mask = intersect_hair_mask) #orient_conf, ) #, weight=orient_weight
+            
+                loss_orient = or_loss(pred_orientation , gt_orientation, mask = intersect_hair_mask * visibles_coarse) #orient_conf, ) #, weight=orient_weight
                 if torch.isnan(loss_orient).any(): loss_orient = 0.0
 
             loss_sign_distance = self.gaussianhair.sign_distance_loss()
@@ -362,17 +385,20 @@ class GaussianHeadHairTrainer():
 
             loss_strand_feature = self.gaussianhair.strand_feature_loss()
 
-            loss_deform_reg = 0 #self.gaussianhair.deform_regularization_loss()
+            loss_deform_reg = self.gaussianhair.deform_regularization_loss()
 
-            loss_smoothness = 0 #self.gaussianhair.smoothness_loss() * 10000
+            # gradual increase the smoothness loss
+            loss_smoothness = self.gaussianhair.smoothness_loss() * 1000
+            # loss_smoothness = self.gaussianhair.smoothness_loss() * min(1000, iteration / 50)
 
             if False and 'depth' in data:
                 # loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_mask) * 5
                 loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_hair_mask) * 5
 
             if  iteration > static_training_util_iter:
-                loss_elastic = self.gaussianhair.elastic_potential_loss() * 100000 
+                loss_elastic = self.gaussianhair.elastic_potential_loss() * 500000 
                 loss_guide_strand_loss = self.gaussianhair.guide_strand_weight_loss() * 0.01 
+                
 
             # #  default [4000, 15000], during that period, use strand raw data to rectify the prior
             # if  self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter:

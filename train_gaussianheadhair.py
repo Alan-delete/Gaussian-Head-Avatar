@@ -209,7 +209,7 @@ if __name__ == '__main__':
     else:
         delta_poses = delta_poses.requires_grad_(False)
 
-    optimizer = torch.optim.Adam(optimized_parameters)
+    optimizer = torch.optim.Adam(optimized_parameters) #weight_decay= 0.001, decoupled_weight_decay = True)
 
 
     if cfg.flame_gaussian_module.enable:
@@ -241,15 +241,16 @@ if __name__ == '__main__':
         for dataroot in arg.dataroot:
             arg_cfg = ['dataroot', dataroot]
             cfg.dataset.merge_from_list(arg_cfg)
-            dataset = GaussianDataset(cfg.dataset, split_strategy='all')
+            dataset = GaussianDataset(cfg.dataset, split_strategy='test')
             datasets.append(dataset)
         # TODO: train_mesh need to be updated for flame gaussian model
         datasets = MultiDataset(datasets)
         dataloader = DataLoaderX(datasets, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
     else:
         # debug select frames is to only load a few frames for debugging
-        dataset = GaussianDataset(cfg.dataset, split_strategy='all')
+        dataset = GaussianDataset(cfg.dataset, split_strategy='test')
         dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True)
 
-    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=arg.test_camera_id)
+    dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True) 
+    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=0)
     app.run()

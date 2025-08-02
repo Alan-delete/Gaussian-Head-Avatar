@@ -387,11 +387,11 @@ class GaussianHeadTrainRecorder():
                     images.append(wandb.Image(supres_image, caption="rendered_supres_image"))
 
 
-                # if 'visibles' in data:
-                #     visibles = data['visibles'][0].permute(1, 2, 0).detach().cpu().numpy()
-                #     visibles = (visibles * 255).astype(np.uint8)
-                #     visibles = cv2.resize(visibles, (image.shape[0], image.shape[1]))
-                #     images.append(wandb.Image(visibles, caption="visibility"))
+                if 'visibles_coarse' in data:
+                    visibles = data['visibles_coarse'][0].permute(1, 2, 0).detach().cpu().numpy()
+                    visibles = (visibles * 255).astype(np.uint8)
+                    visibles = cv2.resize(visibles, (image.shape[0], image.shape[1]))
+                    images.append(wandb.Image(visibles, caption="visibility"))
 
 
                 if 'gt_segment' in data:
@@ -413,6 +413,12 @@ class GaussianHeadTrainRecorder():
                     ones_mask = torch.ones_like(mask)
                     images.append(wandb.Image(hair_mask.permute(1, 2, 0).detach().cpu().numpy(), caption="hair_mask"))
 
+                    # if 'erode_conf' in data:
+                    #     erode_conf = data['erode_conf'][0].permute(1, 2, 0).detach().cpu().numpy()
+                    #     erode_conf = (erode_conf * 255).astype(np.uint8)
+                    #     erode_conf = cv2.resize(erode_conf, (image.shape[0], image.shape[1]))
+                    #     images.append(wandb.Image(erode_conf, caption="erode_conf"))
+
 
                     if 'orient_angle' in data:
                         orientation = data['orient_angle_coarse'][0].to(mask.device)
@@ -421,7 +427,7 @@ class GaussianHeadTrainRecorder():
                         render_orientation = data['render_orient'][0]
                         images.append(wandb.Image(vis_orient(render_orientation, hair_mask), caption="rendered_orientation"))
 
-                        images.append(wandb.Image(vis_orient(render_orientation, ones_mask), caption="global_rendered_orientation"))
+                        # images.append(wandb.Image(vis_orient(render_orientation, ones_mask), caption="global_rendered_orientation"))
 
                 if 'depth' in data:
                     # depth is the 10th channel of the render_images

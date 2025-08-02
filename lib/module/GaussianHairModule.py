@@ -487,7 +487,7 @@ class GaussianHairModule(GaussianBaseModule):
             self.pose_lstm_h0 = nn.Parameter(torch.zeros(1, self.pose_deform_dim).cuda(), requires_grad=True)
             self.pose_lstm_c0 = nn.Parameter(torch.zeros(1, self.pose_deform_dim).cuda(), requires_grad=True)
             # self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
-            self.pose_point_mlp = MLP([43, 16, 3], last_op=None)
+            self.pose_point_mlp = MLP([43, 64, 3], last_op=None)
             l_dynamic = [
                 {'params': self.pose_lstm.parameters(), 'lr': 1e-3, "name": "pose_lstm"},
                 {'params': self.pose_point_mlp.parameters(), 'lr': 1e-3, "name": "pose_point"},
@@ -569,7 +569,7 @@ class GaussianHairModule(GaussianBaseModule):
                                                     max_steps=cfg.position_lr_max_steps)
         l_gaussian = l_dynamic + l_static
         # Gaussian optimizer
-        self.optimizer = torch.optim.Adam(l_gaussian, lr=0.0, eps=1e-15)     
+        self.optimizer = torch.optim.Adam(l_gaussian, lr=0.0, eps=1e-15) #weight_decay= 0.001, decoupled_weight_decay = True)     
 
         self.milestones = cfg['milestones']
         self.lrs = cfg['lrs']
@@ -1130,12 +1130,18 @@ class GaussianHairModule(GaussianBaseModule):
         direction = direction.view(-1, self.strand_length - 1, 3)
         direction_unit = direction / direction.norm(dim=-1, keepdim=True)
 
-        consecutive_diff = direction_unit[:, 1:] - direction_unit[:, :-1]
-        consecutive_diff_norm = consecutive_diff.norm(dim=-1, keepdim=True)
+        # consecutive_diff = direction_unit[:, 1:] - direction_unit[:, :-1]
+        # consecutive_diff_norm = consecutive_diff.norm(dim=-1, keepdim=True)
+        # norm_loss = consecutive_diff_norm.mean()
+
+        # cosine similarity
+        consecutive_diff_cos = (direction_unit[:, 1:] * direction_unit[:, :-1]).sum(dim=-1, keepdim=True)
+        # ranging [0, 2]
+        cos_loss = 1 - consecutive_diff_cos
+        # set a threshold tolarate some curvature
+        cos_loss = torch.clamp(cos_loss - 0.5, min=0, max=2)
         
-        smoothness_loss = consecutive_diff_norm.mean()
-        
-        return smoothness_loss
+        return cos_loss.mean()
     
     def manual_smoothen(self, points, iteration = 1):
         # points: [strand_num, strand_length-1, 3]
