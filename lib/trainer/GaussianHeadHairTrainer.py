@@ -153,7 +153,7 @@ class GaussianHeadHairTrainer():
                     if data_item in data:
                         data[data_item] = torch.as_tensor(data[data_item], device=self.device)
 
-                self.train_step(iteration, epoch, data, grad_accumulation = 4)
+                self.train_step(iteration, epoch, data, grad_accumulation = 2)
                 iteration += 1
 
 
@@ -328,7 +328,7 @@ class GaussianHeadHairTrainer():
             boundary_mask = gt_hair_mask.float() - eroded_hair_mask.float()
             boundary_mask = boundary_mask <= 0
             # boundary_weight = boundary_mask.float() * 0.5 + 0.5 
-            boundary_weight = boundary_mask.float() * 0.6 + 0.4 
+            boundary_weight = boundary_mask.float() * 0.7 + 0.3 
             visibles_coarse = visibles_coarse * boundary_weight
             data['visibles_coarse'] = visibles_coarse
 
@@ -412,7 +412,7 @@ class GaussianHeadHairTrainer():
                 points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
                 gt_pts = dirs.detach() if self.gaussianhair.train_directions else points.detach()
                 pred_pts = self.gaussianhair.dir_raw if self.gaussianhair.train_directions else self.gaussianhair.points_raw
-                loss_dir = l1_loss(pred_pts, gt_pts)
+                # loss_dir = l1_loss(pred_pts, gt_pts)
 
 
         if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2 and iteration > 7000:

@@ -394,7 +394,7 @@ class GaussianHairModule(GaussianBaseModule):
         self.roots = roots.cuda().unsqueeze(0)
         self.knn_roots_indices = None
         # sample guide strands 5%
-        self.use_guide_strands = False 
+        self.use_guide_strands = True
         self.num_guide_strands = self.num_strands // 20
         self.register_buffer('guide_strand_indices', torch.randperm(self.num_strands)[:self.num_guide_strands].cuda())
         # TODO: use low precision or sparse matrix for guide strands weight
@@ -496,7 +496,8 @@ class GaussianHairModule(GaussianBaseModule):
             raise ValueError(f'Unknown pose deform method: {cfg.pose_deform_method}')
         
         if self.use_guide_strands:
-            l_dynamic.append({'params': self.guide_strand_weights, 'lr': 1e-4, "name": "guide_strand_weights"})
+            # l_dynamic.append({'params': self.guide_strand_weights, 'lr': 1e-4, "name": "guide_strand_weights"})
+            l_dynamic.append({'params': self.guide_strand_weights, 'lr': 0, "name": "guide_strand_weights"})
 
         # set the weights of last layer of pose_point_mlp to be 0
         # self.pose_point_mlp[-1].weight.data.fill_(0.0)
