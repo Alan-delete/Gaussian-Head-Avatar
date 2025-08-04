@@ -153,7 +153,7 @@ class GaussianHeadHairTrainer():
                     if data_item in data:
                         data[data_item] = torch.as_tensor(data[data_item], device=self.device)
 
-                self.train_step(iteration, epoch, data, grad_accumulation = 2)
+                self.train_step(iteration, epoch, data, grad_accumulation = 1)
                 iteration += 1
 
 
@@ -210,7 +210,9 @@ class GaussianHeadHairTrainer():
 
         if self.gaussianhair is not None:
             
-            if iteration == self.cfg.gaussianhairmodule.strands_reset_from_iter: 
+            # if iteration == self.cfg.gaussianhairmodule.strands_reset_from_iter: 
+            #     self.gaussianhair.reset_strands()
+            if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter and iteration %  self.cfg.gaussianhairmodule.strands_reset_interval == 0:
                 self.gaussianhair.reset_strands()
 
             # before 4000, backprop into prior
@@ -400,19 +402,19 @@ class GaussianHeadHairTrainer():
                 loss_guide_strand_loss = self.gaussianhair.guide_strand_weight_loss() * 0.01 
                 
 
-            # #  default [4000, 15000], during that period, use strand raw data to rectify the prior
-            # if  self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter:
-            #     points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
-            #     pred_pts = dirs if self.gaussianhair.train_directions else points
-            # gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
-            # loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
-
-            #  let points be near to the prior
-            if iteration > self.cfg.gaussianhairmodule.strands_reset_until_iter:
+            #  default [4000, 15000], during that period, use strand raw data to rectify the prior
+            if  self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter:
                 points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
-                gt_pts = dirs.detach() if self.gaussianhair.train_directions else points.detach()
-                pred_pts = self.gaussianhair.dir_raw if self.gaussianhair.train_directions else self.gaussianhair.points_raw
-                # loss_dir = l1_loss(pred_pts, gt_pts)
+                pred_pts = dirs if self.gaussianhair.train_directions else points
+            gt_pts = self.gaussianhair.dir.detach() if self.gaussianhair.train_directions else self.gaussianhair.points.detach()
+            loss_dir = l1_loss(pred_pts, gt_pts) if self.cfg.gaussianhairmodule.strands_reset_from_iter <= iteration <= self.cfg.gaussianhairmodule.strands_reset_until_iter else torch.zeros_like(loss_segment)
+
+            # #  let points be near to the prior
+            # if iteration > self.cfg.gaussianhairmodule.strands_reset_until_iter:
+            #     points, dirs, _, _ = self.gaussianhair.sample_strands_from_prior()
+            #     gt_pts = dirs.detach() if self.gaussianhair.train_directions else points.detach()
+            #     pred_pts = self.gaussianhair.dir_raw if self.gaussianhair.train_directions else self.gaussianhair.points_raw
+            #     # loss_dir = l1_loss(pred_pts, gt_pts)
 
 
         if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2 and iteration > 7000:
