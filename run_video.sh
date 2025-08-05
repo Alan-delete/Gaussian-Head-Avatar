@@ -1,4 +1,4 @@
-export GPU="5"
+export GPU="7"
 export CAMERA="PINHOLE"
 export EXP_NAME_1="stage1"
 export EXP_NAME_2="stage2"
@@ -13,6 +13,7 @@ export EXP_PATH_1=$DATA_PATH/3d_gaussian_splatting/$EXP_NAME_1
 # NeRSemble dataset
 PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
 SUBJECT="258"
+SUBJECT="226"
 # SUBJECT="100"
 SEQUENCE="EXP-1-head"
 SEQUENCE1="HAIR"
