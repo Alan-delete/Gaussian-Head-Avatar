@@ -1153,12 +1153,18 @@ class GaussianHairModule(GaussianBaseModule):
         direction = direction.view(-1, self.strand_length - 1, 3)
         direction_unit = direction / direction.norm(dim=-1, keepdim=True)
 
-        consecutive_diff = direction_unit[:, 1:] - direction_unit[:, :-1]
-        consecutive_diff_norm = consecutive_diff.norm(dim=-1, keepdim=True)
+        # consecutive_diff = direction_unit[:, 1:] - direction_unit[:, :-1]
+        # consecutive_diff_norm = consecutive_diff.norm(dim=-1, keepdim=True)
+        # norm_loss = consecutive_diff_norm.mean()
+
+        # cosine similarity
+        consecutive_diff_cos = (direction_unit[:, 1:] * direction_unit[:, :-1]).sum(dim=-1, keepdim=True)
+        # ranging [0, 2]
+        cos_loss = 1 - consecutive_diff_cos
+        # set a threshold tolarate some curvature
+        cos_loss = torch.clamp(cos_loss - 0.5, min=0, max=2)
         
-        smoothness_loss = consecutive_diff_norm.mean()
-        
-        return smoothness_loss
+        return cos_loss.mean()
     
     def manual_smoothen(self, points, iteration = 1):
         # points: [strand_num, strand_length-1, 3]
