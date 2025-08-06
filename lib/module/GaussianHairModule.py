@@ -1162,7 +1162,7 @@ class GaussianHairModule(GaussianBaseModule):
         # ranging [0, 2]
         cos_loss = 1 - consecutive_diff_cos
         # set a threshold tolarate some curvature
-        cos_loss = torch.clamp(cos_loss - 0.5, min=0, max=2)
+        cos_loss = torch.clamp(cos_loss - 0.13, min=0, max=2)
         
         return cos_loss.mean()
     
