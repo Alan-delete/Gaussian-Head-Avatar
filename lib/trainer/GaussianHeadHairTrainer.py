@@ -185,7 +185,7 @@ class GaussianHeadHairTrainer():
         
         B = data['pose'].shape[0]
         if self.gaussianhead is not None:
-            self.gaussianhead.update_learning_rate(iteration)
+            # self.gaussianhead.update_learning_rate(iteration)
             head_data = self.gaussianhead.generate(data)
 
             if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2:
@@ -360,7 +360,7 @@ class GaussianHeadHairTrainer():
 
             loss_knn_feature = 0 # self.gaussianhair.knn_feature_loss()
 
-            loss_strand_feature = self.gaussianhair.strand_feature_loss()
+            loss_strand_feature = 0 #self.gaussianhair.strand_feature_loss()
 
             loss_deform_reg = 0 #self.gaussianhair.deform_regularization_loss()
 
@@ -371,7 +371,8 @@ class GaussianHeadHairTrainer():
                 loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_hair_mask) * 5
 
             if  iteration > static_training_util_iter:
-                loss_elastic = self.gaussianhair.elastic_potential_loss() * 100000 
+                # loss_elastic = self.gaussianhair.elastic_potential_loss() * 100000 
+                loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 
                 loss_guide_strand_loss = self.gaussianhair.guide_strand_weight_loss() * 0.01 
 
             # #  default [4000, 15000], during that period, use strand raw data to rectify the prior
