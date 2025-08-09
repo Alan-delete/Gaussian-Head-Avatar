@@ -781,18 +781,29 @@ class GaussianHairModule(GaussianBaseModule):
 
         # For posed points
         points = self.points_posed.reshape(-1, 3)[indices]
-        sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
-        inside = sign.bool()
-        # only inside points get the loss
-        points = points[inside]
-        # B, N, 3
-        points = points.view(1, -1, 3)
-        distance, _, _ = kaolin.metrics.trianglemesh.point_to_mesh_distance(
-            points.contiguous(), mesh_h.contiguous() #, vertices.contiguous(), faces.contiguous(), eps=1e-8
-        )
-        # distance = torch.sqrt(distance)  # kaolin outputs squared distance
-        distance[distance < 1e-5] = 0
-        dist_loss = distance.mean()
+        has_error = False
+        
+        try:
+            sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
+            inside = sign.bool()
+            # only inside points get the loss
+            if inside.sum() == 0:
+                return 0
+            points = points[inside]
+            # B, N, 3
+            points = points.view(1, -1, 3)
+            distance, _, _ = kaolin.metrics.trianglemesh.point_to_mesh_distance(
+                points.contiguous(), mesh_h.contiguous() #, vertices.contiguous(), faces.contiguous(), eps=1e-8
+            )
+            # distance = torch.sqrt(distance)  # kaolin outputs squared distance
+            distance[distance < 1e-5] = 0
+            dist_loss = distance.mean()
+        except Exception as e:
+            print("Error occurred while computing distance loss:")
+            has_error = True
+        
+        if has_error:
+            breakpoint()
 
 
         return dist_loss 
