@@ -453,6 +453,12 @@ class GaussianDataset(Dataset):
         sample = self.samples[index]
         # randomly pick a view
         view = random.sample(range(len(self.camera_ids)), 1)[0] if view is None else view % len(self.camera_ids)
+        
+        # Unless specified, randomly pick a view, the picked view should not in self.test_camera_ids
+        if view is None:
+            view = random.choice([i for i in range(len(self.camera_ids)) if i not in self.test_camera_ids])
+        else:
+            view = view % len(self.camera_ids)
 
         image_path = sample['image_paths'][view]
         image = cv2.resize(io.imread(image_path), (self.original_resolution, self.original_resolution)) / 255
