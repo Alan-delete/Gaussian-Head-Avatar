@@ -42,8 +42,8 @@ if __name__ == '__main__':
             dataset = GaussianDataset(cfg.dataset)
             datasets.append(dataset)
         # TODO: train_mesh need to be updated
-        datasets = MultiDataset(datasets)
-        dataloader = DataLoaderX(datasets, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
+        dataset = MultiDataset(datasets)
+        dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
     else:
         # debug select frames is to only load a few frames for debugging
         dataset = GaussianDataset(cfg.dataset)
@@ -128,7 +128,10 @@ if __name__ == '__main__':
         gaussianhead = GaussianBaseModule().to(device)
 
     
-    gaussians = FlameGaussianModel(0, disable_flame_static_offset = cfg.gaussianhairmodule.enable , n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
+    # gaussians = FlameGaussianModel(0, disable_flame_static_offset = cfg.gaussianhairmodule.enable , n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
+    gaussians = FlameGaussianModel(0, disable_flame_static_offset = cfg.gaussianhairmodule.enable ,
+                                    not_finetune_flame_params = True, 
+                                    n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
     # process meshes
     if cfg.flame_gaussian_module.enable and gaussians.binding != None:
         gaussians.load_meshes(train_meshes=dataset.train_meshes,
@@ -244,8 +247,8 @@ if __name__ == '__main__':
             dataset = GaussianDataset(cfg.dataset, split_strategy='test')
             datasets.append(dataset)
         # TODO: train_mesh need to be updated for flame gaussian model
-        datasets = MultiDataset(datasets)
-        dataloader = DataLoaderX(datasets, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
+        dataset = MultiDataset(datasets)
+        dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
     else:
         # debug select frames is to only load a few frames for debugging
         dataset = GaussianDataset(cfg.dataset, split_strategy='test')

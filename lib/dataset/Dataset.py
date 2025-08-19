@@ -190,6 +190,20 @@ class MultiDataset(Dataset):
     def __init__(self, datasets):
         self.datasets = datasets
         self.cumulative_sizes = [0] + list(torch.cumsum(torch.tensor([len(d) for d in datasets]), dim=0))
+        self.train_meshes = {}
+        accumulated_size = 0
+        for i in range(len(datasets)):
+            for key in datasets[i].train_meshes:
+                self.train_meshes[key + accumulated_size] = datasets[i].train_meshes[key]
+            accumulated_size += len(datasets[i])
+
+        self.R = datasets[0].R
+        self.T = datasets[0].T
+        self.S = datasets[0].S
+        self.shape_dims = datasets[0].shape_dims
+        self.exp_dims = datasets[0].exp_dims
+        self.num_exp_id = datasets[0].num_exp_id
+        self.flame_mesh_path = datasets[0].flame_mesh_path
 
     def __len__(self):
         return self.cumulative_sizes[-1].item()
