@@ -991,17 +991,17 @@ class GaussianHairModule(GaussianBaseModule):
             optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, points_raw_new.detach(), "pts")
             self.points_raw = optimizable_tensors["pts"]
 
-    def get_perm_texture(self, data = None):
+    def get_perm_texture(self):
         out = self.strands_generator(self.roots, self.theta, self.beta)
         # output dictionary that contains(https://github.com/c-he/perm/tree/main):
         # 1. "image": hair geometry texture, NCHW.
         # 2. "strands": sampled and decoded strands.
         # 3. "guide_strands": decoded guide strands.
         # 4. "theta" and "beta": input or randomly sampled parameters.
-        breakpoint()
-        # out['image'] : torch.Size([1, 64, 256, 256])
+        # out['image'] : torch.Size([1, 64, 256, 256]) -> [10, 256, 256] is guide strand texture, generated from theta; [54, 256, 256] is residual texture, generated from beta
         # out['guide_strands'] : torch.Size([1, 1024])
         # out['guide_strands'][0].position.shape : torch.Size([1024, 100, 3])
+        return out['image']
 
 
     def sample_strands_from_prior(self, num_strands = -1, all_pose = None):

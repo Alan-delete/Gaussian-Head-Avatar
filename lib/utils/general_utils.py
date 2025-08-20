@@ -375,6 +375,30 @@ def GHA2FLAME(pose, scale, exp_coeff, id_coeff, exp_dims=50, id_dims=100):
 
     return 
 
+
+def to_rgb_pca(tex):
+    """ Convert texture to RGB using PCA. """
+    C, H, W = tex.shape
+    def normalize_per_channel(arr):
+        arr = arr.astype(np.float32)
+        arr_ = arr.reshape(C, -1)
+        mins = arr_.min(axis=1, keepdims=True)
+        maxs = arr_.max(axis=1, keepdims=True)
+        denom = np.maximum(maxs - mins, 1e-8)
+        arr_norm = ((arr_ - mins) / denom).reshape(C, H, W)
+        return arr_norm
+    chw = normalize_per_channel(tex)
+    X = chw.reshape(C, -1).T  # [H*W, C]
+    X_mean = X.mean(axis=0, keepdims=True)
+    Xc = X - X_mean
+    U, S, Vt = np.linalg.svd(Xc, full_matrices=False)
+    comps = Vt[:3]  # [3, C]
+    proj = Xc @ comps.T  # [H*W, 3]
+    # Normalize each channel to [0,1]
+    proj = (proj - proj.min(0)) / (proj.max(0) - proj.min(0) + 1e-8)
+    return proj.reshape(H, W, 3)
+
+
 import os
 import shutil
 import glob
