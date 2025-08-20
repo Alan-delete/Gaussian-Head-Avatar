@@ -247,8 +247,8 @@ if __name__ == '__main__':
             dataset = GaussianDataset(cfg.dataset, split_strategy='test')
             datasets.append(dataset)
         # TODO: train_mesh need to be updated for flame gaussian model
-        dataset = MultiDataset(datasets)
-        dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
+        datasets = MultiDataset(datasets)
+        dataloader = DataLoaderX(datasets, batch_size=cfg.batch_size, shuffle=True, pin_memory=True) 
     else:
         # debug select frames is to only load a few frames for debugging
         dataset = GaussianDataset(cfg.dataset, split_strategy='test')
