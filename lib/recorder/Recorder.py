@@ -214,7 +214,7 @@ class GaussianHeadTrainRecorder():
             self.logger.add_scalar('loss_rgb_lr', log_data['loss_rgb_lr'], log_data['iter'])
             self.logger.add_scalar('loss_vgg', log_data['loss_vgg'], log_data['iter'])
         else:
-            log_record = {key: log_data[key] for key in log_data if key.startswith('loss_')}
+            log_record = {key: log_data[key] for key in log_data if key.startswith('loss_') and log_data[key] > 0}
             log_record['psnr_train'] = log_data['psnr_train'] if "psnr_train" in log_data else 0
             log_record['ssim_train'] = log_data['ssim_train'] if "ssim_train" in log_data else 0
             log_record['points_num'] = log_data['gaussianhead'].get_xyz.shape[0] if 'gaussianhead' in log_data and log_data['gaussianhead'] is not None else 0
