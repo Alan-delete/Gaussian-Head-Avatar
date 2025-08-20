@@ -1149,6 +1149,8 @@ class GaussianHairModule(GaussianBaseModule):
 
 
     def smoothness_loss(self):
+        final_loss = 0
+
         direction = self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]
         direction = direction.view(-1, self.strand_length - 1, 3)
         direction_unit = direction / direction.norm(dim=-1, keepdim=True)
@@ -1162,9 +1164,23 @@ class GaussianHairModule(GaussianBaseModule):
         # ranging [0, 2]
         cos_loss = 1 - consecutive_diff_cos
         # set a threshold tolarate some curvature
-        cos_loss = torch.clamp(cos_loss - 0.13, min=0, max=2)
-        
-        return cos_loss.mean()
+        cos_loss = torch.clamp(cos_loss - 0.1, min=0, max=2)
+        final_loss += cos_loss.mean()
+
+
+        direction = self.points_origins[:, 1:] - self.points_origins[:, :-1]
+        direction = direction.view(-1, self.strand_length - 1, 3)
+        direction_unit = direction / direction.norm(dim=-1, keepdim=True)
+
+        # cosine similarity
+        consecutive_diff_cos = (direction_unit[:, 1:] * direction_unit[:, :-1]).sum(dim=-1, keepdim=True)
+        # ranging [0, 2]
+        cos_loss = 1 - consecutive_diff_cos
+        # set a threshold tolarate some curvature
+        cos_loss = torch.clamp(cos_loss - 0.1, min=0, max=2)
+        final_loss += cos_loss.mean()
+
+        return final_loss
     
     def manual_smoothen(self, points, iteration = 1):
         # points: [strand_num, strand_length-1, 3]
