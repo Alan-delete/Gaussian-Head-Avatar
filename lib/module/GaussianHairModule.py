@@ -502,7 +502,12 @@ class GaussianHairModule(GaussianBaseModule):
         nn.init.constant_(last_conv.weight, 0.0001)
         if last_conv.bias is not None:
             nn.init.constant_(last_conv.bias, 0.0001)
-
+        
+        last_layer_idx = len(cfg.pose_prior_mlp) - 2  # dims has length L+1 => L layers
+        last_conv = self.pose_prior_mlp._modules[f'conv{last_layer_idx}']
+        nn.init.constant_(last_conv.weight, 0.0001)
+        if last_conv.bias is not None:
+            nn.init.constant_(last_conv.bias, 0.0001)
 
         # # TODO: Add learning rate for each parameter
         # l_dynamic = [
@@ -1022,10 +1027,6 @@ class GaussianHairModule(GaussianBaseModule):
             zero_pose = zero_pose[None].repeat(2, 1)
             all_pose = torch.cat([zero_pose, all_pose], dim=0)
 
-            # timestep = torch.arange(len(all_pose)).cuda()
-            # # L, 9
-            # timestep_embedding = self.pos_embedding(timestep[:, None])
-
             # cur_pose = all_pose[-1]
             # # 6 -> 54
             # pose_embedding = self.pos_embedding(cur_pose[None])
@@ -1037,9 +1038,10 @@ class GaussianHairModule(GaussianBaseModule):
             selected_pose = all_pose_embedding[-3:].flatten(0, 1)[None]
             #  3 * 54 ->  54
             pose_deform_embedding = self.pose_mlp(selected_pose) 
-            # 54 -> 
-            theta = self.theta + self.pose_prior_mlp(pose_deform_embedding)
-            beta = self.beta + self.pose_prior_mlp(pose_deform_embedding)
+            # 54 -> 8 * 512
+            delta_theta = self.pose_prior_mlp(pose_deform_embedding)
+            self.theta += delta_theta.view(1, 8, 512) 
+
 
         out = self.strands_generator(roots, self.theta, self.beta)
         pts_perm = out['strands'][0].position

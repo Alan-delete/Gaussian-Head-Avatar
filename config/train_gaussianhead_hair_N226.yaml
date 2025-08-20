@@ -107,7 +107,7 @@ gaussianhairmodule:
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000 copy' 
   pose_deform_method: 'rnn' #'mlp' # 'attention' 'rnn'
   pose_point_mlp: [81, 256, 3]
-  pose_prior_mlp: [54, 54] 
+  pose_prior_mlp: [54, 256, 512, 4096] 
   pos_freq: 4
   dist_threshold_near: 0.1
   dist_threshold_far: 0.25
