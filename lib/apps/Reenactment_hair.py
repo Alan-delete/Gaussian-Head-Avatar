@@ -518,6 +518,13 @@ class Reenactment_hair():
                 render_images = render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy()
                 cv2.imwrite(os.path.join(self.recorder.checkpoint_path, self.recorder.name, 'hair_strand_fully_deformed_{}.png'.format(self.camera_id)), (render_images * 255).astype(np.uint8))
 
+                render_segment = data['render_segments'][0].permute(1, 2, 0).detach().cpu().numpy()
+                cv2.imwrite(os.path.join(self.recorder.checkpoint_path, self.recorder.name, 'hair_strand_segment_{}.png'.format(self.camera_id)), (render_segment * 255).astype(np.uint8))
+
+                # render_orientation = data['render_orient'][0]
+                # images.append(wandb.Image(vis_orient(render_orientation, hair_mask), caption="rendered_orientation"))
+
+
 
                                                                            
 

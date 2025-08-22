@@ -1369,7 +1369,7 @@ class GaussianHairModule(GaussianBaseModule):
             points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
 
             self.points_posed = points
-            # self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
+            self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
             self.points_origins_posed = torch.cat([self.origins, self.points_posed], dim=1)
             self.dir_posed = (self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]).view(-1, 3)
             

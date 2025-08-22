@@ -8,6 +8,8 @@ import open3d as o3d
 import time
 from matplotlib import pyplot as plt
 
+from lib.utils.general_utils import vis_orient
+
 class MeshHeadTrainRecorder():
     def __init__(self, cfg):
         self.logdir = cfg.logdir
@@ -72,22 +74,22 @@ class MeshHeadTrainRecorder():
 #     vis_img = np.clip(rgb / norm[..., None], a_min=0, a_max=1) * mask[..., None] * 255
 #     return vis_img
 
-def vis_orient(orient_angle, mask):
-    device = orient_angle.device
-    deg = orient_angle * 180
-    red = torch.clamp(1 - torch.abs(deg -  0.) / 45., 0, 1) + torch.clamp(1 - torch.abs(deg - 180.) / 45., 0, 1) # vertical
-    green = torch.clamp(1 - torch.abs(deg - 90.) / 45., 0, 1) # horizontal
-    magenta = torch.clamp(1 - torch.abs(deg - 45.) / 45., 0, 1) # diagonal down
-    teal = torch.clamp(1 - torch.abs(deg - 135.) / 45., 0, 1) # diagonal up
-    bgr = (
-        torch.tensor([0, 0, 1])[:, None, None].to(device) * red +
-        torch.tensor([0, 1, 0])[:, None, None].to(device) * green +
-        torch.tensor([1, 0, 1])[:, None, None].to(device) * magenta +
-        torch.tensor([1, 1, 0])[:, None, None].to(device) * teal
-    )
-    rgb = torch.stack([bgr[2], bgr[1], bgr[0]], dim=0)
+# def vis_orient(orient_angle, mask):
+#     device = orient_angle.device
+#     deg = orient_angle * 180
+#     red = torch.clamp(1 - torch.abs(deg -  0.) / 45., 0, 1) + torch.clamp(1 - torch.abs(deg - 180.) / 45., 0, 1) # vertical
+#     green = torch.clamp(1 - torch.abs(deg - 90.) / 45., 0, 1) # horizontal
+#     magenta = torch.clamp(1 - torch.abs(deg - 45.) / 45., 0, 1) # diagonal down
+#     teal = torch.clamp(1 - torch.abs(deg - 135.) / 45., 0, 1) # diagonal up
+#     bgr = (
+#         torch.tensor([0, 0, 1])[:, None, None].to(device) * red +
+#         torch.tensor([0, 1, 0])[:, None, None].to(device) * green +
+#         torch.tensor([1, 0, 1])[:, None, None].to(device) * magenta +
+#         torch.tensor([1, 1, 0])[:, None, None].to(device) * teal
+#     )
+#     rgb = torch.stack([bgr[2], bgr[1], bgr[0]], dim=0)
 
-    return rgb * mask
+#     return rgb * mask
 
 
 def hair_strand_rendering(data, gaussianhead, gaussianhair, camera, iteration = 1e6):
