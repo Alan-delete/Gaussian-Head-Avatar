@@ -34,7 +34,7 @@ loss_weights:
   dssim: 0.2
   knn_feature: 10.
   mesh_dist: 0.001
-  orient: 0.5
+  orient: 1.
   rgb_hr: 1.
   rgb_lr: 1.
   segment: 10. #50.
