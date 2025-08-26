@@ -444,6 +444,11 @@ class Reenactment_hair():
                     data[data_item] = data[data_item].unsqueeze(0)
                     data[data_item].requires_grad = False
 
+                print("pose parameter checking ")
+                for param in ['flame_pose', 'flame_scale', 'pose' ]:
+                    if param in data:
+                        print(" - {}: {}".format(param, data[param][0]))
+
                 data['bg_rgb_color'] = torch.as_tensor([1.0, 1.0, 1.0]).cuda()
                 # perm prior texture
                 perm_texture = self.gaussianhair.get_perm_texture()
