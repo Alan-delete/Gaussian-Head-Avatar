@@ -482,8 +482,11 @@ class GaussianDataset(Dataset):
         mask = cv2.resize(io.imread(mask_path), (self.original_resolution, self.original_resolution)) / 255
         mask = mask[:, :, 0:1] if len(mask.shape) == 3 else mask[:, :, None]
 
-        bg_rgb_color = self.random_color[np.random.randint(0, 5)]
-        # bg_rgb_color = torch.as_tensor([1.0, 1.0, 1.0]) 
+        if self.split_strategy == 'test': 
+            bg_rgb_color = torch.as_tensor([1.0, 1.0, 1.0]) 
+        else:
+            bg_rgb_color = self.random_color[np.random.randint(0, 5)]
+            
         image = image * mask + (1 - mask) * bg_rgb_color.numpy()
 
         hair_mask_path = sample['hair_mask_path'][view]

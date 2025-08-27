@@ -179,6 +179,8 @@ class Reenactment_hair():
             data['bg_rgb_color'] = torch.as_tensor([1.0, 1.0, 1.0]).cuda()
             # TODO: select a few strands, color and enlarge them. Then render them
 
+            self.gaussianhair.eval()
+
             with torch.no_grad():
                 head_data = self.gaussianhead.generate(data)
 
