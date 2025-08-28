@@ -738,6 +738,39 @@ class GaussianHairModule(GaussianBaseModule):
         return dir2D
     
     
+    def count_inside_head_gaussians(self):
+        # negative relu
+        # calc distance points to mesh 
+        
+        # self.points_raw is of shape (strand_num, strand_length - 1, 3)
+
+        # points = self.points_posed.reshape(-1, 3)[indices]
+        points = self.points.reshape(-1, 3)
+        vertices = self.FLAME_mesh.verts_packed()  # (V, 3)
+        faces = self.FLAME_mesh.faces_packed()  # (F, 3)
+        mesh_h = kaolin.ops.mesh.index_vertices_by_faces(vertices.unsqueeze(0), faces)
+
+        # For posed points
+        points = self.points_posed.reshape(-1, 3)     
+
+        sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
+        inside = sign.bool()
+
+        # save points to ply, with inside outside differnt color
+        points = points.squeeze(0).cpu().numpy()
+        inside = inside.squeeze(0).cpu().numpy()
+        colors = np.zeros((points.shape[0], 3))
+        colors[inside] = [1, 0, 0]
+        colors[~inside] = [0, 1, 0]
+        points = np.concatenate([points, colors], axis=-1)
+        points[:, 3:] = (points[:, 3:] * 255).astype(np.uint8)
+        vertex = np.array( [tuple(p) for p in points], dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4'),('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
+        ply_el = PlyElement.describe(vertex, 'vertex')
+        PlyData([ply_el]).write('colored_points.ply')
+        
+        return inside.sum().item()
+
+
     def sign_distance_loss(self, max_num_points = 10000):
         # negative relu
         # calc distance points to mesh 

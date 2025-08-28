@@ -159,6 +159,7 @@ class Reenactment_hair():
         ssim_test_arr = []
         hair_psnr_test_arr = []
         hair_ssim_test_arr = []
+        num_gaussian_inside_head = []
 
         # for i in tqdm(range(frame_num, 0, -1)):
         for i in tqdm(range(frame_num)):
@@ -275,6 +276,9 @@ class Reenactment_hair():
             ssim_test_arr.append(ssim_test.item())
             hair_psnr_test_arr.append(hair_psnr_test.item())
             hair_ssim_test_arr.append(hair_ssim_test.item())
+            # only consider the canonical case
+            if i==0:
+                num_gaussian_inside_head.append(self.gaussianhair.count_inside_head_gaussians() if self.gaussianhair is not None else 0)
 
         non_rigid_video = []
         # if self.gaussianhair is not None:
@@ -617,6 +621,7 @@ class Reenactment_hair():
         print('Average hair psnr: %.4f' % np.mean(hair_psnr_test_arr))
         print('Average hair ssim: %.4f' % np.mean(hair_ssim_test_arr))
         print('Average loss_vgg: %.4f' % np.mean(loss_vgg_arr))
+        print('Average number of hair Gaussians inside head: %.2f' % np.mean(num_gaussian_inside_head))
 
         print('Saved head vertices to %s' % os.path.join(self.recorder.checkpoint_path , self.recorder.name, 'head_vertices_{}.npz'.format(self.camera_id)))
         print('Saved hair strand points to %s' % os.path.join(self.recorder.checkpoint_path,self.recorder.name, 'hair_strand_points_{}.npz'.format(self.camera_id)))
