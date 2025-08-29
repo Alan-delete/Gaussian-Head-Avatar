@@ -324,7 +324,10 @@ class GaussianHeadHairTrainer():
 
             segment_clone = render_segments.clone()
             segment_clone[:,1] = render_segments[:,1] + render_segments[:,2]
-            def l1_loss(a, b):
+            def l1_loss(a, b, mask = None):
+                if mask is not None:
+                    a = a * mask
+                    b = b * mask
                 return (a - b).abs().mean()
 
             def recall_loss(gt, pred):
@@ -336,7 +339,8 @@ class GaussianHeadHairTrainer():
             # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
             # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             # loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) + 0.2 * l1_loss(gt_segment[:,1], segment_clone[:,1]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
-            loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            loss_segment = (l1_loss(gt_segment[:,2], segment_clone[:,2], mask = visibles_coarse) + l1_loss(gt_segment[:,0], segment_clone[:,0], mask = visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            # loss_segment = (l1_loss(gt_segment, segment_clone, mask = visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             
             # step decay for segment loss
