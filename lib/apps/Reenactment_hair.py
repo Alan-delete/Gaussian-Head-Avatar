@@ -381,6 +381,26 @@ class Reenactment_hair():
                     strand_vis_video.append(hair_strand_image)
 
 
+        
+        output_path = os.path.join("{}/{}/GT_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
+        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (gt_video[0].shape[1], gt_video[0].shape[0]))
+        for frame in gt_video:
+            frame = (frame*255).astype(np.uint8)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            out.write(frame)
+        out.release()
+        print('Saved gt video to %s' % output_path)
+
+        
+        output_path = os.path.join("{}/{}/rendered_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
+        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (video[0].shape[1], video[0].shape[0]))
+        for frame in video:
+            frame = (frame*255).astype(np.uint8)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            out.write(frame)
+        out.release()
+        print('Saved gt video to %s' % output_path)
+
         # concatenate 
         combined_video = []
         for i in range(len(gt_video)):
