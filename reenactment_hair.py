@@ -146,11 +146,30 @@ if __name__ == '__main__':
 
     
     if not cfg.flame_gaussian_module.enable and os.path.exists(gaussianhead_checkpoint):
-        gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage))
+        gaussianhead.load_state_dict(torch.load(gaussianhead_checkpoint, map_location=lambda storage, loc: storage), strict=False)
         print('load gaussianhead checkpoint from %s' % gaussianhead_checkpoint)
     if os.path.exists(gaussianhair_checkpoint):
-        gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage), strict=False)
+        # gaussianhair.load_state_dict(torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage), strict=False)
         print('load gaussianhair checkpoint from %s' % gaussianhair_checkpoint)
+
+        state_dict = torch.load(gaussianhair_checkpoint, map_location=lambda storage, loc: storage)
+        # state_dict = checkpoint['state_dict']
+
+        model_dict = gaussianhair.state_dict()
+
+        for k in state_dict.keys():
+            if k in model_dict:
+                if state_dict[k].shape != model_dict[k].shape:
+                    print(f"Resizing {k}: {state_dict[k].shape} -> {model_dict[k].shape}")
+                    # Option A: truncate or pad
+                    min_shape = tuple(min(a, b) for a, b in zip(state_dict[k].shape, model_dict[k].shape))
+                    slices = tuple(slice(0, s) for s in min_shape)
+                    
+                    new_tensor = model_dict[k].clone()
+                    new_tensor[slices] = state_dict[k][slices]
+                    state_dict[k] = new_tensor
+                    
+        gaussianhair.load_state_dict(state_dict, strict=False)
 
     if cfg.flame_gaussian_module.enable and os.path.exists(gaussians_ply_checkpoint):
         gaussians.load_ply(gaussians_ply_checkpoint, has_target= False)
