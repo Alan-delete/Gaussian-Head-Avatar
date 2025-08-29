@@ -199,28 +199,46 @@ class Reenactment_hair():
                         data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
                         # data[key] = hair_data[key]
 
-                gt_hair_mask = data['hair_masks_coarse']
+                gt_hair_mask_coarse = data['hair_masks_coarse']
                 images_coarse = data['images_coarse']
                 visibles_coarse = data['visibles_coarse']
-                visibles_coarse = visibles_coarse * gt_hair_mask
+                visibles_coarse = visibles_coarse * gt_hair_mask_coarse
+
+                gt_hair_mask = data['hair_masks']
+                images = data['images']
+                visibles = data['visibles']
+                visibles = visibles * gt_hair_mask
 
                 data = self.camera.render_gaussian(data, images_coarse.shape[2])
+                # data = self.camera.render_gaussian(data, images.shape[2])
                 render_images = data['render_images'][: ,:3, ...]
-                # gt_images = data['images'][:, :3, ...]
-                gt_images = data['images_coarse'][:, :3, ...]
-                gt_video.append(gt_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
+
+                
+                gt_video.append(images_coarse[0].permute(1,2,0).clamp(0,1).cpu().numpy())
                 video.append(render_images[0].permute(1,2,0).clamp(0,1).cpu().numpy())
 
                 psnr_test = psnr(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
                 ssim_test = ssim(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
                 loss_ssim = 1.0 - ssim(render_images[:, 0:3, :, :]  * visibles_coarse, images_coarse * visibles_coarse)
 
-                hair_psnr_test = psnr(render_images[:, :3, :, :] * gt_hair_mask, images_coarse * gt_hair_mask)
-                hair_ssim_test = ssim(render_images[:, :3, :, :] * gt_hair_mask, images_coarse * gt_hair_mask)
+                hair_psnr_test = psnr(render_images[:, :3, :, :] * gt_hair_mask_coarse, images_coarse * gt_hair_mask_coarse)
+                hair_ssim_test = ssim(render_images[:, :3, :, :] * gt_hair_mask_coarse, images_coarse * gt_hair_mask_coarse)
                 # loss functions
                 loss_rgb_lr = F.l1_loss(render_images[:, 0:3, :, :] * visibles_coarse, images_coarse * visibles_coarse)
 
                 loss_vgg = self.fn_lpips((render_images[:,:3] * visibles_coarse), images_coarse * visibles_coarse, normalize=True).mean()
+
+                # psnr_test = psnr(render_images[:, 0:3, :, :]  * visibles, images * visibles)
+                # ssim_test = ssim(render_images[:, 0:3, :, :]  * visibles, images * visibles)
+                # loss_ssim = 1.0 - ssim(render_images[:, 0:3, :, :]  * visibles, images * visibles)
+
+                # hair_psnr_test = psnr(render_images[:, :3, :, :] * gt_hair_mask, images * gt_hair_mask)
+                # hair_ssim_test = ssim(render_images[:, :3, :, :] * gt_hair_mask, images * gt_hair_mask)
+                # # loss functions
+                # loss_rgb_lr = F.l1_loss(render_images[:, 0:3, :, :] * visibles, images * visibles)
+
+                # loss_vgg = self.fn_lpips((render_images[:,:3] * visibles), images * visibles, normalize=True).mean()
+
 
 
                 vertices , _ = self.flame_model(pose=data['flame_pose'], scale=data['flame_scale'], 
@@ -401,27 +419,6 @@ class Reenactment_hair():
         out.release()
         print('Saved gt video to %s' % output_path)
 
-        # concatenate 
-        combined_video = []
-        for i in range(len(gt_video)):
-            gt_image = gt_video[i]
-            render_image = video[i]
-            if self.gaussianhair is not None:
-                only_rigid_image = only_rigid_video[i] if len(only_rigid_video) > 0 else np.zeros_like(gt_image)
-                strand_vis_image = strand_vis_video[i] if len(strand_vis_video) > 0 else np.zeros_like(gt_image)
-                combined_image = np.concatenate([gt_image, render_image, only_rigid_image, strand_vis_image], axis=1)
-            else:
-                combined_image = np.concatenate([gt_image, render_image], axis=1)
-            combined_video.append(combined_image)
-        
-        output_path = os.path.join("{}/{}/combined_video_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
-        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (combined_video[0].shape[1], combined_video[0].shape[0]))
-        for frame in combined_video:
-            frame = (frame*255).astype(np.uint8)
-            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-            out.write(frame)
-        out.release()
-        print('Saved combined video to %s' % output_path)
 
 
         # if self.gaussianhair is not None:
@@ -642,6 +639,28 @@ class Reenactment_hair():
         print('Average hair ssim: %.4f' % np.mean(hair_ssim_test_arr))
         print('Average loss_vgg: %.4f' % np.mean(loss_vgg_arr))
         print('Average number of hair Gaussians inside head: %.2f' % np.mean(num_gaussian_inside_head))
+
+        # concatenate 
+        combined_video = []
+        for i in range(len(gt_video)):
+            gt_image = gt_video[i]
+            render_image = video[i]
+            if self.gaussianhair is not None:
+                only_rigid_image = only_rigid_video[i] if len(only_rigid_video) > 0 else np.zeros_like(gt_image)
+                strand_vis_image = strand_vis_video[i] if len(strand_vis_video) > 0 else np.zeros_like(gt_image)
+                combined_image = np.concatenate([gt_image, render_image, only_rigid_image, strand_vis_image], axis=1)
+            else:
+                combined_image = np.concatenate([gt_image, render_image], axis=1)
+            combined_video.append(combined_image)
+        
+        output_path = os.path.join("{}/{}/combined_video_{}.mp4".format(self.recorder.checkpoint_path, self.recorder.name, self.camera_id))
+        out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (combined_video[0].shape[1], combined_video[0].shape[0]))
+        for frame in combined_video:
+            frame = (frame*255).astype(np.uint8)
+            frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+            out.write(frame)
+        out.release()
+        print('Saved combined video to %s' % output_path)
 
         print('Saved head vertices to %s' % os.path.join(self.recorder.checkpoint_path , self.recorder.name, 'head_vertices_{}.npz'.format(self.camera_id)))
         print('Saved hair strand points to %s' % os.path.join(self.recorder.checkpoint_path,self.recorder.name, 'hair_strand_points_{}.npz'.format(self.camera_id)))
