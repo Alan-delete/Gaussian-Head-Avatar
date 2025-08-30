@@ -202,12 +202,12 @@ class Reenactment_hair():
                 gt_hair_mask_coarse = data['hair_masks_coarse']
                 images_coarse = data['images_coarse']
                 visibles_coarse = data['visibles_coarse']
-                visibles_coarse = visibles_coarse * gt_hair_mask_coarse
+                # visibles_coarse = visibles_coarse * gt_hair_mask_coarse
 
                 gt_hair_mask = data['hair_masks']
                 images = data['images']
                 visibles = data['visibles']
-                visibles = visibles * gt_hair_mask
+                # visibles = visibles * gt_hair_mask
 
                 data = self.camera.render_gaussian(data, images_coarse.shape[2])
                 # data = self.camera.render_gaussian(data, images.shape[2])

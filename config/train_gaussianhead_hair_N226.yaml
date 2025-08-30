@@ -10,8 +10,8 @@ optimize_pose: False
 use_supres: False 
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 175389030193 
-resume_training: False
+checkpoint_seed: 175585577969 
+resume_training: True
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
