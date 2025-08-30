@@ -155,6 +155,7 @@ class Reenactment_hair():
         loss_ssim_arr = []
         loss_rgb_arr = []
         loss_vgg_arr = []
+        hair_loss_vgg_arr = []
         psnr_test_arr = []
         ssim_test_arr = []
         hair_psnr_test_arr = []
@@ -228,6 +229,7 @@ class Reenactment_hair():
 
                 loss_vgg = self.fn_lpips((render_images[:,:3] * visibles_coarse), images_coarse * visibles_coarse, normalize=True).mean()
 
+                hair_loss_vgg = self.fn_lpips((render_images[:,:3] * gt_hair_mask_coarse), images_coarse * gt_hair_mask_coarse, normalize=True).mean()
                 # psnr_test = psnr(render_images[:, 0:3, :, :]  * visibles, images * visibles)
                 # ssim_test = ssim(render_images[:, 0:3, :, :]  * visibles, images * visibles)
                 # loss_ssim = 1.0 - ssim(render_images[:, 0:3, :, :]  * visibles, images * visibles)
@@ -290,6 +292,7 @@ class Reenactment_hair():
             loss_rgb_arr.append(loss_rgb_lr.item())
             loss_ssim_arr.append(loss_ssim.item())
             loss_vgg_arr.append(loss_vgg.item())
+            hair_loss_vgg_arr.append(hair_loss_vgg.item())
             psnr_test_arr.append(psnr_test.item())
             ssim_test_arr.append(ssim_test.item())
             hair_psnr_test_arr.append(hair_psnr_test.item())
@@ -639,6 +642,7 @@ class Reenactment_hair():
         print('Average hair ssim: %.4f' % np.mean(hair_ssim_test_arr))
         print('Average loss_vgg: %.4f' % np.mean(loss_vgg_arr))
         print('Average number of hair Gaussians inside head: %.2f' % np.mean(num_gaussian_inside_head))
+        print('Average hair loss_vgg: %.4f' % np.mean(hair_loss_vgg_arr))
 
         # concatenate 
         combined_video = []
