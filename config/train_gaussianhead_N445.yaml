@@ -1,0 +1,76 @@
+gpu_id: 0
+load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble445/meshhead_latest'
+load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble445/gaussianhead_latest_175157338241'
+load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble445/supres_latest_175157338241'
+load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble445/delta_poses_latest_175157338241'
+lr_net: 1e-4
+lr_pose: 1e-5
+batch_size: 1
+use_supres: False
+optimize_pose: True
+start_epoch: 0
+num_epochs: 18000 # 1800 # 400   
+
+dataset:
+  dataroot: 'datasets/mini_demo_dataset/445'
+  camera_ids: ['220700191', '221501007', '222200036', '222200037', '222200038', '222200039', '222200040', '222200041',
+               '222200042', '222200043', '222200044', '222200045', '222200046', '222200047', '222200048', '222200049']
+  original_resolution: 2048
+  resolution: 2048
+
+meshheadmodule:
+  geo_mlp: [27, 256, 256, 256, 256, 256, 132]
+  exp_color_mlp: [192, 256, 256, 32]
+  pose_color_mlp: [182, 128, 32]
+  exp_deform_mlp: [91, 256, 256, 256, 256, 256, 3]
+  pose_deform_mlp: [81, 256, 256, 3]
+  pos_freq: 4
+  model_bbox: [[-1.6, 1.6], [-1.7, 1.8], [-2.5, 1.0]]
+  dist_threshold_near: 0.1
+  dist_threshold_far: 0.25
+  deform_scale: 0.3
+  subdivide: False
+
+supresmodule:
+  input_dim: 32
+  output_dim: 3
+  network_capacity: 32
+
+gaussianheadmodule:
+  num_add_mouth_points: 3000
+  exp_color_mlp: [192, 256, 256, 32]
+  pose_color_mlp: [182, 128, 32]
+  exp_deform_mlp: [91, 256, 256, 256, 256, 256, 3]
+  pose_deform_mlp: [81, 256, 256, 3]
+  exp_attributes_mlp: [192, 256, 256, 256, 8]
+  pose_attributes_mlp: [182, 128, 128, 8]
+  exp_coeffs_dim: 64
+  pos_freq: 4
+  dist_threshold_near: 0.1
+  dist_threshold_far: 0.25
+  deform_scale: 0.3
+  attributes_scale: 0.2
+  densify: False
+  densification_interval: 100
+  opacity_reset_interval: 3_000
+  densify_from_iter: 500
+  densify_until_iter: 15_000
+  densify_grad_threshold: 0.0002
+  opacity_reg_from_iter: 30_000
+  gaussian_pruning_threshold: 0.5
+
+gaussianhairmodule:
+  enable: False
+
+flame_gaussian_module:
+  enable: False
+  
+
+recorder:
+  debug_tool: 'wandb' # 'tensorboard' or 'wandb'
+  name: 'gaussianhead_NeRSemble445'
+  logdir: 'log/gaussianhead_NeRSemble445'
+  checkpoint_path: 'checkpoints'
+  result_path: 'results'
+  save_freq: 20000
+  show_freq: 5000
