@@ -10,7 +10,7 @@ optimize_pose: False
 use_supres: False 
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 175648992583 
+checkpoint_seed: 175644098372 
 resume_training: True
 start_epoch: 0
 num_epochs: 400   
@@ -100,7 +100,7 @@ gaussianheadmodule:
   sh_degree: 0
 
 gaussianhairmodule:
-  enable: False
+  # enable: False
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_latest_174766867582'
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_17480233800' 
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000' 
@@ -176,7 +176,7 @@ gaussianhairmodule:
 flame_gaussian_module:
   # load_flame_gaussian_checkpoint: 'checkpoints/gaussianhead_renderme_single/head_latest_17480233800.ply'
   # load_flame_gaussian_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/head_latest_174777888919.ply' 
-  enable: True
+  enable: False
   iterations: 600_000  # 30_000 (original)
   position_lr_init: 0.005  # (scaled up according to mean triangle scale)  #0.00016 (original)
   position_lr_final: 0.00005  # (scaled up according to mean triangle scale) # 0.0000016 (original)
