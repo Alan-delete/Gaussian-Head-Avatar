@@ -19,6 +19,7 @@ from lib.module.flame_gaussian_model import FlameGaussianModel
 from lib.recorder.Recorder import GaussianHeadTrainRecorder
 from lib.trainer.GaussianHeadTrainer import GaussianHeadTrainer
 from lib.trainer.GaussianHeadHairTrainer import GaussianHeadHairTrainer
+from lib.apps.Reenactment_hair import Reenactment_hair
 
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -236,7 +237,6 @@ if __name__ == '__main__':
     trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair, supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
     trainer.train(start_epoch, start_epoch + cfg.num_epochs)
 
-    from lib.apps.Reenactment_hair import Reenactment_hair
     
     # breakpoint()
     if len(arg.dataroot) > 0:
