@@ -237,9 +237,9 @@ class GaussianDataset(Dataset):
         if len(self.camera_ids) == 0:
             image_paths = sorted(glob.glob(os.path.join(self.dataroot, 'images', '*', 'image_[0-9]*.jpg')))
             self.camera_ids = set([os.path.basename(image_path).split('_')[1].split('.')[0] for image_path in image_paths])
-        
-        self.test_camera_ids = cfg.test_camera_ids if hasattr(cfg, 'test_camera_ids') else []
-        
+
+        self.test_camera_ids = [i % len(self.camera_ids) for i in cfg.test_camera_ids]if hasattr(cfg, 'test_camera_ids') else []
+
         self.camera_ids = sorted(self.camera_ids)
 
         self.original_resolution = cfg.original_resolution
