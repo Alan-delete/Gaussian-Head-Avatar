@@ -223,6 +223,7 @@ class GaussianHeadHairTrainer():
             #     self.gaussianhair.oneupSHdegree()
 
             self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, 
+                                                    reset_opacity_filter = (iteration % 2000 != 0) , 
                                                     backprop_into_prior=backprop_into_prior, 
                                                     poses_history = data['poses_history'][0], 
                                                     global_pose = data['flame_pose'][0],

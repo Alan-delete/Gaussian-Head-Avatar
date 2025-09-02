@@ -414,6 +414,8 @@ class GaussianHairModule(GaussianBaseModule):
 
         self.register_buffer('origins_raw', torch.empty(0))
         self.origins_raw = torch.empty(0)
+
+        self.register_buffer('opacity_mask', torch.ones_like(torch.arange(self.num_strands)))
         
         self.points_raw = torch.empty(0)
         self.dir_raw = torch.empty(0)
@@ -1374,7 +1376,7 @@ class GaussianHairModule(GaussianBaseModule):
             return 0
 
     # set gaussian representation from hair strands
-    def generate_hair_gaussians(self, num_strands = -1, skip_color = False, skip_smpl = False, backprop_into_prior = False, poses_history = None, global_pose = None, global_scale = None, given_optical_flow = None, accumulate_optical_flow = None):
+    def generate_hair_gaussians(self, num_strands = -1, skip_color = False, reset_opacity_filter = False, skip_smpl = False, backprop_into_prior = False, poses_history = None, global_pose = None, global_scale = None, given_optical_flow = None, accumulate_optical_flow = None):
         # determine the number of strands to sample
         if num_strands < self.num_strands and num_strands != -1:
             strands_idx = torch.randperm(self.num_strands)[:num_strands]
@@ -1402,6 +1404,20 @@ class GaussianHairModule(GaussianBaseModule):
                 self.points_origins = torch.cat([self.origins, self.points], dim=1)
                 self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
         
+        # TODO: only do opacity filtering every 1K iter
+        # attention, here the opacity is before sigmoid
+        if reset_opacity_filter:
+            opacity = self.opacity_raw.view(self.num_strands, self.strand_length - 1, 1)[strands_idx].view(-1, 1)
+            mean_opacity_per_strand = torch.sigmoid(opacity).view(-1, self.strand_length - 1).mean(dim=-1) 
+            self.opacity_mask = mean_opacity_per_strand > 0.2
+
+        self.points = self.points[self.opacity_mask]
+        self.origins = self.origins[self.opacity_mask]
+        self.points_origins = self.points_origins[self.opacity_mask]
+        self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+        # intersection of strand_idx and opacity_mask
+        strands_idx = strands_idx[self.opacity_mask.cpu()]
+
         # Add dynamics to the hair strands
         # Points shift
         self.points_posed = self.points
@@ -1459,14 +1475,14 @@ class GaussianHairModule(GaussianBaseModule):
             points = torch.bmm(points * S, R.permute(0, 2, 1)) + T
             origins = torch.bmm(origins * S, R.permute(0, 2, 1)) + T
             
-            points_world = points.view(num_strands, self.strand_length - 1, 3)
-            origins_world = origins.view(num_strands, 1, 3)
+            points_world = points.view(-1, self.strand_length - 1, 3)
+            origins_world = origins.view(-1, 1, 3)
             self.points_origins_world = torch.cat([origins_world, points_world], dim=1)
             dir_world = (self.points_origins_world[:, 1:] - self.points_origins_world[:, :-1]).view(-1, 3)
             self.dir_world = dir_world
         else:
-            points_world = self.points_posed.view(num_strands, self.strand_length - 1, 3)
-            origins_world = self.origins.view(num_strands, 1, 3)
+            points_world = self.points_posed.view(-1, self.strand_length - 1, 3)
+            origins_world = self.origins.view(-1, 1, 3)
             self.points_origins_world = torch.cat([origins_world, points_world], dim=1)
             dir_world = (self.points_origins_world[:, 1:] - self.points_origins_world[:, :-1]).view(-1, 3)
             self.dir_world = dir_world
@@ -1479,7 +1495,7 @@ class GaussianHairModule(GaussianBaseModule):
         self.opacity = self.opacity_raw.view(self.num_strands, self.strand_length - 1, 1)[strands_idx].view(-1, 1)
         if not skip_color:
             self.features_dc = self.features_dc_raw.view(self.num_strands, self.strand_length - 1, 1, 3)[strands_idx].view(-1, 1, 3)
-            self.features_rest = self.features_rest_raw.view(self.num_strands, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3).view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3) 
+            self.features_rest = self.features_rest_raw.view(self.num_strands, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3)[strands_idx].view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3) 
 
         # TODO: split the hair strands to different groups based on length condition
         # for each group, decrease the strand point number.

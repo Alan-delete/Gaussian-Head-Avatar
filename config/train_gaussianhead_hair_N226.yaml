@@ -11,7 +11,7 @@ use_supres: False
 train_segment: True
 train_optical_flow: False
 checkpoint_seed: 175585577969 
-resume_training: True
+resume_training: False 
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
@@ -121,7 +121,7 @@ gaussianhairmodule:
   train_directions: False
   train_features_rest: True 
   train_width: False
-  train_opacity: False 
+  train_opacity: True 
   strand_scale : 0.001
   sh_degree : 3
 

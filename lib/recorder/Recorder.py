@@ -96,14 +96,6 @@ def hair_strand_rendering(data, gaussianhead, gaussianhair, camera, iteration = 
 
     device = data['images'].device
 
-    if gaussianhair is not None:
-        # highlight_strands_idx = torch.arange(0, gaussianhair.num_strands, 300, device= device)
-        highlight_strands_idx = torch.arange(0, gaussianhair.num_strands, 1, device= device)
-        gen = torch.Generator(device=device)
-        gen.manual_seed(77)
-        highlight_color = torch.rand(highlight_strands_idx.shape[0], 3, generator=gen, device=device).unsqueeze(1).repeat(1, 99, 1).unsqueeze(0)
-        
-            
     # data['poses_history'] = [None]
     data['bg_rgb_color'] = torch.as_tensor([1.0, 1.0, 1.0]).cuda()
     # TODO: select a few strands, color and enlarge them. Then render them
@@ -119,7 +111,13 @@ def hair_strand_rendering(data, gaussianhead, gaussianhair, camera, iteration = 
                                                     global_scale = data['flame_scale'][0])
             hair_data = gaussianhair.generate(data)
                     
-            color = hair_data['color'][..., :3].view(1, gaussianhair.num_strands, 99, 3)
+            color = hair_data['color'][..., :3].view(1, -1, gaussianhair.strand_length - 1, 3)
+            # highlight_strands_idx = torch.arange(0, gaussianhair.num_strands, 300, device= device)
+            highlight_strands_idx = torch.arange(0, color.shape[1], 1, device= device)
+            gen = torch.Generator(device=device)
+            gen.manual_seed(77)
+            highlight_color = torch.rand(highlight_strands_idx.shape[0], 3, generator=gen, device=device).unsqueeze(1).repeat(1, gaussianhair.strand_length - 1, 1).unsqueeze(0)
+            
             new_color = torch.tensor([1.0, 0.0, 0.0], device=color.device).view(1, 1, 1, 3)
 
             color[:, highlight_strands_idx, :, :] = highlight_color
@@ -127,13 +125,13 @@ def hair_strand_rendering(data, gaussianhead, gaussianhair, camera, iteration = 
             # Set every 100th strand to new_color
             # color[:, ::100, :, :] = torch.rand(color[:, ::100, :, :].shape[1], 3).unsqueeze(1).repeat(1, 100, 1).unsqueeze(0).to(color.device)
 
-            scales = hair_data['scales'].view(1, gaussianhair.num_strands, 99, 3)
+            scales = hair_data['scales'].view(1, -1, gaussianhair.strand_length - 1, 3)
             scales[:, highlight_strands_idx, :, 1: ] = 10 * scales[:, highlight_strands_idx, :, 1: ]
             hair_data['scales'] = scales.view(1, -1, 3)
 
 
             hair_data['opacity'][...] = 0.0
-            opacity = hair_data['opacity'].view(1, gaussianhair.num_strands, 99, 1)
+            opacity = hair_data['opacity'].view(1, -1, gaussianhair.strand_length - 1, 1)
             opacity[:, highlight_strands_idx, :, :] = 1.0
             hair_data['opacity'] = opacity.view(1, -1, 1)
 
