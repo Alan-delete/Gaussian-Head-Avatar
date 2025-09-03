@@ -153,7 +153,7 @@ class GaussianHeadHairTrainer():
                     if data_item in data:
                         data[data_item] = torch.as_tensor(data[data_item], device=self.device)
 
-                self.train_step(iteration, epoch, data, grad_accumulation = 4)
+                self.train_step(iteration, epoch, data, grad_accumulation = 1)
                 iteration += 1
 
 

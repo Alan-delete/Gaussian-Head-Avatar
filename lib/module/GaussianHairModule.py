@@ -1365,7 +1365,7 @@ class GaussianHairModule(GaussianBaseModule):
             pose_deform = softmax_weights @ guide_strand_deform
         
 
-        return pose_deform.view(self.num_strands, self.strand_length - 1, 3)
+        return pose_deform.view(-1, self.strand_length - 1, 3)
 
     def guide_strand_weight_loss(self):
         if self.use_guide_strands:
@@ -1437,7 +1437,7 @@ class GaussianHairModule(GaussianBaseModule):
             # # point : (frame_num-1, 3)
             pose_deform = self.get_pose_deform(poses_history)
             self.deform_regularization = pose_deform.norm(dim=-1).mean()
-            points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
+            points = self.points + pose_deform.view(-1 , self.strand_length - 1, 3)
 
             self.points_posed = points
             self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
