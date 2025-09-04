@@ -14,10 +14,10 @@ export EXP_PATH_1=$DATA_PATH/3d_gaussian_splatting/$EXP_NAME_1
 PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
 SUBJECT="258"
 SUBJECT="226"
-# SUBJECT="black"
+SUBJECT="black"
 # SUBJECT="100"
 SEQUENCE="EXP-1-head"
-SEQUENCE1="HAIR"
+SEQUENCE="HAIR"
 SEQUENCE2="EXP-5-mouth"
 # DATA_PATH="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT"
 # DATA_PATH1="/local/home/haonchen/Gaussian-Head-Avatar/datasets/mini_demo_dataset/$SUBJECT1"
@@ -307,8 +307,8 @@ conda activate gha2
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianhead.py --config config/train_gaussianhead_N$SUBJECT.yaml --dataroot $DATA_PATH
 
 # CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_N$SUBJECT.yaml --dataroot $DATA_PATH
-# CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N$SUBJECT.yaml --dataroot $DATA_PATH $DATA_PATH1 # $DATA_PATH2
-CUDA_VISIBLE_DEVICES="$GPU" python reenactment_hair.py --config  config/train_gaussianhead_hair_N$SUBJECT.yaml --dataroot $DATA_PATH1 --test_camera_id 25 
+CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_N$SUBJECT.yaml --dataroot $DATA_PATH # $DATA_PATH1 # $DATA_PATH2
+# CUDA_VISIBLE_DEVICES="$GPU" python reenactment_hair.py --config  config/train_gaussianhead_hair_N$SUBJECT.yaml --dataroot $DATA_PATH1 --test_camera_id 25 
 
 # CUDA_VISIBLE_DEVICES="$GPU" python train_meshhead.py --config config/train_meshhead_renderme.yaml --dataroot $DATA_PATH
 # CUDA_VISIBLE_DEVICES="$GPU" python train_gaussianheadhair.py --config config/train_gaussianhead_hair_renderme.yaml --dataroot $DATA_PATH
