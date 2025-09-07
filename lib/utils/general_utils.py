@@ -375,6 +375,49 @@ def GHA2FLAME(pose, scale, exp_coeff, id_coeff, exp_dims=50, id_dims=100):
 
     return 
 
+
+def to_rgb_pca(tex):
+    """ Convert texture to RGB using PCA. """
+    C, H, W = tex.shape
+    def normalize_per_channel(arr):
+        arr = arr.astype(np.float32)
+        arr_ = arr.reshape(C, -1)
+        mins = arr_.min(axis=1, keepdims=True)
+        maxs = arr_.max(axis=1, keepdims=True)
+        denom = np.maximum(maxs - mins, 1e-8)
+        arr_norm = ((arr_ - mins) / denom).reshape(C, H, W)
+        return arr_norm
+    chw = normalize_per_channel(tex)
+    X = chw.reshape(C, -1).T  # [H*W, C]
+    X_mean = X.mean(axis=0, keepdims=True)
+    Xc = X - X_mean
+    U, S, Vt = np.linalg.svd(Xc, full_matrices=False)
+    comps = Vt[:3]  # [3, C]
+    proj = Xc @ comps.T  # [H*W, 3]
+    # Normalize each channel to [0,1]
+    proj = (proj - proj.min(0)) / (proj.max(0) - proj.min(0) + 1e-8)
+    return proj.reshape(H, W, 3)
+
+
+def vis_orient(orient_angle, mask):
+    device = orient_angle.device
+    deg = orient_angle * 180
+    red = torch.clamp(1 - torch.abs(deg -  0.) / 45., 0, 1) + torch.clamp(1 - torch.abs(deg - 180.) / 45., 0, 1) # vertical
+    green = torch.clamp(1 - torch.abs(deg - 90.) / 45., 0, 1) # horizontal
+    magenta = torch.clamp(1 - torch.abs(deg - 45.) / 45., 0, 1) # diagonal down
+    teal = torch.clamp(1 - torch.abs(deg - 135.) / 45., 0, 1) # diagonal up
+    bgr = (
+        torch.tensor([0, 0, 1])[:, None, None].to(device) * red +
+        torch.tensor([0, 1, 0])[:, None, None].to(device) * green +
+        torch.tensor([1, 0, 1])[:, None, None].to(device) * magenta +
+        torch.tensor([1, 1, 0])[:, None, None].to(device) * teal
+    )
+    rgb = torch.stack([bgr[2], bgr[1], bgr[0]], dim=0)
+
+    return rgb * mask
+
+
+
 import os
 import shutil
 import glob

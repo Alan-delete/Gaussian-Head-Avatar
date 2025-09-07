@@ -1,5 +1,6 @@
 gpu_id: 0
 load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble258/meshhead_latest'
+# load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble226/meshhead_latest'
 # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
 # load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
 # load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
@@ -10,8 +11,8 @@ optimize_pose: False
 use_supres: False 
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 175354282931 
-resume_training: False 
+checkpoint_seed: 175640077655 
+resume_training: True 
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
@@ -65,7 +66,7 @@ supresmodule:
   network_capacity: 4
 
 gaussianheadmodule:
-  # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_latest_174766867582'
+  # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble226/gaussianhead_latest_175585577969'
   # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_iter_20000'
   # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_iter_20000 copy'
   num_add_mouth_points: 3000
@@ -101,7 +102,7 @@ gaussianheadmodule:
 
 gaussianhairmodule:
   # enable: False
-  # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_latest_174766867582'
+  # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_NeRSemble226/gaussianhair_latest_175585577969'
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_17480233800' 
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000' 
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000 copy' 

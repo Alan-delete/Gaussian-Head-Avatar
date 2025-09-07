@@ -19,6 +19,7 @@ from lib.module.flame_gaussian_model import FlameGaussianModel
 from lib.recorder.Recorder import GaussianHeadTrainRecorder
 from lib.trainer.GaussianHeadTrainer import GaussianHeadTrainer
 from lib.trainer.GaussianHeadHairTrainer import GaussianHeadHairTrainer
+from lib.apps.Reenactment_hair import Reenactment_hair
 
 
 os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
@@ -128,6 +129,7 @@ if __name__ == '__main__':
         gaussianhead = GaussianBaseModule().to(device)
 
     
+    # gaussians = FlameGaussianModel(0, disable_flame_static_offset = cfg.gaussianhairmodule.enable , n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
     gaussians = FlameGaussianModel(0, disable_flame_static_offset = cfg.gaussianhairmodule.enable ,
                                     not_finetune_flame_params = True, 
                                     n_shape= dataset.shape_dims, n_expr=dataset.exp_dims)
@@ -235,7 +237,6 @@ if __name__ == '__main__':
     trainer = GaussianHeadHairTrainer(dataloader, delta_poses, gaussianhead, gaussianhair, supres, camera, optimizer, recorder, cfg.gpu_id, cfg)
     trainer.train(start_epoch, start_epoch + cfg.num_epochs)
 
-    from lib.apps.Reenactment_hair import Reenactment_hair
     
     # breakpoint()
     if len(arg.dataroot) > 0:
@@ -254,5 +255,6 @@ if __name__ == '__main__':
         dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True)
 
     dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True) 
-    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=0)
+    app = Reenactment_hair(dataloader, gaussianhead, gaussianhair,supres, camera, recorder, cfg.gpu_id, freeview=False, camera_id=25)
     app.run()
+

@@ -1,5 +1,5 @@
 gpu_id: 0
-load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble226/meshhead_latest'
+load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble304/meshhead_latest'
 # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
 # load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
 # load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
@@ -10,8 +10,8 @@ optimize_pose: False
 use_supres: False 
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 175585577969 
-resume_training: False 
+checkpoint_seed: 175640357383 
+resume_training: True
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
@@ -114,21 +114,21 @@ gaussianhairmodule:
   deform_scale: 0.3
   attributes_scale: 0.2
   num_strands: 10_140
-  strand_length: 100 
+  strand_length: 100
   simplify_strands: False
   aspect_ratio: 1
   quantile: 1
   train_directions: False
   train_features_rest: True 
   train_width: False
-  train_opacity: True 
+  train_opacity: False 
   strand_scale : 0.001
   sh_degree : 3
 
   # # strands_reset_from_iter: 4_000
   # # just reset strands once at 15000, just [0, 15000] train the prior and [15000, ] train the strands
-  strands_reset_from_iter: 5_000
-  strands_reset_until_iter: 15_000 #5_000
+  strands_reset_from_iter: 10_000 #5_000
+  strands_reset_until_iter: 10_000 #5_000
   strands_reset_interval: 1_000
 
   # strands_reset_from_iter: 1_000000000000
@@ -187,13 +187,13 @@ flame_gaussian_module:
   scaling_lr: 0.017  # (scaled up according to mean triangle scale)  # 0.005 (original)
   rotation_lr: 0.001
   densify: True
-  densification_interval: 1_000  # 100 (original)
-  opacity_reset_interval: 6_000 # 3000 (original)
-  densify_from_iter: 5_000 #10_000  # 500 (original)
-  densify_until_iter: 60_000 #600_000  # 15_000 (original)
+  densification_interval: 2_000  # 100 (original)
+  opacity_reset_interval: 60_000 # 3000 (original)
+  densify_from_iter: 10_000  # 500 (original)
+  densify_until_iter: 600_000  # 15_000 (original)
   densify_grad_threshold: 0.0002
   # GaussianAvatars
-  flame_expr_lr: 1e-4
+  flame_expr_lr: 1e-3
   flame_trans_lr: 1e-6
   flame_pose_lr: 1e-5
   percent_dense: 0.01
@@ -213,7 +213,7 @@ flame_gaussian_module:
 recorder:
   debug_tool: 'wandb' # 'tensorboard' or 'wandb'
   # name: 'gaussianhead_hair_renderme_NoOpacity'
-  name: 'gaussianhead_NeRSemble226'
+  name: 'gaussianhead_NeRSemble304'
   # name: 'gaussianhead_hair_renderme'
   logdir: 'log/gaussianhead_NeRSemble031_Simplified'
   checkpoint_path: 'checkpoints'

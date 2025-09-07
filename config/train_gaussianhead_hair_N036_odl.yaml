@@ -1,26 +1,26 @@
 gpu_id: 0
-load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble226/meshhead_latest'
+load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble036/meshhead_latest'
 # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
 # load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
 # load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
-lr_net: 2e-4 #1e-4
+lr_net: 5e-4 #1e-4
 lr_pose: 1e-6
 batch_size: 1
 optimize_pose: False
 use_supres: False 
 train_segment: True
 train_optical_flow: False
-checkpoint_seed: 175585577969 
+checkpoint_seed: 175312138327 
 resume_training: False 
 start_epoch: 0
 num_epochs: 400   
 static_scene_init: True
-static_training_util_iter: 5000 #10000 # 20000  
+static_training_util_iter: 1 #5000 #10000 # 20000  
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
   camera_ids: []
-  test_camera_ids: [0]
+  test_camera_ids: [0, 25]
   selected_frames: []
   # selected_frames: ['0000', '0099']
   # selected_frames: ['0000', '0042' , '0048', '0054']
@@ -34,12 +34,12 @@ loss_weights:
   dssim: 0.2
   knn_feature: 10.
   mesh_dist: 0.001
-  orient: 1.
+  orient: 0.5
   rgb_hr: 1.
   rgb_lr: 1.
   segment: 10. #50.
   sign_distance: 1. # 0.5
-  strand_feature: 0.5
+  strand_feature: 0.01
   transform_reg: 10.
   vgg: 0.1
   deform_reg: 0.0
@@ -105,30 +105,30 @@ gaussianhairmodule:
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_renderme_single/gaussianhair_latest_17480233800' 
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000' 
   # load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000 copy' 
-  pose_deform_method: 'rnn' #'mlp' # 'attention' 'rnn'
+  pose_deform_method: 'mlp' # 'attention' 'rnn'
   pose_point_mlp: [81, 256, 3]
-  pose_prior_mlp: [54, 256, 512, 4096] 
+  pose_prior_mlp: [54, 54] 
   pos_freq: 4
   dist_threshold_near: 0.1
   dist_threshold_far: 0.25
   deform_scale: 0.3
   attributes_scale: 0.2
   num_strands: 10_140
-  strand_length: 100 
+  strand_length: 100
   simplify_strands: False
   aspect_ratio: 1
   quantile: 1
   train_directions: False
   train_features_rest: True 
   train_width: False
-  train_opacity: True 
+  train_opacity: False 
   strand_scale : 0.001
   sh_degree : 3
 
-  # # strands_reset_from_iter: 4_000
-  # # just reset strands once at 15000, just [0, 15000] train the prior and [15000, ] train the strands
-  strands_reset_from_iter: 5_000
-  strands_reset_until_iter: 15_000 #5_000
+  # strands_reset_from_iter: 4_000
+  # just reset strands once at 15000, just [0, 15000] train the prior and [15000, ] train the strands
+  strands_reset_from_iter: 8_000 #5_000
+  strands_reset_until_iter: 8_000 #5_000
   strands_reset_interval: 1_000
 
   # strands_reset_from_iter: 1_000000000000
@@ -160,8 +160,8 @@ gaussianhairmodule:
   # }
 
 
-  position_lr_init: 1.6e-4 
-  position_lr_final: 1.6e-6 
+  position_lr_init: 1.6e-5 # 1.6e-4 
+  position_lr_final: 1.6e-7  #1.6e-6 
   position_lr_delay_mult: 0.01
   position_lr_max_steps: 30_000
   # feature_lr: 0.0025
@@ -213,7 +213,7 @@ flame_gaussian_module:
 recorder:
   debug_tool: 'wandb' # 'tensorboard' or 'wandb'
   # name: 'gaussianhead_hair_renderme_NoOpacity'
-  name: 'gaussianhead_NeRSemble226'
+  name: 'gaussianhead_NeRSemble036'
   # name: 'gaussianhead_hair_renderme'
   logdir: 'log/gaussianhead_NeRSemble031_Simplified'
   checkpoint_path: 'checkpoints'

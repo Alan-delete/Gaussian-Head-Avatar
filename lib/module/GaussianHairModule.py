@@ -414,6 +414,8 @@ class GaussianHairModule(GaussianBaseModule):
 
         self.register_buffer('origins_raw', torch.empty(0))
         self.origins_raw = torch.empty(0)
+
+        self.register_buffer('opacity_mask', torch.ones_like(torch.arange(self.num_strands)))
         
         self.points_raw = torch.empty(0)
         self.dir_raw = torch.empty(0)
@@ -467,6 +469,7 @@ class GaussianHairModule(GaussianBaseModule):
             self.pose_key_mlp = MLP([self.pose_embedding_dim, 32, self.pose_deform_dim], last_op=None)
             self.pose_value_mlp = MLP([self.pose_embedding_dim, 32, self.pose_deform_dim], last_op=None)
             self.pose_deform_attention = torch.nn.MultiheadAttention(self.pose_deform_dim, 2, dropout=0.1)
+            self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
             self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
             l_dynamic = [
                 {'params': self.pose_query_mlp.parameters(), 'lr': 1e-3, "name": "pose_query"},
@@ -486,8 +489,8 @@ class GaussianHairModule(GaussianBaseModule):
                                     batch_first=True)
             self.pose_lstm_h0 = nn.Parameter(torch.zeros(1, self.pose_deform_dim).cuda(), requires_grad=True)
             self.pose_lstm_c0 = nn.Parameter(torch.zeros(1, self.pose_deform_dim).cuda(), requires_grad=True)
-            # self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
-            self.pose_point_mlp = MLP([43, 64, 3], last_op=None)
+            self.pose_prior_mlp = MLP(cfg.pose_prior_mlp, last_op=None)
+            self.pose_point_mlp = MLP(cfg.pose_point_mlp, last_op=None)
             l_dynamic = [
                 {'params': self.pose_lstm.parameters(), 'lr': 1e-3, "name": "pose_lstm"},
                 {'params': self.pose_point_mlp.parameters(), 'lr': 1e-3, "name": "pose_point"},
@@ -508,7 +511,12 @@ class GaussianHairModule(GaussianBaseModule):
         nn.init.constant_(last_conv.weight, 0.0001)
         if last_conv.bias is not None:
             nn.init.constant_(last_conv.bias, 0.0001)
-
+        
+        last_layer_idx = len(cfg.pose_prior_mlp) - 2  # dims has length L+1 => L layers
+        last_conv = self.pose_prior_mlp._modules[f'conv{last_layer_idx}']
+        nn.init.constant_(last_conv.weight, 0.0001)
+        if last_conv.bias is not None:
+            nn.init.constant_(last_conv.bias, 0.0001)
 
         # # TODO: Add learning rate for each parameter
         # l_dynamic = [
@@ -737,6 +745,39 @@ class GaussianHairModule(GaussianBaseModule):
         return dir2D
     
     
+    def count_inside_head_gaussians(self):
+        # negative relu
+        # calc distance points to mesh 
+        
+        # self.points_raw is of shape (strand_num, strand_length - 1, 3)
+
+        # points = self.points_posed.reshape(-1, 3)[indices]
+        points = self.points.reshape(-1, 3)
+        vertices = self.FLAME_mesh.verts_packed()  # (V, 3)
+        faces = self.FLAME_mesh.faces_packed()  # (F, 3)
+        mesh_h = kaolin.ops.mesh.index_vertices_by_faces(vertices.unsqueeze(0), faces)
+
+        # For posed points
+        points = self.points_posed.reshape(-1, 3)     
+
+        sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
+        inside = sign.bool()
+
+        # save points to ply, with inside outside differnt color
+        points = points.squeeze(0).cpu().numpy()
+        inside = inside.squeeze(0).cpu().numpy()
+        colors = np.zeros((points.shape[0], 3))
+        colors[inside] = [1, 0, 0]
+        colors[~inside] = [0, 1, 0]
+        points = np.concatenate([points, colors], axis=-1)
+        points[:, 3:] = (points[:, 3:] * 255).astype(np.uint8)
+        vertex = np.array( [tuple(p) for p in points], dtype=[('x', 'f4'), ('y', 'f4'), ('z', 'f4'),('red', 'u1'), ('green', 'u1'), ('blue', 'u1')])
+        ply_el = PlyElement.describe(vertex, 'vertex')
+        PlyData([ply_el]).write('colored_points.ply')
+        
+        return inside.sum().item()
+
+
     def sign_distance_loss(self, max_num_points = 10000):
         # negative relu
         # calc distance points to mesh 
@@ -787,18 +828,29 @@ class GaussianHairModule(GaussianBaseModule):
 
         # For posed points
         points = self.points_posed.reshape(-1, 3)[indices]
-        sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
-        inside = sign.bool()
-        # only inside points get the loss
-        points = points[inside]
-        # B, N, 3
-        points = points.view(1, -1, 3)
-        distance, _, _ = kaolin.metrics.trianglemesh.point_to_mesh_distance(
-            points.contiguous(), mesh_h.contiguous() #, vertices.contiguous(), faces.contiguous(), eps=1e-8
-        )
-        # distance = torch.sqrt(distance)  # kaolin outputs squared distance
-        distance[distance < 1e-5] = 0
-        dist_loss = distance.mean()
+        has_error = False
+        
+        try:
+            sign = kaolin.ops.mesh.check_sign(vertices[None], faces, points[None]).float().squeeze(0)
+            inside = sign.bool()
+            # only inside points get the loss
+            if inside.sum() == 0:
+                return 0
+            points = points[inside]
+            # B, N, 3
+            points = points.view(1, -1, 3)
+            distance, _, _ = kaolin.metrics.trianglemesh.point_to_mesh_distance(
+                points.contiguous(), mesh_h.contiguous() #, vertices.contiguous(), faces.contiguous(), eps=1e-8
+            )
+            # distance = torch.sqrt(distance)  # kaolin outputs squared distance
+            distance[distance < 1e-5] = 0
+            dist_loss = distance.mean()
+        except Exception as e:
+            print("Error occurred while computing distance loss:")
+            has_error = True
+        
+        if has_error:
+            breakpoint()
 
 
         return dist_loss 
@@ -986,6 +1038,19 @@ class GaussianHairModule(GaussianBaseModule):
             optimizable_tensors = self.replace_tensor_to_optimizer(self.optimizer, points_raw_new.detach(), "pts")
             self.points_raw = optimizable_tensors["pts"]
 
+    def get_perm_texture(self):
+        out = self.strands_generator(self.roots, self.theta, self.beta)
+        # output dictionary that contains(https://github.com/c-he/perm/tree/main):
+        # 1. "image": hair geometry texture, NCHW.
+        # 2. "strands": sampled and decoded strands.
+        # 3. "guide_strands": decoded guide strands.
+        # 4. "theta" and "beta": input or randomly sampled parameters.
+        # out['image'] : torch.Size([1, 64, 256, 256]) -> [10, 256, 256] is guide strand texture, generated from theta; [54, 256, 256] is residual texture, generated from beta
+        # out['guide_strands'] : torch.Size([1, 1024])
+        # out['guide_strands'][0].position.shape : torch.Size([1024, 100, 3])
+        return out['image']
+
+
     def sample_strands_from_prior(self, num_strands = -1, all_pose = None):
         # Subsample Perm strands if needed
         roots = self.roots
@@ -1004,10 +1069,6 @@ class GaussianHairModule(GaussianBaseModule):
             zero_pose = zero_pose[None].repeat(2, 1)
             all_pose = torch.cat([zero_pose, all_pose], dim=0)
 
-            # timestep = torch.arange(len(all_pose)).cuda()
-            # # L, 9
-            # timestep_embedding = self.pos_embedding(timestep[:, None])
-
             # cur_pose = all_pose[-1]
             # # 6 -> 54
             # pose_embedding = self.pos_embedding(cur_pose[None])
@@ -1019,9 +1080,10 @@ class GaussianHairModule(GaussianBaseModule):
             selected_pose = all_pose_embedding[-3:].flatten(0, 1)[None]
             #  3 * 54 ->  54
             pose_deform_embedding = self.pose_mlp(selected_pose) 
-            # 54 -> 
-            theta = self.theta + self.pose_prior_mlp(pose_deform_embedding)
-            beta = self.beta + self.pose_prior_mlp(pose_deform_embedding)
+            # 54 -> 8 * 512
+            delta_theta = self.pose_prior_mlp(pose_deform_embedding)
+            self.theta += delta_theta.view(1, 8, 512) 
+
 
         out = self.strands_generator(roots, self.theta, self.beta)
         pts_perm = out['strands'][0].position
@@ -1127,6 +1189,8 @@ class GaussianHairModule(GaussianBaseModule):
 
 
     def smoothness_loss(self):
+        final_loss = 0
+
         direction = self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]
         direction = direction.view(-1, self.strand_length - 1, 3)
         direction_unit = direction / direction.norm(dim=-1, keepdim=True)
@@ -1140,9 +1204,23 @@ class GaussianHairModule(GaussianBaseModule):
         # ranging [0, 2]
         cos_loss = 1 - consecutive_diff_cos
         # set a threshold tolarate some curvature
-        cos_loss = torch.clamp(cos_loss - 0.5, min=0, max=2)
-        
-        return cos_loss.mean()
+        cos_loss = torch.clamp(cos_loss - 0.1, min=0, max=2)
+        final_loss += cos_loss.mean()
+
+
+        direction = self.points_origins[:, 1:] - self.points_origins[:, :-1]
+        direction = direction.view(-1, self.strand_length - 1, 3)
+        direction_unit = direction / direction.norm(dim=-1, keepdim=True)
+
+        # cosine similarity
+        consecutive_diff_cos = (direction_unit[:, 1:] * direction_unit[:, :-1]).sum(dim=-1, keepdim=True)
+        # ranging [0, 2]
+        cos_loss = 1 - consecutive_diff_cos
+        # set a threshold tolarate some curvature
+        cos_loss = torch.clamp(cos_loss - 0.1, min=0, max=2)
+        final_loss += cos_loss.mean()
+
+        return final_loss
     
     def manual_smoothen(self, points, iteration = 1):
         # points: [strand_num, strand_length-1, 3]
@@ -1292,7 +1370,7 @@ class GaussianHairModule(GaussianBaseModule):
             pose_deform = softmax_weights @ guide_strand_deform
         
 
-        return pose_deform.view(self.num_strands, self.strand_length - 1, 3)
+        return pose_deform.view(-1, self.strand_length - 1, 3)
 
     def guide_strand_weight_loss(self):
         if self.use_guide_strands:
@@ -1303,7 +1381,7 @@ class GaussianHairModule(GaussianBaseModule):
             return 0
 
     # set gaussian representation from hair strands
-    def generate_hair_gaussians(self, num_strands = -1, skip_color = False, skip_smpl = False, backprop_into_prior = False, poses_history = None, global_pose = None, global_scale = None, given_optical_flow = None, accumulate_optical_flow = None):
+    def generate_hair_gaussians(self, num_strands = -1, skip_color = False, reset_opacity_filter = False, skip_smpl = False, backprop_into_prior = False, poses_history = None, global_pose = None, global_scale = None, given_optical_flow = None, accumulate_optical_flow = None):
         # determine the number of strands to sample
         if num_strands < self.num_strands and num_strands != -1:
             strands_idx = torch.randperm(self.num_strands)[:num_strands]
@@ -1331,6 +1409,20 @@ class GaussianHairModule(GaussianBaseModule):
                 self.points_origins = torch.cat([self.origins, self.points], dim=1)
                 self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
         
+        # TODO: only do opacity filtering every 1K iter
+        # attention, here the opacity is before sigmoid
+        if reset_opacity_filter:
+            opacity = self.opacity_raw.view(self.num_strands, self.strand_length - 1, 1)[strands_idx].view(-1, 1)
+            mean_opacity_per_strand = torch.sigmoid(opacity).view(-1, self.strand_length - 1).mean(dim=-1) 
+            self.opacity_mask = mean_opacity_per_strand > 0.2
+
+        self.points = self.points[self.opacity_mask]
+        self.origins = self.origins[self.opacity_mask]
+        self.points_origins = self.points_origins[self.opacity_mask]
+        self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+        # intersection of strand_idx and opacity_mask
+        strands_idx = strands_idx[self.opacity_mask.cpu()]
+
         # Add dynamics to the hair strands
         # Points shift
         self.points_posed = self.points
@@ -1350,10 +1442,10 @@ class GaussianHairModule(GaussianBaseModule):
             # # point : (frame_num-1, 3)
             pose_deform = self.get_pose_deform(poses_history)
             self.deform_regularization = pose_deform.norm(dim=-1).mean()
-            points = self.points + pose_deform.view(num_strands, self.strand_length - 1, 3)
+            points = self.points + pose_deform.view(-1 , self.strand_length - 1, 3)
 
             self.points_posed = points
-            # self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
+            self.points_posed = self.manual_smoothen(self.points_posed, iteration=1)
             self.points_origins_posed = torch.cat([self.origins, self.points_posed], dim=1)
             self.dir_posed = (self.points_origins_posed[:, 1:] - self.points_origins_posed[:, :-1]).view(-1, 3)
             
@@ -1388,14 +1480,14 @@ class GaussianHairModule(GaussianBaseModule):
             points = torch.bmm(points * S, R.permute(0, 2, 1)) + T
             origins = torch.bmm(origins * S, R.permute(0, 2, 1)) + T
             
-            points_world = points.view(num_strands, self.strand_length - 1, 3)
-            origins_world = origins.view(num_strands, 1, 3)
+            points_world = points.view(-1, self.strand_length - 1, 3)
+            origins_world = origins.view(-1, 1, 3)
             self.points_origins_world = torch.cat([origins_world, points_world], dim=1)
             dir_world = (self.points_origins_world[:, 1:] - self.points_origins_world[:, :-1]).view(-1, 3)
             self.dir_world = dir_world
         else:
-            points_world = self.points_posed.view(num_strands, self.strand_length - 1, 3)
-            origins_world = self.origins.view(num_strands, 1, 3)
+            points_world = self.points_posed.view(-1, self.strand_length - 1, 3)
+            origins_world = self.origins.view(-1, 1, 3)
             self.points_origins_world = torch.cat([origins_world, points_world], dim=1)
             dir_world = (self.points_origins_world[:, 1:] - self.points_origins_world[:, :-1]).view(-1, 3)
             self.dir_world = dir_world
@@ -1408,7 +1500,7 @@ class GaussianHairModule(GaussianBaseModule):
         self.opacity = self.opacity_raw.view(self.num_strands, self.strand_length - 1, 1)[strands_idx].view(-1, 1)
         if not skip_color:
             self.features_dc = self.features_dc_raw.view(self.num_strands, self.strand_length - 1, 1, 3)[strands_idx].view(-1, 1, 3)
-            self.features_rest = self.features_rest_raw.view(self.num_strands, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3).view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3) 
+            self.features_rest = self.features_rest_raw.view(self.num_strands, self.strand_length - 1, (self.max_sh_degree + 1) ** 2 - 1, 3)[strands_idx].view(-1, (self.max_sh_degree + 1) ** 2 - 1, 3) 
 
         # TODO: split the hair strands to different groups based on length condition
         # for each group, decrease the strand point number.

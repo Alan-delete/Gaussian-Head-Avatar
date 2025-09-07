@@ -192,18 +192,20 @@ class MultiDataset(Dataset):
         self.cumulative_sizes = [0] + list(torch.cumsum(torch.tensor([len(d) for d in datasets]), dim=0))
         self.train_meshes = {}
         accumulated_size = 0
-        for i in range(len(datasets)):
-            for key in datasets[i].train_meshes:
-                self.train_meshes[key + accumulated_size] = datasets[i].train_meshes[key]
-            accumulated_size += len(datasets[i])
 
-        self.R = datasets[0].R
-        self.T = datasets[0].T
-        self.S = datasets[0].S
-        self.shape_dims = datasets[0].shape_dims
-        self.exp_dims = datasets[0].exp_dims
-        self.num_exp_id = datasets[0].num_exp_id
-        self.flame_mesh_path = datasets[0].flame_mesh_path
+        if  hasattr(datasets[0], 'train_meshes'): 
+            for i in range(len(datasets)):
+                for key in datasets[i].train_meshes:
+                    self.train_meshes[key + accumulated_size] = datasets[i].train_meshes[key]
+                accumulated_size += len(datasets[i])
+
+            self.R = datasets[0].R
+            self.T = datasets[0].T
+            self.S = datasets[0].S
+            self.shape_dims = datasets[0].shape_dims
+            self.exp_dims = datasets[0].exp_dims
+            self.num_exp_id = datasets[0].num_exp_id
+            self.flame_mesh_path = datasets[0].flame_mesh_path
 
     def __len__(self):
         return self.cumulative_sizes[-1].item()
@@ -235,9 +237,9 @@ class GaussianDataset(Dataset):
         if len(self.camera_ids) == 0:
             image_paths = sorted(glob.glob(os.path.join(self.dataroot, 'images', '*', 'image_[0-9]*.jpg')))
             self.camera_ids = set([os.path.basename(image_path).split('_')[1].split('.')[0] for image_path in image_paths])
-        
-        self.test_camera_ids = cfg.test_camera_ids if hasattr(cfg, 'test_camera_ids') else []
-        
+
+        self.test_camera_ids = [i % len(self.camera_ids) for i in cfg.test_camera_ids]if hasattr(cfg, 'test_camera_ids') else []
+
         self.camera_ids = sorted(self.camera_ids)
 
         self.original_resolution = cfg.original_resolution
@@ -465,12 +467,14 @@ class GaussianDataset(Dataset):
         index = index % len(self.samples)
 
         sample = self.samples[index]
+        # randomly pick a view
+        view = random.sample(range(len(self.camera_ids)), 1)[0] if view is None else view % len(self.camera_ids)
+        
         # Unless specified, randomly pick a view, the picked view should not in self.test_camera_ids
         if view is None:
-            view = random.choice([i for i in range(len(self.camera_ids)) if self.camera_ids[i] not in self.test_camera_ids])
+            view = random.choice([i for i in range(len(self.camera_ids)) if i not in self.test_camera_ids])
         else:
             view = view % len(self.camera_ids)
-        # view = random.sample(range(len(self.camera_ids)), 1)[0] if view is None else view % len(self.camera_ids)
 
         image_path = sample['image_paths'][view]
         image = cv2.resize(io.imread(image_path), (self.original_resolution, self.original_resolution)) / 255
@@ -478,8 +482,11 @@ class GaussianDataset(Dataset):
         mask = cv2.resize(io.imread(mask_path), (self.original_resolution, self.original_resolution)) / 255
         mask = mask[:, :, 0:1] if len(mask.shape) == 3 else mask[:, :, None]
 
-        bg_rgb_color = self.random_color[np.random.randint(0, 5)]
-        # bg_rgb_color = torch.as_tensor([1.0, 1.0, 1.0]) 
+        if self.split_strategy == 'test': 
+            bg_rgb_color = torch.as_tensor([1.0, 1.0, 1.0]) 
+        else:
+            bg_rgb_color = self.random_color[np.random.randint(0, 5)]
+            
         image = image * mask + (1 - mask) * bg_rgb_color.numpy()
 
         hair_mask_path = sample['hair_mask_path'][view]

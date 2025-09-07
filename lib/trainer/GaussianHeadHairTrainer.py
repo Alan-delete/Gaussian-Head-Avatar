@@ -185,7 +185,7 @@ class GaussianHeadHairTrainer():
         
         B = data['pose'].shape[0]
         if self.gaussianhead is not None:
-            self.gaussianhead.update_learning_rate(iteration)
+            # self.gaussianhead.update_learning_rate(iteration)
             head_data = self.gaussianhead.generate(data)
 
             if self.cfg.train_optical_flow and data['poses_history'].shape[1] >= 2:
@@ -225,6 +225,7 @@ class GaussianHeadHairTrainer():
             #     self.gaussianhair.oneupSHdegree()
 
             self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, 
+                                                    reset_opacity_filter = (iteration % 2000 != 0) , 
                                                     backprop_into_prior=backprop_into_prior, 
                                                     poses_history = data['poses_history'][0], 
                                                     global_pose = data['flame_pose'][0],
@@ -339,7 +340,7 @@ class GaussianHeadHairTrainer():
 
             segment_clone = render_segments.clone()
             segment_clone[:,1] = render_segments[:,1] + render_segments[:,2]
-            def l1_loss(a, b, mask=None):
+            def l1_loss(a, b, mask = None):
                 if mask is not None:
                     a = a * mask
                     b = b * mask
@@ -360,7 +361,8 @@ class GaussianHeadHairTrainer():
             # too few positive samples, reduce the penalty of false positive(when predicted value larger than gt value)
             # loss_segment = (relax_recall_loss(gt_segment[:,2] * visibles_coarse, segment_clone[:,2] * visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             # loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2]) + 0.2 * l1_loss(gt_segment[:,1], segment_clone[:,1]))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
-            loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2], mask=visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            loss_segment = (l1_loss(gt_segment[:,2], segment_clone[:,2], mask = visibles_coarse) + l1_loss(gt_segment[:,0], segment_clone[:,0], mask = visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            # loss_segment = (l1_loss(gt_segment, segment_clone, mask = visibles_coarse))  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             # loss_segment = (l1_loss(gt_segment * visibles_coarse, render_segments * visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             
             # step decay for segment loss
@@ -385,20 +387,19 @@ class GaussianHeadHairTrainer():
 
             loss_knn_feature = 0 # self.gaussianhair.knn_feature_loss()
 
-            loss_strand_feature = self.gaussianhair.strand_feature_loss()
+            loss_strand_feature = 0 #self.gaussianhair.strand_feature_loss()
 
             loss_deform_reg = self.gaussianhair.deform_regularization_loss()
 
-            # gradual increase the smoothness loss
-            loss_smoothness = self.gaussianhair.smoothness_loss() * 1000
-            # loss_smoothness = self.gaussianhair.smoothness_loss() * min(1000, iteration / 50)
+            loss_smoothness = self.gaussianhair.smoothness_loss() * 2e6
 
             if False and 'depth' in data:
                 # loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_mask) * 5
                 loss_depth = l2_depth_loss(render_images[:, 9:10, :, :], data['depth'], mask=visibles_coarse * gt_hair_mask) * 5
 
             if  iteration > static_training_util_iter:
-                loss_elastic = self.gaussianhair.elastic_potential_loss() * 500000 
+                # loss_elastic = self.gaussianhair.elastic_potential_loss() * 100000 
+                loss_elastic = self.gaussianhair.elastic_potential_loss() * 500 
                 loss_guide_strand_loss = self.gaussianhair.guide_strand_weight_loss() * 0.01 
                 
 

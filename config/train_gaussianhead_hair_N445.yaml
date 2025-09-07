@@ -1,5 +1,5 @@
 gpu_id: 0
-load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble226/meshhead_latest'
+load_meshhead_checkpoint: 'checkpoints/meshhead_NeRSemble445/meshhead_latest'
 # load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/gaussianhead_latest'
 # load_supres_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/supres_latest'
 # load_delta_poses_checkpoint: 'checkpoints/gaussianhead_NeRSemble031/delta_poses_latest'
@@ -114,21 +114,21 @@ gaussianhairmodule:
   deform_scale: 0.3
   attributes_scale: 0.2
   num_strands: 10_140
-  strand_length: 100 
+  strand_length: 100
   simplify_strands: False
   aspect_ratio: 1
   quantile: 1
   train_directions: False
   train_features_rest: True 
   train_width: False
-  train_opacity: True 
+  train_opacity: False 
   strand_scale : 0.001
   sh_degree : 3
 
   # # strands_reset_from_iter: 4_000
   # # just reset strands once at 15000, just [0, 15000] train the prior and [15000, ] train the strands
-  strands_reset_from_iter: 5_000
-  strands_reset_until_iter: 15_000 #5_000
+  strands_reset_from_iter: 10_000 #5_000
+  strands_reset_until_iter: 10_000 #5_000
   strands_reset_interval: 1_000
 
   # strands_reset_from_iter: 1_000000000000
@@ -213,7 +213,7 @@ flame_gaussian_module:
 recorder:
   debug_tool: 'wandb' # 'tensorboard' or 'wandb'
   # name: 'gaussianhead_hair_renderme_NoOpacity'
-  name: 'gaussianhead_NeRSemble226'
+  name: 'gaussianhead_NeRSemble445'
   # name: 'gaussianhead_hair_renderme'
   logdir: 'log/gaussianhead_NeRSemble031_Simplified'
   checkpoint_path: 'checkpoints'
