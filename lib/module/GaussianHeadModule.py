@@ -266,18 +266,18 @@ class GaussianHeadModule(GaussianBaseModule):
 
             scales = scales * S
 
-        # TODO: If we decide that hair only has diffuse color, then the following direction staff is not needed
-        for b in range(B):
-            # # view dependent/independent color
-            # shs_view = self.get_features.transpose(1, 2).view(-1, 3, (self.max_sh_degree+1)**2)
-            # # dir_pp = (xyz - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
-            # dir_pp = (xyz[b] - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
-            # dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
-            # sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
-            # color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
+        # # TODO: If we decide that hair only has diffuse color, then the following direction staff is not needed
+        # for b in range(B):
+        #     # view dependent/independent color
+        #     shs_view = self.get_features.transpose(1, 2).view(-1, 3, (self.max_sh_degree+1)**2)
+        #     # dir_pp = (xyz - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
+        #     dir_pp = (xyz[b] - data['camera_center'][b].repeat(self.get_features.shape[0], 1))
+        #     dir_pp_normalized = dir_pp / dir_pp.norm(dim=1, keepdim=True)
+        #     sh2rgb = eval_sh(self.active_sh_degree, shs_view, dir_pp_normalized)
+        #     color[b,:,:3] = torch.clamp_min(sh2rgb + 0.5, 0.0) 
 
-            z = self.get_depths(world_view_transform[b], xyz[b])
-            color[b, :, 9:10] = z
+        #     z = self.get_depths(world_view_transform[b], xyz[b])
+        #     color[b, :, 9:10] = z
 
         # data['exp_deform'] = exp_deform
         color[...,3:6] = self.get_seg_label.unsqueeze(0).repeat(B, 1, 1)
@@ -294,86 +294,6 @@ class GaussianHeadModule(GaussianBaseModule):
 
     def add_densification_stats(self, viewspace_point_tensor, update_filter):
         # batched, [B, ...] -> [...]
-        if len(viewspace_point_tensor.shape) > 2: 
-            grad = viewspace_point_tensor.grad[0]
-        else:
-            grad = viewspace_point_tensor.grad
-
-        # filter out out-of-bound points
-        grad = grad[:self.xyz.shape[0]]
-
-        self.xyz_gradient_accum[update_filter] += torch.norm(grad[update_filter], dim=-1, keepdim=True)
-        self.denom[update_filter] += 1
-
-# the Gaussian model that combines Gaussian Head Module(unstruct) and Gaussian Hair Module(struct)
-class GaussianModule(GaussianBaseModule):
-    def __init__(self, cfg, gaussianhead: GaussianHeadModule, optimizer_unstruct, gaussianhair: GaussianHairModule, optimizer_struct = None):
-        super(GaussianModule, self).__init__()
-        self.cfg = cfg
-
-        self.gaussian_head = gaussianhead
-        self.optimizer_unstruct = optimizer_unstruct
-
-        self.gaussian_hair = gaussianhair
-        self.optimizer_struct = optimizer_struct
-        
-
-    @property
-    def get_xyz(self):
-        return torch.cat([self.gaussian_head.get_xyz, self.gaussian_hair.get_xyz], dim=0)
-
-    @property
-    def get_scales(self):
-        return torch.cat([self.gaussian_head.get_scales, self.gaussian_hair.get_scales], dim=0)
-    
-    @property
-    def get_rotation(self):
-        return torch.cat([self.gaussian_head.get_rotation, self.gaussian_hair.get_rotation], dim=0)
-    
-    @property
-    def get_opacity(self):
-        return torch.cat([self.gaussian_head.get_opacity, self.gaussian_hair.get_opacity], dim=0)
-    
-    @property
-    def get_features(self):
-        return torch.cat([self.gaussian_head.get_features, self.gaussian_hair.get_features], dim=0)
-    
-    @property
-    def get_width(self):
-        return torch.cat([self.gaussian_head.get_width, self.gaussian_hair.get_width], dim=0)
-    
-    @property
-    def get_hair_label(self):
-        return torch.cat([torch.zeros_like(self.gaussian_head.get_opacity), torch.ones_like(self.gaussian_hair.get_opacity)], dim=0)
-    
-    @property
-    def get_body_label(self):
-        return torch.cat([torch.ones_like(self.gaussian_head.get_opacity), torch.zeros_like(self.gaussian_hair.get_opacity)], dim=0)
-
-    @property
-    def get_seg_label(self):
-        return torch.cat([self.gaussian_head.get_seg_label, self.gaussian_hair.get_seg_label], dim=0)
-    
-    def densify_and_prune(self, max_grad, min_opacity, extent, max_screen_size):
-        return self.gaussian_head.densify_and_prune(max_grad, min_opacity, extent, max_screen_size)
-    
-    def reset_opacity(self):
-        return self.gaussian_head.reset_opacity()
-
-
-    def generate(self, data):
-        head_data = self.gaussian_head.generate(data)
-        hair_data = self.gaussian_hair.generate(data)
-
-        for key in ['xyz', 'color', 'scales', 'rotation', 'opacity']:
-            # first dimension is batch size, concat along the second dimension
-            data[key] = torch.cat([head_data[key], hair_data[key]], dim=1)
-
-        return data
-
-    # only deal with the part of unstructured gaussian(i.e. head)
-    def add_densification_stats(self, viewspace_point_tensor, update_filter):
-        # batched
         if len(viewspace_point_tensor.shape) > 2: 
             grad = viewspace_point_tensor.grad[0]
         else:

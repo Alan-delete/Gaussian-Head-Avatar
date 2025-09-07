@@ -27,7 +27,6 @@ os.environ['CUDA_LAUNCH_BLOCKING'] = '1'
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, default='config/train_s2_N031.yaml')
-    # parser.add_argument('--dataroot', type=str, default='')
     parser.add_argument('--dataroot', type=str, nargs='+', default=[])
     arg = parser.parse_args()
 
@@ -49,9 +48,6 @@ if __name__ == '__main__':
         # debug select frames is to only load a few frames for debugging
         dataset = GaussianDataset(cfg.dataset)
         dataloader = DataLoaderX(dataset, batch_size=cfg.batch_size, shuffle=True, pin_memory=True)
-
-    # test_dataset = GaussianDataset(cfg.dataset, train=False) 
-    # test_dataloader = DataLoaderX(test_dataset, batch_size=cfg.batch_size, shuffle=False, pin_memory=True)
 
     device = torch.device('cuda:%d' % cfg.gpu_id)
     torch.cuda.set_device(cfg.gpu_id)
@@ -77,7 +73,6 @@ if __name__ == '__main__':
             with torch.no_grad():
                 data = meshhead.reconstruct_neutral()
 
-        # contraint the number of vertices to 100000, otherwise out of memory for 24GB
         select_indices = torch.randperm(data['verts'].shape[0])[:50000]
         # use all 
         select_indices = range(data['verts'].shape[0])

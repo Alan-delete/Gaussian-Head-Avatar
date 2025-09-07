@@ -16,6 +16,9 @@ import numpy as np
 import random
 import math
 import torch.nn.functional as F
+import os
+import shutil
+import glob
 
 C0 = 0.28209479177387814
 C1 = 0.4886025119029199
@@ -418,9 +421,7 @@ def vis_orient(orient_angle, mask):
 
 
 
-import os
-import shutil
-import glob
+
 # used to convert the strcuture input_folder/images/frame_id/image_camera_id.jpg
 # to the structure input_folder/images/camera_id/image_frame_id.jpg
 # e.g. input_folder/images/00001/image_222200049.jpg
@@ -440,6 +441,256 @@ def convert_file_structure(img_dir, output_dir):
             new_image_path = os.path.join(new_camera_dir, new_image_name)
             # copy the image to the new location
             shutil.copy(old_image_path, new_image_path)
+
+
+def dot(a, b, dim=-1, keepdim=True):
+    return (a*b).sum(dim=dim, keepdim=keepdim)
+        
+def parallel_transport(a, b):
+    a = torch.nn.functional.normalize(a, dim=-1)
+    b = torch.nn.functional.normalize(b, dim=-1)
+            
+    s = 1 + dot(a, b, dim=-1, keepdim=True)
+    v = torch.cross(a, b, dim=-1)
+    q = torch.cat([s, v], dim=-1)
+            
+    # q = F.normalize(q, dim=-1)
+
+    return q
+
+def get_expon_lr_func(
+    lr_init, lr_final, lr_delay_steps=0, lr_delay_mult=1.0, max_steps=1000000
+):
+    """
+    Copied from Plenoxels
+
+    Continuous learning rate decay function. Adapted from JaxNeRF
+    The returned rate is lr_init when step=0 and lr_final when step=max_steps, and
+    is log-linearly interpolated elsewhere (equivalent to exponential decay).
+    If lr_delay_steps>0 then the learning rate will be scaled by some smooth
+    function of lr_delay_mult, such that the initial learning rate is
+    lr_init*lr_delay_mult at the beginning of optimization but will be eased back
+    to the normal learning rate when steps>lr_delay_steps.
+    :param conf: config subtree 'lr' or similar
+    :param max_steps: int, the number of steps during optimization.
+    :return HoF which takes step as input
+    """
+
+    def helper(step):
+        if step < 0 or (lr_init == 0.0 and lr_final == 0.0):
+            # Disable this parameter
+            return 0.0
+        if lr_delay_steps > 0:
+            # A kind of reverse cosine decay.
+            delay_rate = lr_delay_mult + (1 - lr_delay_mult) * np.sin(
+                0.5 * np.pi * np.clip(step / lr_delay_steps, 0, 1)
+            )
+        else:
+            delay_rate = 1.0
+        t = np.clip(step / max_steps, 0, 1)
+        log_lerp = np.exp(np.log(lr_init) * (1 - t) + np.log(lr_final) * t)
+        return delay_rate * log_lerp
+
+    return helper
+
+
+# from https://gist.github.com/dendenxu/ee5008acb5607195582e7983a384e644#file-moller_trumbore-py-L8
+
+from typing import Tuple
+
+def multi_indexing(index: torch.Tensor, shape: torch.Size, dim=-2):
+    shape = list(shape)
+    back_pad = len(shape) - index.ndim
+    for _ in range(back_pad):
+        index = index.unsqueeze(-1)
+    expand_shape = shape
+    expand_shape[dim] = -1
+    return index.expand(*expand_shape)
+
+
+
+def normalize(x: torch.Tensor, eps: float = 1e-8) -> torch.Tensor:
+    return x / (x.norm(dim=-1, keepdim=True) + eps)
+
+
+def multi_gather(values: torch.Tensor, index: torch.Tensor, dim=-2):
+    # take care of batch dimension of, and acts like a linear indexing in the target dimention
+    # we assume that the index's last dimension is the dimension to be indexed on
+    return values.gather(dim, multi_indexing(index, values.shape, dim))
+
+
+def multi_gather_tris(v: torch.Tensor, f: torch.Tensor, dim=-2) -> torch.Tensor:
+    # compute faces normals w.r.t the vertices (considering batch dimension)
+    if v.ndim == (f.ndim + 1):
+        f = f[None].expand(v.shape[0], *f.shape)
+    # assert verts.shape[0] == faces.shape[0]
+    shape = torch.tensor(v.shape)
+    remainder = shape.flip(0)[:(len(shape) - dim - 1) % len(shape)]
+    return multi_gather(v, f.view(*f.shape[:-2], -1), dim=dim).view(*f.shape, *remainder)  # B, F, 3, 3
+
+
+def ray_stabbing(pts: torch.Tensor, verts: torch.Tensor, faces: torch.Tensor, multiplier: int = 1):
+    """
+    Check whether a bunch of points is inside the mesh defined by verts and faces
+    effectively calculating their occupancy values
+    Parameters
+    ----------
+    ray_o : torch.Tensor(float), (n_rays, 3)
+    verts : torch.Tensor(float), (n_verts, 3)
+    faces : torch.Tensor(long), (n_faces, 3)
+    """
+    n_rays = pts.shape[0]
+    pts = pts[None].expand(multiplier, n_rays, -1)
+    pts = pts.reshape(-1, 3)
+    ray_d = torch.rand_like(pts)  # (n_rays, 3)
+    ray_d = normalize(ray_d)  # (n_rays, 3)
+    u, v, t = moller_trumbore(pts, ray_d, multi_gather_tris(verts, faces))  # (n_rays, n_faces, 3)
+    inside = ((t >= 0.0) * (u >= 0.0) * (v >= 0.0) * ((u + v) <= 1.0)).bool()  # (n_rays, n_faces)
+    inside = (inside.count_nonzero(dim=-1) % 2).bool()  # if mod 2 is 0, even, outside, inside is odd
+    inside = inside.view(multiplier, n_rays, -1)
+    inside = inside.sum(dim=0) / multiplier  # any show inside mesh
+    return inside
+
+def moller_trumbore(ray_o: torch.Tensor, ray_d: torch.Tensor, tris: torch.Tensor, eps=1e-8) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    The Moller Trumbore algorithm for fast ray triangle intersection
+    Naive batch implementation (m rays and n triangles at the same time)
+    O(n_rays * n_faces) memory usage, parallelized execution
+    Parameters
+    ----------
+    ray_o : torch.Tensor, (n_rays, 3)
+    ray_d : torch.Tensor, (n_rays, 3)
+    tris  : torch.Tensor, (n_faces, 3, 3)
+    """
+    E1 = tris[:, 1] - tris[:, 0]  # vector of edge 1 on triangle (n_faces, 3)
+    E2 = tris[:, 2] - tris[:, 0]  # vector of edge 2 on triangle (n_faces, 3)
+
+    # batch cross product
+    N = torch.cross(E1, E2)  # normal to E1 and E2, automatically batched to (n_faces, 3)
+
+    invdet = 1. / -(torch.einsum('md,nd->mn', ray_d, N) + eps)  # inverse determinant (n_faces, 3)
+
+    A0 = ray_o[:, None] - tris[None, :, 0]  # (n_rays, 3) - (n_faces, 3) -> (n_rays, n_faces, 3) automatic broadcast
+    DA0 = torch.cross(A0, ray_d[:, None].expand(*A0.shape))  # (n_rays, n_faces, 3) x (n_rays, 3) -> (n_rays, n_faces, 3) no automatic broadcast
+
+    u = torch.einsum('mnd,nd->mn', DA0, E2) * invdet
+    v = -torch.einsum('mnd,nd->mn', DA0, E1) * invdet
+    t = torch.einsum('mnd,nd->mn', A0, N) * invdet  # t >= 0.0 means this is a ray
+
+    return u, v, t
+
+
+# winding number way 
+def winding_number(pts: torch.Tensor, verts: torch.Tensor, faces: torch.Tensor) -> torch.Tensor:
+    """
+    Parallel implementation of the Generalized Winding Number of points on the mesh
+    O(n_points * n_faces) memory usage, parallelized execution
+    1. Project tris onto the unit sphere around every points
+    2. Compute the signed solid angle of the each triangle for each point
+    3. Sum the solid angle of each triangle
+    Parameters
+    ----------
+    pts    : torch.Tensor, (n_points, 3)
+    verts  : torch.Tensor, (n_verts, 3)
+    faces  : torch.Tensor, (n_faces, 3)
+    This implementation is also able to take a/multiple batch dimension
+    """
+    # projection onto unit sphere: verts implementation gives a little bit more performance
+    uv = verts[..., None, :, :] - pts[..., :, None, :]  # n_points, n_verts, 3
+    uv = uv / uv.norm(dim=-1, keepdim=True)  # n_points, n_verts, 3
+
+    # gather from the computed vertices (will result in a copy for sure)
+    expanded_faces = faces[..., None, :, :].expand(*faces.shape[:-2], pts.shape[-2], *faces.shape[-2:])  # n_points, n_faces, 3
+
+    u0 = multi_gather(uv, expanded_faces[..., 0])  # n, f, 3
+    u1 = multi_gather(uv, expanded_faces[..., 1])  # n, f, 3
+    u2 = multi_gather(uv, expanded_faces[..., 2])  # n, f, 3
+
+    e0 = u1 - u0  # n, f, 3
+    e1 = u2 - u1  # n, f, 3
+    del u1
+
+    # compute solid angle signs
+    sign = (torch.cross(e0, e1) * u2).sum(dim=-1).sign()
+
+    e2 = u0 - u2
+    del u0, u2
+
+    l0 = e0.norm(dim=-1)
+    del e0
+
+    l1 = e1.norm(dim=-1)
+    del e1
+
+    l2 = e2.norm(dim=-1)
+    del e2
+
+    # compute edge lengths: pure triangle
+    l = torch.stack([l0, l1, l2], dim=-1)  # n_points, n_faces, 3
+
+    # compute spherical edge lengths
+    l = 2 * (l/2).arcsin()  # n_points, n_faces, 3
+
+    # compute solid angle: preparing: n_points, n_faces
+    s = l.sum(dim=-1) / 2
+    s0 = s - l[..., 0]
+    s1 = s - l[..., 1]
+    s2 = s - l[..., 2]
+
+    # compute solid angle: and generalized winding number: n_points, n_faces
+    eps = 1e-10  # NOTE: will cause nan if not bigger than 1e-10
+    solid = 4 * (((s/2).tan() * (s0/2).tan() * (s1/2).tan() * (s2/2).tan()).abs() + eps).sqrt().arctan()
+    signed_solid = solid * sign  # n_points, n_faces
+
+    winding = signed_solid.sum(dim=-1) / (4 * torch.pi)  # n_points
+
+    return winding
+
+
+def find_boundary_edges(faces):
+    # Create all directed edges
+    edges = torch.cat([faces[:, [0, 1]],
+                       faces[:, [1, 2]],
+                       faces[:, [2, 0]]], dim=0)
+
+    # Sort each edge so direction is ignored
+    edges_sorted, _ = edges.sort(dim=1)
+    edges_sorted = edges_sorted.cpu().numpy()
+
+    # Count occurrences of each edge
+    from collections import defaultdict
+    edge_count = defaultdict(int)
+    for e in map(tuple, edges_sorted):
+        edge_count[e] += 1
+
+    # Edges that appear only once are boundary edges
+    boundary_edges = [e for e, c in edge_count.items() if c == 1]
+    return torch.tensor(boundary_edges, dtype=torch.long)
+
+# get ordered vertices indices
+def order_boundary_loop(edges):
+    # Build connectivity
+    from collections import defaultdict
+    conn = defaultdict(list)
+    for a, b in edges.tolist():
+        conn[a].append(b)
+        conn[b].append(a)
+
+    # Start at any vertex
+    # loop = [edges[0, 0].item()] 3260 3359
+    loop = [3260]
+    visited = set(loop)
+    while True:
+        last = loop[-1]
+        next_candidates = [n for n in conn[last] if n not in visited]
+        if not next_candidates:
+            break
+        next_v = next_candidates[0]
+        loop.append(next_v)
+        visited.add(next_v)
+    return loop
+
+
 
 if __name__ == "__main__":
     # Example usage

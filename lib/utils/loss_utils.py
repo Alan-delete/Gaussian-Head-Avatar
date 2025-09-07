@@ -246,3 +246,18 @@ def _ssim(img1, img2, window, window_size, channel, size_average=True):
         return ssim_map.mean()
     else:
         return ssim_map
+
+
+def or_loss(network_output, gt, confs = None, weight = None, mask = None):
+    weight = torch.ones_like(gt[:1]) if weight is None else weight
+    loss = torch.minimum(
+        (network_output - gt).abs(),
+        torch.minimum(
+            (network_output - gt - 1).abs(), 
+            (network_output - gt + 1).abs()
+        ))
+    if confs is not None:
+        loss = loss * confs - (confs + 1e-7).log()    
+    if mask is not None:
+        loss = (loss * mask).sum() / mask.sum()
+    return loss.mean()
