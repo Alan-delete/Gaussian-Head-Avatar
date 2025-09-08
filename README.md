@@ -4,10 +4,38 @@
 
 ## Requirements
 * Create a conda environment.
+Firstly download the external libraries:
 ```
-conda env create -f environment.yaml
+# Save parent dir
+PROJECT_DIR=$PWD
+# Pull all external libraries
+mkdir ext
 ```
-* Install [Pytorch3d](https://github.com/facebookresearch/pytorch3d).
+
+```
+# download right version pytorch
+cd $PROJECT_DIR/ext && git clone https://github.com/facebookresearch/pytorch3d
+cd $PROJECT_DIR/ext/pytorch3d && git checkout 2f11ddc5ee7d6bd56f2fb6744a16776fab6536f7
+```
+
+```
+# download simple-knn and diff-rasterization
+cd $PROJECT_DIR/ext && git clone https://github.com/camenduru/simple-knn
+cd $PROJECT_DIR/ext && git clone https://github.com/graphdeco-inria/diff-gaussian-rasterization.git 
+cd $PROJECT_DIR/ext/diff-gaussian-rasterization-hair/third_party && git clone https://github.com/g-truc/glm
+cd $PROJECT_DIR/ext/diff-gaussian-rasterization-hair/third_party/glm && git checkout 5c46b9c07008ae65cb81ab79cd677ecc1934b903
+```
+
+```
+cd $PROJECT_DIR/ext && git clone --recursive https://github.com/NVIDIAGameWorks/kaolin
+cd $PROJECT_DIR/ext/kaolin && git checkout v0.15.0
+```
+
+
+```
+cd $PROJECT_DIR && conda env create -f environment.yaml
+```
+<!-- * Install [Pytorch3d](https://github.com/facebookresearch/pytorch3d).
 ```
 pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py38_cu113_pyt1120/download.html
 ```
@@ -22,7 +50,7 @@ cd path/to/gaussian-splatting
 pip install submodules/diff-gaussian-rasterization
 pip install submodules/simple-knn
 ```
-* Download ["tets_data.npz"](https://drive.google.com/file/d/1SMkp8v8bDyYxEdyq25jWnAX1zeQuAkNq/view?usp=drive_link) and put it into "assets/".
+* Download ["tets_data.npz"](https://drive.google.com/file/d/1SMkp8v8bDyYxEdyq25jWnAX1zeQuAkNq/view?usp=drive_link) and put it into "assets/". -->
 
 
 ## Datasets

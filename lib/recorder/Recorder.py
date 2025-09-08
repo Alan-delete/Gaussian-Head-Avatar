@@ -4,7 +4,6 @@ import os
 import numpy as np
 import cv2
 import wandb
-import open3d as o3d
 import time
 from matplotlib import pyplot as plt
 

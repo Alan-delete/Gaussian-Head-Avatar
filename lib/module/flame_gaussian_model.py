@@ -12,7 +12,6 @@ import torch
 import torch.nn as nn
 # from vht.model.flame import FlameHead
 from flame_model.flame import FlameHead
-import open3d as o3d
 
 from lib.module.gaussian_model import GaussianModel
 from lib.utils.graphics_utils import compute_face_orientation

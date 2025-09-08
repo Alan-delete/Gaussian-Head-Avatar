@@ -14,7 +14,6 @@ import trimesh
 from simple_knn._C import distCUDA2
 from pytorch3d.transforms import so3_exponential_map
 from pytorch3d.structures import Meshes, Pointclouds
-import open3d as o3d
 import kaolin
 
 from lib.utils.general_utils import inverse_sigmoid, eval_sh, eval_sh_bases ,RGB2SH, parallel_transport, get_expon_lr_func, find_boundary_edges, order_boundary_loop

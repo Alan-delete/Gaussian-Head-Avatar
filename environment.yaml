@@ -1,4 +1,4 @@
-name: gha2
+name: gha
 # channels:
 #   - bottler
 #   - iopath
@@ -155,17 +155,20 @@ dependencies:
     - rtree
     - pysdf
     - trimesh
+    - roma
+    - chumpy
+    - smplx
     - clean-fid
     - face-alignment
     - clip==0.2.0
     - torchdiffeq==0.2.3
     - torchsde==0.2.5
     - resize-right==0.0.2
+    - prefetch-generator==1.0.3
+    - lpips==0.1.4
     - ext/pytorch3d
     - ext/perm
     # - ext/NeuralHaircut/npbgpp
     - ext/simple-knn
-    - ext/diff_gaussian_rasterization
+    - ext/diff-gaussian-rasterization
     - ext/kaolin
-    - prefetch-generator==1.0.3
-    - lpips==0.1.4
