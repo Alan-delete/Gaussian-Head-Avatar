@@ -3,38 +3,43 @@
 <img src="imgs/teaser.jpg" width="840" height="396"/> 
 
 ## Requirements
-* Create a conda environment.
-Firstly download the external libraries:
+### Create the main conda environment.
+Download the external libraries.
+
+Save path of project dir for convenience:
 ```
-# Save parent dir
-PROJECT_DIR=$PWD
-# Pull all external libraries
+export PROJECT_DIR=$PWD
 mkdir ext
 ```
 
+Download right version `pytorch3d`:
 ```
-# download right version pytorch
 cd $PROJECT_DIR/ext && git clone https://github.com/facebookresearch/pytorch3d
 cd $PROJECT_DIR/ext/pytorch3d && git checkout 2f11ddc5ee7d6bd56f2fb6744a16776fab6536f7
 ```
 
+Download `simple-knn` and `diff-rasterization`:
 ```
-# download simple-knn and diff-rasterization
 cd $PROJECT_DIR/ext && git clone https://github.com/camenduru/simple-knn
 cd $PROJECT_DIR/ext && git clone https://github.com/graphdeco-inria/diff-gaussian-rasterization.git 
 cd $PROJECT_DIR/ext/diff-gaussian-rasterization-hair/third_party && git clone https://github.com/g-truc/glm
 cd $PROJECT_DIR/ext/diff-gaussian-rasterization-hair/third_party/glm && git checkout 5c46b9c07008ae65cb81ab79cd677ecc1934b903
 ```
+Important: change the `NUM_CHANNELS 3` to `NUM_CHANNELS 32` in `diff-gaussian-rasterization/cuda_rasterizer/config.h`
 
+Download `kaolin` package:
 ```
 cd $PROJECT_DIR/ext && git clone --recursive https://github.com/NVIDIAGameWorks/kaolin
 cd $PROJECT_DIR/ext/kaolin && git checkout v0.15.0
 ```
 
-
+Install the environment:
 ```
 cd $PROJECT_DIR && conda env create -f environment.yaml
 ```
+
+Then follow the instruction on [NeRSemble dataset](https://tobias-kirschstein.github.io/nersemble/) to further install `nersemble_data` (Skip if you've already had preprocessed data). 
+
 <!-- * Install [Pytorch3d](https://github.com/facebookresearch/pytorch3d).
 ```
 pip install --no-index --no-cache-dir pytorch3d -f https://dl.fbaipublicfiles.com/pytorch3d/packaging/wheels/py38_cu113_pyt1120/download.html
@@ -53,7 +58,13 @@ pip install submodules/simple-knn
 * Download ["tets_data.npz"](https://drive.google.com/file/d/1SMkp8v8bDyYxEdyq25jWnAX1zeQuAkNq/view?usp=drive_link) and put it into "assets/". -->
 
 
-## Datasets
+### Create a conda environment for preprocessing (Skip if you've already had preprocessed data).
+We need one more environment(mv-3dmm-fitting) for FLAME fittting. We refer to the method in GHA.
+
+Fit BFM model for head pose and expression coefficients using [Multiview-3DMM-Fitting](https://github.com/YuelangX/Multiview-3DMM-Fitting). Please follow the instructions.
+
+
+<!-- ## Datasets
 We provide instructions for preprocessing [NeRSemble dataset](https://tobias-kirschstein.github.io/nersemble/):
 * Apply to download [NeRSemble dataset](https://tobias-kirschstein.github.io/nersemble/) and unzip it into "path/to/raw_NeRSemble/".
 * Extract the images, cameras and background for specific identities into a structured dataset "NeRSemble/{id}".
@@ -69,31 +80,109 @@ python remove_background_nersemble.py
 ```
 * Fit BFM model for head pose and expression coefficients using [Multiview-3DMM-Fitting](https://github.com/YuelangX/Multiview-3DMM-Fitting). Please follow the instructions.
 
-We provide a [mini demo dataset](https://drive.google.com/file/d/1OddIml-gJgRQU4YEP-T6USzIQyKSaF7I/view?usp=drive_link) for checking whether the code is runnable. Note, before downloading it, you must first sign the [NeRSemble Terms of Use](https://forms.gle/H4JLdUuehqkBNrBo7).
+We provide a [mini demo dataset](https://drive.google.com/file/d/1OddIml-gJgRQU4YEP-T6USzIQyKSaF7I/view?usp=drive_link) for checking whether the code is runnable. Note, before downloading it, you must first sign the [NeRSemble Terms of Use](https://forms.gle/H4JLdUuehqkBNrBo7). -->
 
 
-## Extra Preprocessing
+### Checkpoints
+Most checkpoints should be placed in `assets` folder. In short, there will be folders:
+```
+├── BFM
+│   └── BFM09_model_info.mat
+├── CDGNet
+│   └── LIP_epoch_149.pth
+├── FLAME
+│   ├── FLAME_masks.pkl
+│   ├── flame2023.pkl
+│   ├── flame_dynamic_embedding.npy
+│   ├── flame_static_embedding.pkl
+│   ├── generic_model.pkl
+│   ├── hair_list.pkl
+│   ├── head_template_mesh.obj
+│   ├── landmark_embedding_with_eyes.npy
+│   ├── tex_mean_painted.png
+│   └── uv_masks.npz
+├── MODNet
+│   └── modnet_photographic_portrait_matting.ckpt
+├── flame_mesh_aligned_to_pinscreen.obj
+├── perm
+│   └── checkpoints
+│       ├── stylegan2-raw-texture.pkl
+│       ├── unet-superres.pkl
+│       └── vae-res-texture.pkl
+└── tets_data.npz
+```
+
+
+## Preprocessing(Skip if you've already had preprocessed data)
 We have tested two datasets, one renderme and NeRSemble.
 
 ### NeRSemble
-Since we adopt GHA as the base, we use their file structure. Firstly, set the environment varibale to you corresponding directory.
 
+We prepared `preprocess.sh` that should work well after modifyiny the following varialble:
+- `PROJECT_DIR`: Your project dir
+- `SUBJECTS`: Array containing target subjects to preproces
+- `SEQUENCES`: Array contataining target sequences to preprocess
+
+Or you can preprocess one sequence and one subject step by step. The logic of `preprocess.sh` is as following:
+
+Since we adopt GHA as the base, we use their file structure. For example, inside subject '226', the strcture like:
+```
+├── calibration
+│   ├── camera_params.json
+│   └── color_calibration.json
+└── sequences
+    ├── BACKGROUND
+    │   ├── image_220700191.jpg
+    │   ├── image_221501007.jpg
+    │   ├── ...
+    │   ├── image_cameraid.jpg
+    ├── EXP-1-head
+    │   ├── FLAME_params
+    │   ├── NeuralHaircut_masks
+    │   ├── background
+    │   ├── cameras
+    │   ├── images
+    │   ├── landmarks
+    │   ├── orientation_maps
+    │   └── params
+    └── HAIR
+        ├── FLAME_params
+        ├── NeuralHaircut_masks
+        ├── background
+        ├── cameras
+        ├── images
+            ├── 0000
+                ├── image_220700191.jpg
+                ├── image_221501007.jpg
+                ├── image_222200036.jpg
+                ├── image_222200037.jpg
+                ├── ... 
+                ├── image_cameraid.jpg
+            ├── 0001
+            ├── 0002
+            ├── 0003
+            ├── 0004
+            ├── 0005
+            ├── ... 
+            ├── frame_id
+        ├── landmarks
+        ├── orientation_maps
+        └── params
+```
+
+#### Set environment variable
+
+Firstly, set the environment varibale to you corresponding directory.
 ``` bash
 # Your work folder
 PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
-
 # Input data path, e.g where you gonna put the downloaded NeRSemble data
 DATA_ROOT="$PROJECT_DIR/datasets/NeRSemble"
 
 # Target subject and sequence
 SUBJECT="258"
-SEQUENCE="EXP-1-head"
+SEQUENCE="HAIR"
 DATA_PATH="$DATA_ROOT/$SUBJECT/sequences/${SEQUENCE}"
-
-# temporary output folders, usually no need to change their paths
-TRACK_OUTPUT_FOLDER="$PROJECT_DIR/datasets/output/nersemble_v2/${SUBJECT}_${SEQUENCE}_v16_DS4_wBg_staticOffset"
-EXPORT_OUTPUT_FOLDER="$PROJECT_DIR/datasets/export/nersemble_v2/${SUBJECT}_${SEQUENCE}_v16_DS4_whiteBg_staticOffset_maskBelowLine"
-
 ```
 
 Where you specify the sequence and subject of NeRSemble
@@ -101,7 +190,7 @@ Where you specify the sequence and subject of NeRSemble
 #### Donwload NeRsemble dataset to your $DATA_ROOT directory 
 Please follow the instruction of NeRSemble dataset
 ``` bash
-conda activate gha2   
+conda activate gha   
 nersemble-data download $DATA_ROOT --participant $SUBJECT --sequence $SEQUENCE 
 
 ```
@@ -114,7 +203,7 @@ cd  $PROJECT_DIR/preprocess
 python preprocess_nersemble.py --data_source $DATA_ROOT --data_output $DATA_PATH --id_list $SUBJECT --sequence $SEQUENCE
 ```
 
-2.  Now we have done the GHA preprocessing(some image editing).
+<!-- 2.  Now we have done the GHA preprocessing(some image editing).
 After that, run VHAP for FLAME fitting and head mask
 
 
@@ -142,8 +231,8 @@ CUDA_VISIBLE_DEVICES="$GPU" python vhap/export_as_nerf_dataset.py \
 # Convert structure to images | frame_id | image_camera_id.jpg 
 cd  $PROJECT_DIR/preprocess
 python convert_nersemble.py --data_source ${DATA_ROOT} --intermediate_data ${EXPORT_OUTPUT_FOLDER} --data_output ${DATA_PATH}
-```
-3. Run hair mask detection
+``` -->
+2. Run hair mask detection
 
 ``` bash
 # face mask from neural haircut
@@ -156,21 +245,20 @@ CUDA_VISIBLE_DEVICES="$GPU" python calc_masks.py \
     --MODNET_ckpt $PROJECT_DIR/assets/MODNet/modnet_photographic_portrait_matting.ckpt \
     --CDGNET_ckpt $PROJECT_DIR/assets/CDGNet/LIP_epoch_149.pth \
     --ext_dir $PROJECT_DIR/ext/
-    # --data_path $DATA_PATH --model_dir $PROJECT_DIR/ext/Matte-Anything --img_size 512 \
 ```
 
-4. Run the orientation 
+3. Run the orientation 
 
 ```bash
 cd $PROJECT_DIR/preprocess 
-conda deactivate && conda activate gha2
+conda deactivate && conda activate gha
 CUDA_VISIBLE_DEVICES="$GPU" python calc_orientation_maps.py \
     --img_dir $DATA_PATH/images --mask_dir $DATA_PATH/NeuralHaircut_masks/hair --orient_dir $DATA_PATH/orientation_maps \
     --conf_dir $DATA_PATH/orientation_confidence_maps --filtered_img_dir $DATA_PATH/orientation_filtered_imgs --vis_img_dir $DATA_PATH/orientation_vis_imgs
 
 ```
 
-5. Run GHA FLAME fitting(optional, if you want to test GHA for head reconstruction)
+4. Run GHA FLAME fitting
 ``` bash
 # # landmark detection and FLAME fitting
 cd $PROJECT_DIR/preprocess
@@ -187,18 +275,18 @@ CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
     --image_folder $DATA_PATH/images --landmark_folder $DATA_PATH/landmarks \
     --param_folder $DATA_PATH/params --camera_folder $DATA_PATH/cameras --image_size 2048
 ```
-ps: Apparently some data can be reused from previous step, but for simplicity(and less bugy), just use the original commands from GHA.
-
+<!-- ps: Apparently some data can be reused from previous step, but for simplicity(and less bugy), just use the original commands from GHA.
+ -->
 
 
 ## Training
-First, edit the config file, for example "config/train_meshhead_N031", and train the geometry guidance model.
+First, edit the config file, for example "config/train_meshhead_N226", and train the geometry guidance model.
 ```
-python train_meshhead.py --config config/train_meshhead_N031.yaml
+python train_meshhead.py --config config/train_meshhead_N226.yaml
 ```
-Second, edit the config file "config/train_gaussianhead_N031", and train the gaussian head avatar.
+Second, edit the config file "config/train_gaussianhead_N226", and train the gaussian head avatar.
 ```
-python train_gaussianhead.py --config config/train_gaussianhead_N031.yaml
+python train_gaussianhead.py --config config/train_gaussianhead_N226.yaml
 ```
 
 ## Reenactment

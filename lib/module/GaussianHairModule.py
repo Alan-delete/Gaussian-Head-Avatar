@@ -45,7 +45,8 @@ class GaussianHairModule(GaussianBaseModule):
         self.active_sh_degree = self.max_sh_degree if self.train_features_rest else 0
         # TODO: change the path to the format like {dir_perm}/checkpoints
         self.strands_generator = Perm(
-            model_path=f'{dir_path}/../../ext/perm/checkpoints', 
+            # model_path=f'{dir_path}/../../ext/perm/checkpoints', 
+            model_path=f'{dir_path}/../../assets/perm/checkpoints', 
             head_mesh=f'{dir_path}/../../ext/perm/data/head.obj',
             scalp_bounds=[0.1870, 0.8018, 0.4011, 0.8047]).eval().cuda().requires_grad_(True)
         if self.num_strands == 10_140:
