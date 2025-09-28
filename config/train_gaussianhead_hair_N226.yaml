@@ -19,7 +19,7 @@ static_training_util_iter: 5000 #10000 # 20000
 
 dataset:
   dataroot: 'datasets/mini_demo_dataset/031'
-  camera_ids: []
+  camera_ids: [] #['220700191', '221501007', '222200036', '222200037'] #[]
   test_camera_ids: [0]
   selected_frames: []
   # selected_frames: ['0000', '0099']

@@ -278,6 +278,41 @@ CUDA_VISIBLE_DEVICES="$GPU" python fitting.py \
 <!-- ps: Apparently some data can be reused from previous step, but for simplicity(and less bugy), just use the original commands from GHA.
  -->
 
+### Custom Data
+The data should contain videos, camera parameter, and optional background images.
+Take the example of 4-views videos. Let's say the subject is `black`, sequence is `HAIR`.
+The file structure for this subject should be:
+```
+black/
+├── cameras
+│   ├── camera_22070938.npz
+│   ├── camera_22139905.npz
+│   ├── camera_22139913.npz
+│   └── camera_22139946.npz
+└── sequences
+    └── HAIR
+        └── videos
+            ├── image_22070938.mp4
+            ├── image_22139905.mp4
+            ├── image_22139913.mp4
+            └── image_22139946.mp4
+
+```
+The name prefix should be the same as the above, i.e. camera_id.npz, image_id.mp4.
+
+Then run 
+```
+PROJECT_DIR="/local/home/haonchen/Gaussian-Head-Avatar"
+# Choose your own data root path
+DATA_ROOT="$PROJECT_DIR/datasets/NeRSemble"
+
+# Target subject and sequence
+SUBJECT="black"
+SEQUENCE="HAIR"
+DATA_PATH="$DATA_ROOT/$SUBJECT/sequences/${SEQUENCE}"
+python preprocess_havatar.py --data_source $DATA_ROOT --data_output $DATA_PATH --id_list $SUBJECT --sequence $SEQUENCE
+```
+Check `preprocess_havatar.py` for more details.
 
 ## Training
 First, edit the config file, for example "config/train_meshhead_N226", and train the geometry guidance model.

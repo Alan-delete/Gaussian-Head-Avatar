@@ -2,7 +2,6 @@ import os
 os.environ['PYOPENGL_PLATFORM'] = 'egl'
 # os.environ['PYOPENGL_PLATFORM'] = 'osmesa'
 import sys
-import torch
 import argparse
 import numpy as np
 import cv2
@@ -12,24 +11,14 @@ import glob
 from tqdm import tqdm
 
 import torch
-import numpy as np
-import glob
-import os
 import random
-import cv2
 from skimage import io
 
-import torch
-import numpy as np
 from einops import rearrange
 
-
-import torch
 import pyrender
-import cv2
-import numpy as np
+import imageio
 
-import os
 from yacs.config import CfgNode as CN
  
 from pytorch3d.structures import Meshes
@@ -325,57 +314,31 @@ class Recorder():
             vertices_2d = rearrange(vertices_2d, '(b v) x y -> b v x y', b=landmarks.shape[0])
 
         print('save per frame results to %s' % self.save_folder)
+
+        single_camera_rendered_video = []
+        
         for n, frame in tqdm(enumerate(frames)):
             os.makedirs(os.path.join(self.save_folder, frame), exist_ok=True)
             
-            face_model.save('%s/params.npz' % (os.path.join(self.save_folder, frame)), batch_id=n)
-            np.save('%s/lmk_3d.npy' % (os.path.join(self.save_folder, frame)), landmarks[n].cpu().numpy())
-            if self.save_vertices:
-                np.save('%s/vertices.npy' % (os.path.join(self.save_folder, frame)), vertices[n].cpu().numpy())
-
             faces = log_data['face_model'].faces.cpu().numpy()
             mesh_trimesh = trimesh.Trimesh(vertices=vertices[n].cpu().numpy(), faces=faces)
-            # # save the trimesh
-            mesh_trimesh.export('%s/mesh_%d.obj' % (os.path.join(self.save_folder, frame), n))
+
+            # face_model.save('%s/params.npz' % (os.path.join(self.save_folder, frame)), batch_id=n)
+            # np.save('%s/lmk_3d.npy' % (os.path.join(self.save_folder, frame)), landmarks[n].cpu().numpy())
+            # if self.save_vertices:
+            #     np.save('%s/vertices.npy' % (os.path.join(self.save_folder, frame)), vertices[n].cpu().numpy())
+
+            
+            # # # save the trimesh
+            # mesh_trimesh.export('%s/mesh_%d.obj' % (os.path.join(self.save_folder, frame), n))
 
 
-            # valid_cameras = [28, 56, 22, 31, 25, 57, 27, 34, 35, 55, 32, 18, 19, 21]
             if self.visualize:
-                # img_paths = sorted(glob.glob(os.path.join(self.img_folder, frame, 'image_*.jpg')))
-
                 for v, camera_id in enumerate(log_data['all_cameras']):
                     img_paths = os.path.join(self.img_folder, frame, 'image_%s.jpg' % camera_id)
                     
                     origin_image = cv2.imread(img_paths)[:,:,::-1]
                     origin_image = cv2.resize(origin_image, (self.camera.image_size, self.camera.image_size))
-
-                    # scene = trimesh.Scene(mesh_trimesh)
-                    
-                    # extrinsic_cv = np.eye(4)
-                    # extrinsic_cv[:3, :] = extrinsics[n, v].cpu().numpy()
-                    # camera_transform = np.linalg.inv(extrinsic_cv)
-                    # scene.camera_transform = camera_transform
-
-                    # K = intrinsics[n, v].cpu().numpy()
-                    # image_width = image_height = self.camera.image_size
-                    # fx, fy = K[0, 0], K[1, 1]
-                    # fov_x = 2 * np.arctan(image_width / (2 * fx)) * 180 / np.pi
-                    # fov_y = 2 * np.arctan(image_height / (2 * fy)) * 180 / np.pi
-                    # scene.camera.fov = (fov_y, fov_x)
-
-                    # # full_project = torch.bmm(intrinsic.unsqueeze(0), extrinsic.unsqueeze(0))
-                    # # scene.camera_transform = full_project.cpu().numpy()
-                    # scene.camera.resolution = (self.camera.image_size, self.camera.image_size)
-
-                    # data = scene.save_image(resolution=(image_width, image_height), visible=False)
-                    # render_image = cv2.imdecode(np.frombuffer(data, dtype=np.uint8), cv2.IMREAD_COLOR)
-
-
-                    # mesh = pyrender.Mesh.from_trimesh(mesh_trimesh)
-                    # self.camera.init_renderer(intrinsic=intrinsics[n, v], extrinsic=extrinsics[n, v])
-                    # render_image = origin_image.copy()
-                    # render_image = self.camera.render(mesh)
-
 
                     # Convert trimesh to pytorch3d mesh
                     verts = torch.tensor(mesh_trimesh.vertices, dtype=torch.float32).unsqueeze(0).to("cuda")
@@ -394,31 +357,10 @@ class Recorder():
                     cx, cy = K[0, 2], K[1, 2]
                     H = W = self.camera.image_size
 
-                    # # Use full intrinsics
-                    # cameras = PerspectiveCameras(
-                    #     focal_length=((fx, fy),),
-                    #     principal_point=((cx, cy),),
-                    #     image_size=((H, W),),
-                    #     device="cuda",
-                    #     in_ndc=False,
-                    #     R=torch.tensor(extrinsics[n, v][:, :3], dtype=torch.float32).unsqueeze(0).to("cuda"),
-                    #     T=torch.tensor(extrinsics[n, v][:, 3], dtype=torch.float32).unsqueeze(0).to("cuda")
-                    # )
-
                     cameras = cameras_from_opencv_projection( R = torch.tensor(extrinsics[n, v][:, :3], dtype=torch.float32).unsqueeze(0).to("cuda"),
                                                              tvec = torch.tensor(extrinsics[n, v][:, 3], dtype=torch.float32).unsqueeze(0).to("cuda"),
                                                              camera_matrix = torch.tensor(intrinsics[n, v], dtype=torch.float32).unsqueeze(0).to("cuda"),
                                                             image_size=torch.tensor([H, W]).unsqueeze(0))
-
-
-                    # scale = 1.0  # Adjust based on mesh size
-                    # cameras = FoVOrthographicCameras(
-                    #     device=device,
-                    #     R=torch.tensor(extrinsics[n, v][:, :3].T, dtype=torch.float32).unsqueeze(0).to(device),
-                    #     T=torch.tensor(extrinsics[n, v][:, 3], dtype=torch.float32).unsqueeze(0).to(device),
-                    #     scale_xyz=((scale, scale, scale),),  # Uniform scaling
-                    #     image_size=((H, W),)
-                    # )
 
                     # Rasterization & Shader
                     raster_settings = RasterizationSettings(
@@ -462,6 +404,11 @@ class Recorder():
                     # render_image = images[0, ..., :3].cpu().numpy()  # HxWx3 RGB, float [0,1]
                     render_image = (render_image * 255).astype(np.uint8)
 
+                    if v == 0:
+                        single_camera_rendered_video.append(render_image)
+                    # else:
+                    #     continue
+
                     # Alpha blend with original
                     alpha = 0.65
                     origin_image_resized = cv2.resize(origin_image, (W, H))
@@ -499,28 +446,21 @@ class Recorder():
                         v_ = int(V[i].item())
                         cv2.circle(origin_image, (u_, v_), 5, (0, 255, 0), -1)
 
-
-                    # vertices_2d_cur = vertices_2d[n, v].cpu().numpy()
-                    # # find bounding box of the vertices
-                    # min_x = int(np.min(vertices_2d_cur[:, 0]))
-                    # max_x = int(np.max(vertices_2d_cur[:, 0]))
-                    # min_y = int(np.min(vertices_2d_cur[:, 1]))
-                    # max_y = int(np.max(vertices_2d_cur[:, 1]))
-                    # # further lift the bounding box a little bit
-                    # # draw bounding box
-                    # cv2.rectangle(origin_image, (min_x, min_y), (max_x, max_y), (255, 0, 0), 2)
-
-                    # # remove the image below the bounding box
-                    # render_image[max_y:, :, :] = 0
-
-                    # mask = np.ones_like(render_image, dtype=np.uint8) * 255
-                    # mask[max_y:, :, :] = 0
-                    # # save the mask
-                    # cv2.imwrite('%s/visible_%s.jpg' % (os.path.join(self.save_folder, frame), camera_id), mask)
-
                     render_image = np.concatenate([origin_image, render_image], axis=1)
 
                     cv2.imwrite('%s/vis_%d.jpg' % (os.path.join(self.save_folder, frame), v), render_image[:,:,::-1])
+
+        if len(single_camera_rendered_video) > 0:
+            output_path = os.path.join(self.save_folder, 'single_camera_rendered_video.mp4')
+            # resize frame from 2048 to 512
+            single_camera_rendered_video = [cv2.resize(frame, (512, 512)) for frame in single_camera_rendered_video]
+            
+            out = cv2.VideoWriter(output_path, cv2.VideoWriter_fourcc(*'mp4v'), 30, (single_camera_rendered_video[0].shape[1], single_camera_rendered_video[0].shape[0]))
+            for frame in single_camera_rendered_video[:1000]:
+                frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+                out.write(frame)
+            out.release()
+            # imageio.mimwrite(os.path.join(self.save_folder, 'single_camera_rendered_video.mp4'), single_camera_rendered_video, fps=36, quality=8)
 
 
 if __name__ == '__main__':

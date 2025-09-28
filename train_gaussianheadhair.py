@@ -31,7 +31,7 @@ def build_dataloader(cfg, dataroots, split_strategy="train"):
             arg_cfg = ["dataroot", root]
             cfg.dataset.merge_from_list(arg_cfg)
             datasets.append(GaussianDataset(cfg.dataset, split_strategy=split_strategy))
-        dataset = MultiDataset(datasets)
+        dataset = MultiDataset(datasets) if split_strategy == "train" else datasets[0]
     else:
         dataset = GaussianDataset(cfg.dataset, split_strategy=split_strategy)
 
