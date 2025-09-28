@@ -317,6 +317,12 @@ gaussianhairmodule
     load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000' 
 ```
 
+### Extra step(should be updated soom)
+Hardcode the start iteration when it comes to training, at line 31 in `lib/trainer/GaussianHeadHairTrainer.py`  
+```
+        if self.cfg.resume_training:
+            iteration = 80001
+```
 
 ## Reenactment
 Once the two-stage training is completed, the trained avatar can be reenacted by a sequence of expression coefficients. Please specify the avatar checkpoints and the source data in the config file "config/reenactment_N031.py" and run the reenactment application.
