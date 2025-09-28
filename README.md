@@ -83,7 +83,7 @@ python remove_background_nersemble.py
 We provide a [mini demo dataset](https://drive.google.com/file/d/1OddIml-gJgRQU4YEP-T6USzIQyKSaF7I/view?usp=drive_link) for checking whether the code is runnable. Note, before downloading it, you must first sign the [NeRSemble Terms of Use](https://forms.gle/H4JLdUuehqkBNrBo7). -->
 
 
-### Checkpoints
+### Checkpoints for preprocessing
 Most checkpoints should be placed in `assets` folder. In short, there will be folders:
 ```
 ├── BFM
@@ -289,10 +289,39 @@ Second, edit the config file "config/train_gaussianhead_N226", and train the gau
 python train_gaussianhead.py --config config/train_gaussianhead_N226.yaml
 ```
 
+
+## Load Checkpoint(for training or reenactment)
+All related parameters are in corresponding config, e.g.  `config/train_gaussianhead_hair_N226.yaml`.
+```
+# toggle the checkpoint loading
+resume_training: True
+...
+save_freq: 10000
+```
+There are two ways to specify the checkpoint path
+
+### Load by unique number
+For each run, the project will save the latest checkpoints with a unique number, such as `checkpoints/gaussianhead_NeRSemble226/gaussianhair_latest_175769288250`.
+You can find the number in the terminal output. 
+Specify it in the config and the program shall try to find the checkpoints for both head and hair models when `resume_training` is on. 
+```
+checkpoint_seed: 175585577969 
+```
+
+### Load by path(It will override the 'load by unique number'.)
+You may also directly specify the path to load in config.
+```
+gaussianheadmodule:
+    load_gaussianhead_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhead_iter_20000'
+gaussianhairmodule
+    load_gaussianhair_checkpoint: 'checkpoints/gaussianhead_hair_renderme_StaticInit/gaussianhair_iter_20000' 
+```
+
+
 ## Reenactment
 Once the two-stage training is completed, the trained avatar can be reenacted by a sequence of expression coefficients. Please specify the avatar checkpoints and the source data in the config file "config/reenactment_N031.py" and run the reenactment application.
 ```
-python reenactment.py --config config/reenactment_N031.yaml
+python reenactment.py --config config/train_gaussianhead_N226.yaml
 ```
 
 
