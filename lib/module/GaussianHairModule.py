@@ -80,7 +80,7 @@ class GaussianHairModule(GaussianBaseModule):
         self.register_buffer('origins_raw', torch.empty(0))
         self.origins_raw = torch.empty(0)
 
-        self.register_buffer('opacity_mask', torch.ones_like(torch.arange(self.num_strands)))
+        self.register_buffer('opacity_mask', torch.ones_like(torch.arange(self.num_strands)).bool())
         
         self.points_raw = torch.empty(0)
         self.dir_raw = torch.empty(0)
@@ -938,19 +938,19 @@ class GaussianHairModule(GaussianBaseModule):
                 self.points_origins = torch.cat([self.origins, self.points], dim=1)
                 self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
         
-        # TODO: only do opacity filtering every 1K iter
-        # attention, here the opacity is before sigmoid
-        if reset_opacity_filter:
-            opacity = self.opacity_raw.view(self.num_strands, self.strand_length - 1, 1)[strands_idx].view(-1, 1)
-            mean_opacity_per_strand = torch.sigmoid(opacity).view(-1, self.strand_length - 1).mean(dim=-1) 
-            self.opacity_mask = mean_opacity_per_strand > 0.2
+        if self.train_opacity:
+            # filter out nearly transparent strands
+            if reset_opacity_filter:
+                opacity = self.opacity_raw.view(self.num_strands, self.strand_length - 1, 1)[strands_idx].view(-1, 1)
+                mean_opacity_per_strand = torch.sigmoid(opacity).view(-1, self.strand_length - 1).mean(dim=-1) 
+                self.opacity_mask = mean_opacity_per_strand > 0.2
 
-        self.points = self.points[self.opacity_mask]
-        self.origins = self.origins[self.opacity_mask]
-        self.points_origins = self.points_origins[self.opacity_mask]
-        self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
-        # intersection of strand_idx and opacity_mask
-        strands_idx = strands_idx[self.opacity_mask.cpu()]
+            self.points = self.points[self.opacity_mask]
+            self.origins = self.origins[self.opacity_mask]
+            self.points_origins = self.points_origins[self.opacity_mask]
+            self.dir = (self.points_origins[:, 1:] - self.points_origins[:, :-1]).view(-1, 3)
+            # intersection of strand_idx and opacity_mask
+            strands_idx = strands_idx[self.opacity_mask.cpu()]
 
         # Add dynamics to the hair strands
         # Points shift

@@ -100,7 +100,7 @@ class GaussianHeadHairTrainer():
                     if data_item in data:
                         data[data_item] = torch.as_tensor(data[data_item], device=self.device)
 
-                self.train_step(iteration, epoch, data, grad_accumulation = 1)
+                self.train_step(iteration, epoch, data, grad_accumulation = 1) # or 4?
                 iteration += 1
 
 
@@ -163,7 +163,7 @@ class GaussianHeadHairTrainer():
             #     self.gaussianhair.oneupSHdegree()
 
             self.gaussianhair.generate_hair_gaussians(skip_smpl=iteration <= self.cfg.gaussianheadmodule.densify_from_iter, 
-                                                    reset_opacity_filter = (iteration % 2000 != 0) , 
+                                                    reset_opacity_filter = (iteration % 2000 == 0) , 
                                                     backprop_into_prior=backprop_into_prior, 
                                                     poses_history = data['poses_history'][0], 
                                                     global_pose = data['flame_pose'][0],
@@ -266,10 +266,14 @@ class GaussianHeadHairTrainer():
             def recall_loss(gt, pred):
                 return (gt - pred).clamp(min=0).mean()
 
-            def relax_recall_loss(gt, pred):
+            def relax_recall_loss(gt, pred, mask = None):
+                if mask is not None:
+                    gt = gt * mask
+                    pred = pred * mask
                 return (gt - pred).clamp(min=0).mean() + (pred - gt).clamp(min=0).mean() * 0.5
             
-            loss_segment = (l1_loss(gt_segment[:,2], segment_clone[:,2], mask = visibles_coarse) + l1_loss(gt_segment[:,0], segment_clone[:,0], mask = visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            # loss_segment = (l1_loss(gt_segment[:,2], segment_clone[:,2], mask = visibles_coarse) + l1_loss(gt_segment[:,0], segment_clone[:,0], mask = visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
+            loss_segment = (relax_recall_loss(gt_segment[:,2], segment_clone[:,2], mask = visibles_coarse) )  if self.cfg.train_segment else torch.tensor(0.0, device=self.device)
             
             # step decay for segment loss
             if iteration > 20000:
